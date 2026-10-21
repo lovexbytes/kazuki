@@ -280,6 +280,27 @@ test("a call stopped mid-refresh keeps the process alive till the new tokens are
   expect(file().tokens.refresh_token).toBe("refresh-1");
 });
 
+test("a call stopped while yielding doesn't start a token refresh", async () => {
+  const { Agent } = await import("./Agent.ts");
+  const model = "gpt-6-luna";
+  sign_in(access(1, now() + 10));
+  Agent.hold(model, model, "test: the model is busy");
+  const c = AskAI.ask({ vendor: "openai-sub", model, effort: "low", speed: "slow", system: "Be brief.", blocks: [{ text: "Summarize.", mark: true }], searches: 0, server: "", yields: "stopped-import" }, () => {});
+  try {
+    for (let i = 0; i < 100 && Agent.room(model).wait.length === 0; i++) {
+      await Bun.sleep(10);
+    }
+    expect(Agent.room(model).wait.length).toBeGreaterThan(0);
+    c.stop();
+    await c.done;
+    expect(fake.refreshes).toHaveLength(0);
+    expect(fake.requests).toHaveLength(0);
+  } finally {
+    c.stop();
+    Agent.free(model, model);
+  }
+});
+
 test("a refresh refused for good fails the call, keeping the file", async () => {
   sign_in(access(1, now() + 10), "refresh-0");
   fake.spent.add("refresh-0");

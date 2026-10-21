@@ -257,6 +257,9 @@ export namespace Agent {
     try {
       for (let k = 1; !signal.aborted; k++) {
         await Agent.yielded(run, own, asking);
+        if (signal.aborted) {
+          return Agent.fail("stopped", []);
+        }
         const seen: Entry[] = [];
         const stopped = new Promise<null>((done) => signal.addEventListener("abort", () => done(null), { once: true }));
         const token = await Promise.race([Agent.token(wire, key, refused), stopped]);
