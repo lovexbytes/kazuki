@@ -73,7 +73,8 @@ const ASKVER = ARGS.includes("version");
 const UPDATE = ARGS.includes("update");
 const SERVE  = ARGS.includes("serve");
 const PORT   = SERVE ? ARGS.find((a) => /^\d+$/.test(a)) : undefined;
-const WORDS  = ["login", "help", "--help", "-h", "version", "update", "serve"];
+const SUB    = ARGS.includes("chatgpt");
+const WORDS  = ["login", "help", "--help", "-h", "version", "update", "serve", "chatgpt", ...(SUB ? ["logout"] : [])];
 const WEB    = /^https?:\/\//;
 const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const HOME   = process.env.UNII_HOME || os.homedir() + "/.unii";
@@ -89,6 +90,10 @@ const USAGE = `Usage: unii [url]           the chat (url: $UNII_URL, else https:
                             (another port: set UNII_SITE to its address too),
                             on your ANTHROPIC_API_KEY and OPENAI_API_KEY;
                             chat with it: unii http://127.0.0.1:8788
+       unii chatgpt         sign the server unii serve runs here in to a
+                            ChatGPT plan (its openai-sub vendor), by a
+                            code entered in any browser
+       unii chatgpt logout  sign it out
        unii help            this
 UNII_WORK: where the agent works on this computer (default
 ~/.unii/work). UNII_COMPUTER=1: it may use the screen. UNII_HOME: where
@@ -533,9 +538,17 @@ function term_pick(t: Term, move: Move, arg: string): void {
     term_act(t, { $: "Move", move, to: arg });
     return;
   }
-  const parts = [...new Set(Pick.options(t.v.pick, move, t.v).map(([part]) => part))];
-  const list  = parts.map((part) => (part === knob.text ? part + " (now)" : part));
-  term_note(t, move[0].toUpperCase() + move.slice(1) + "s: " + list.join(", ") + ". Pick one with /" + move + " <" + move + ">.");
+  // a model two vendors offer is listed under each (/model vendor:model
+  // picks the other's)
+  const pick  = t.v.pick;
+  const opts  = Pick.options(pick, move, t.v);
+  const now   = ([part, p]: [string, Pick]) => (part === knob.text && p.vendor === pick.vendor ? part + " (now)" : part);
+  const heads = [...new Set(opts.map(([, p]) => p.vendor))];
+  const group = (v: string) => [...new Set(opts.filter(([, p]) => p.vendor === v).map(now))].join(", ");
+  const twins = move === "model" && heads.length > 1 && opts.some(([part, p]) => Pick.twin(p.vendor, part, t.v.vendors));
+  const list  = twins ? heads.map((v) => v + ": " + group(v)).join("; ") : [...new Set(opts.map(now))].join(", ");
+  const how   = twins ? "/model <model>, or /model <vendor>:<model>" : "/" + move + " <" + move + ">";
+  term_note(t, move[0].toUpperCase() + move.slice(1) + "s: " + list + ". Pick one with " + how + ".");
 }
 
 async function term_export(t: Term): Promise<void> {
@@ -1117,6 +1130,8 @@ if (HELP || ODD !== undefined) {
   console.log("unii " + VERSION);
 } else if (UPDATE) {
   update_run(SERVER);
+} else if (SUB) {
+  await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => login_fail(err.message));
 } else if (SERVE) {
   self_mark();
   await (await import("./Server.ts")).serve(Number(PORT ?? 8788), null);
