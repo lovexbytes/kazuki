@@ -42,8 +42,12 @@ AskAI.ts (model calls and the cache).
 Run it
 ------
 
-You need [Bun](https://bun.sh) >= 1.4.3 and an Anthropic API key (or an
-OpenAI one, below).
+Install a compiled `unii` without Git, Node, or a preinstalled Bun:
+
+    curl -fsSL https://raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh | sh
+
+You need an Anthropic API key (or an OpenAI one, below) to run a local chat.
+To build from source instead, install [Bun](https://bun.sh) >= 1.4.3:
 
     export ANTHROPIC_API_KEY=sk-ant-...
     bun build --compile Term.ts --outfile unii
@@ -131,9 +135,9 @@ plugs in its billing (uniichat.com sells credits; this repo has none).
 The `unii` terminal
 -------------------
 
-`web/install.sh` (served at /install.sh) runs the official installer,
-which installs the released `unii` executable. `unii` alone starts and
-opens its local server; `unii <url>` is client-only for another local
+`web/install.sh` (served at /install.sh) downloads a pinned Bun, verifies it,
+and compiles the source archive into `~/.local/bin/unii`. `unii` alone starts
+and opens its local server; `unii <url>` is client-only for another local
 instance. It does not support older authenticated hosted servers or promise a
 hosted deployment.
 Run with

@@ -9,11 +9,11 @@
 // done or halted; all they left running dies as this unii quits. From a
 // pipe, each line is a message.
 //
-// One executable per platform (the releases uniichat.com/install.sh
-// installs); once a day it asks bend-lang.com's /check (update_check) and
+// One executable per platform (web/install.sh compiles it); once a day it
+// asks bend-lang.com's /check (update_check) and
 // notes a newer one. `unii serve` runs the server it carries. The server:
 // the url given, else $UNII_URL, else the local server at 127.0.0.1:8788.
-// `unii update` without a url still uses uniichat.com's installer.
+// `unii update` without a url uses this repository's installer.
 //
 // Usage: USAGE (`unii help` prints it).
 
@@ -81,6 +81,7 @@ const WEB    = /^https?:\/\//;
 const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const HOME   = process.env.UNII_HOME || os.homedir() + "/.unii";
 const OURS   = "https://uniichat.com";
+const INSTALL = "https://raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh";
 const REMOTE = ARGS.find((a) => WEB.test(a));
 const SERVER = (REMOTE ?? process.env.UNII_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
 
@@ -1003,9 +1004,14 @@ function update_newer(ver: string): boolean {
 // runs the installer again: the one way unii changes. The command prints
 // first, so one can run it alone.
 function update_run(url: string): void {
-  const cmd = "curl -fsSL " + url + "/install.sh | sh";
-  console.error(cmd);
-  process.exitCode = child.spawnSync("sh", ["-c", cmd], { stdio: "inherit" }).status ?? 1;
+  const script = url === "" ? INSTALL : url.replace(/\/$/, "") + "/install.sh";
+  console.error("curl -fsSL " + script + " | sh");
+  const got = child.spawnSync("curl", ["-fsSL", script], { stdio: ["ignore", "pipe", "inherit"] });
+  if (got.status !== 0) {
+    process.exitCode = got.status ?? 1;
+    return;
+  }
+  process.exitCode = child.spawnSync("sh", [], { input: got.stdout, stdio: ["pipe", "inherit", "inherit"] }).status ?? 1;
 }
 
 function cli_error(why: string): void {
@@ -1092,7 +1098,7 @@ if (HELP || ODD !== undefined) {
 } else if (ASKVER) {
   console.log("unii " + VERSION);
 } else if (UPDATE) {
-  update_run(REMOTE ?? OURS);
+  update_run(REMOTE ?? "");
 } else if (SUB) {
   await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => cli_error(err.message));
 } else if (SERVE) {

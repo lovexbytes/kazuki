@@ -65,6 +65,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
   let proc: Bun.Subprocess | undefined;
   let tui: Bun.Subprocess | undefined;
   let v6: Bun.Subprocess | undefined;
+  let update: Bun.Subprocess | undefined;
   let pid: number | undefined;
   try {
     const build = Bun.spawnSync([process.execPath, "build", "--compile", import.meta.dir + "/Term.ts", "--outfile", bin], { cwd: import.meta.dir });
@@ -90,6 +91,18 @@ test("the compiled terminal manages its local server separately from its TUI", a
     const app = await fetch(site + "/app.js", { signal: AbortSignal.timeout(1000) });
     expect(app.status).toBe(200);
     expect((await app.text()).length).toBeGreaterThan(0);
+    const install = await fetch(site + "/install.sh", { signal: AbortSignal.timeout(1000) });
+    expect(install.status).toBe(200);
+    const script = await install.text();
+    expect(script).toContain("codeload.github.com");
+    expect(script).not.toContain("uniichat.com/install.sh");
+    fs.mkdirSync(dir + "/fake");
+    fs.writeFileSync(dir + "/fake/curl", "#!/bin/sh\nexit 7\n", { mode: 0o755 });
+    update = Bun.spawn([bin, "update"], { cwd: dir, env: { ...env, PATH: dir + "/fake" }, stdout: "ignore", stderr: "pipe" });
+    const update_err = await new Response(update.stderr).text();
+    await update.exited;
+    expect(update.exitCode).toBe(7);
+    expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh");
     tui = Bun.spawn([bin, "tui"], { cwd: dir, env, stdin: "pipe", stdout: "ignore", stderr: "pipe" });
     tui.stdin.write("/quit\n");
     await Promise.race([tui.exited, Bun.sleep(5000).then(() => { throw new Error("TUI did not exit"); })]);
@@ -100,7 +113,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
     expect(v6.exitCode).toBe(0);
     expect((await fetch(site + "/api/me")).status).toBe(200);
   } finally {
-    for (const child of [absent, proc, tui, v6]) {
+    for (const child of [absent, proc, tui, v6, update]) {
       child?.kill();
       await child?.exited;
     }
