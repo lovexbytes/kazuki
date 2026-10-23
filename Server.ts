@@ -38,14 +38,13 @@ import type { Wallet } from "./Billing.ts";
 import { clip_pages } from "./Clip.ts";
 import { Cloud, type Account, type User } from "./Cloud.ts";
 import { Disk } from "./Disk.ts";
-import { Mail } from "./Mail.ts";
 import * as Import from "./Import.ts";
 import { JOBS, Memory, type Given, type Msg as Log, type Share } from "./Memory.ts";
 import { OpenAI, TRANSCRIBER } from "./OpenAI.ts";
 import { Pick } from "./Pick.ts";
 import { Price } from "./Price.ts";
 import { MASTER, SEARCHES, Tools, type Agent, type Live, type Moved as Kit } from "./Tools.ts";
-import { email_ask, FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Part, type Server as Out, type Wait } from "./View.ts";
+import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Part, type Server as Out, type Wait } from "./View.ts";
 import * as config from "./Config.ts";
 import hello_md from "./hello.md" with { type: "text" };
 import app_js from "./web/app.js" with { type: "file" };
@@ -210,26 +209,29 @@ const FLOOD      = 1008;
 const SOCKETS    = 32;
 
 // what a network (Cloud.net: an IPv4 address, an IPv6 /48) may ask of the
-// site: 1,000 requests at once, 100 more a second; past it the supervisor
-// answers 429, so no worker hears it. A page opens in ~10, then lives on
-// its socket: a hundred people behind one NAT opening it at once never
-// come near
+// local server: 1,000 requests at once, 100 more a second; past it the
+// supervisor answers 429, so no worker hears it.
 const NETS: Limit = { rate: 100, most: 1000, keys: new Map() };
 
 // the model requests a worker may have open at once (Bun's fetch: 256)
 const FETCHES    = 65535;
 
-// the paths of a user signed in, but /api/'s (the rest: the site's files)
+// the local chat's paths, besides /api/ (the rest: the site's files)
 const OWN        = ["/ws", "/tree", "/export"];
+
+function local_request(req: Request): boolean {
+  const url = new URL(req.url);
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const origin = req.headers.get("origin");
+  return ["127.0.0.1", "localhost", "::1"].includes(host) && (origin === null || origin === url.origin);
+}
 
 // what a recording is written out by, and its fewest bytes a second
 // (Opus's least, 6 kbps)
 const VOICE: Pick = { vendor: "openai-api", model: TRANSCRIBER, effort: "", speed: "slow" };
 const AUDIO      = 750;
 
-// the first message, ending in the installer every terminal starts from,
-// signed out (it signs in by email: Term.ts login_run), so the message
-// holds no credential a screenshot could leak
+// the first message, ending in the installer every terminal starts from
 const HELLO      = hello_md.trim().replace("{install}", config.SITE + "/install.sh");
 
 // the site's files, by path (a new one is imported above)
@@ -251,8 +253,8 @@ const WEB: Record<string, string> = {
 // the email, and SIGNED. The hello's node is written with it, so no
 // compactor call summarizes the three (with an email of up to 254 bytes,
 // a node of at most 512 bytes) and a new account owes nothing.
-const HELLO_LINE = "unii: hello: UniiChat, one endless chat kept in a memory tree, recent days in more detail; build anything for years; recalls the past (ad2cat.py); a chatbot with a memory system; the user's terminal install; asks their email.";
-const SIGNED     = "You're in! What should we start with?";
+const HELLO_LINE = "unii: hello: UniiChat, one persistent local chat with a memory tree.";
+const OPEN_PROMPT = "What should we start with?";
 
 // Chat
 // ====
@@ -308,8 +310,7 @@ export namespace Chat {
     }
     mem.pay = tools.pay = wallet.pay;
     if (mem.count === 0) {
-      const hello = HELLO + "\n\n" + email_ask(cloud.billing.github !== null);
-      Memory.push(mem, [{ kind: "unii", text: hello, line: HELLO_LINE }, { kind: "user", text: user.name }, { kind: "unii", text: SIGNED }]);
+      Memory.push(mem, [{ kind: "unii", text: HELLO, line: HELLO_LINE }, { kind: "unii", text: OPEN_PROMPT }]);
     }
     chat.eye = Chat.eye(mem, Memory.turn(mem));
     mem.made = (l, i) => Chat.made(chat, l, i);
@@ -1390,7 +1391,6 @@ export namespace Main {
   export let leaving = false;
   export let count   = 1;
   export let index   = 0;
-  export const mails = new Map<string, (err: string | null) => void>();
 
   // a worker: its port and server; the process it took its chats from,
   // its address, and the users whose chats that one has yet to give
@@ -1451,16 +1451,16 @@ export namespace Main {
   }
 
 
-  // deletes the account of the user signed in, if they typed its name,
+  // deletes the local chat, if they typed its name,
   // where their chat is: one the worker before still gives (a deploy) is
   // waited for, so it ends before its files go
   export async function close(req: Request): Promise<Response> {
     const cloud = Chat.cloud;
     const user = Cloud.who(cloud, req);
     const confirm = String((await req.json().catch(() => ({}))).confirm ?? "").trim().toLowerCase();
-    if (user === null || confirm !== user.name.toLowerCase()) {
-      const name = user === null ? "you are signed out." : "type \"" + user.name + "\".";
-      const error = "Deleting your account erases your chat and Unii's memory for good" + cloud.billing.closes + ". To confirm, " + name;
+    if (confirm !== user.name.toLowerCase()) {
+      const name = "type \"" + user.name + "\".";
+      const error = "Deleting the local chat erases Unii's memory for good" + cloud.billing.closes + ". To confirm, " + name;
       return Response.json({ error }, { status: 400 });
     }
     await Main.here(user.id);
@@ -1468,7 +1468,6 @@ export namespace Main {
     if (owed !== null) {
       return Response.json({ error: owed }, { status: 409 });
     }
-    Cloud.leave(cloud, user);
     const chat = Chat.chats.get(user.id);
     await (chat === undefined ? Promise.resolve() : Chat.end(chat));
     const why = await Cloud.close(cloud, user, req);
@@ -1476,7 +1475,7 @@ export namespace Main {
       return Response.json({ error: why }, { status: 409 });
     }
     fs.rmSync(config.DIR + "/users/" + user.id, { recursive: true, force: true });
-    return Cloud.out();
+    return new Response(null, { status: 204 });
   }
 
   // a long answer, sent as made, a PIECE at a time, the event loop
@@ -1532,8 +1531,7 @@ export namespace Main {
   // a request; one for a chat this process gave away goes there. Another
   // site's page (its browser says so: Sec-Fetch-Site) only links here: it
   // posts nothing, reaches no /api/ and opens no socket, so no site acts
-  // for its visitors, signed in or not (sends a message, signs them out,
-  // asks sign-in mail from their networks)
+  // for its visitors (sends a message or opens a socket)
   // an answer of a process giving its chats away closes its connection,
   // so no client (Caddy, another worker's Main.pass) keeps one to reuse as
   // the process ends
@@ -1550,21 +1548,21 @@ export namespace Main {
   export async function http(req: Request, server: Bun.Server<Sock["data"]>): Promise<Response | undefined> {
     const p = new URL(req.url).pathname;
     const cloud = Chat.cloud;
+    if (!local_request(req)) {
+      return new Response("loopback and same-origin requests only", { status: 403 });
+    }
     const away = /^(cross|same)-site$/.test(req.headers.get("sec-fetch-site") ?? "");
     if (away && (req.method !== "GET" || p.startsWith("/api/") || p === "/ws")) {
       return new Response("not from another site", { status: 403 });
     }
     try {
       const user = Cloud.who(cloud, req);
-      if (user !== null && Main.shard(user.id) !== Main.index) {
+      if (Main.shard(user.id) !== Main.index) {
         return new Response("this user's worker is another", { status: 421 });
       }
       const api = await Cloud.http(cloud, req);
       if (api !== null) {
         return api;
-      }
-      if (p === "/api/hello") {
-        return Response.json({ hello: HELLO, bills: cloud.billing.bills, github: cloud.billing.github !== null });
       }
       if (p === "/api/delete") {
         return await Main.close(req);
@@ -1572,16 +1570,13 @@ export namespace Main {
       if (!OWN.includes(p) && !p.startsWith("/image/") && !p.startsWith("/api/")) {
         return Main.file(p);
       }
-      if (user === null) {
-        return new Response("sign in first", { status: 401 });
-      }
       await Main.here(user.id);
       if (p === "/ws") {
         if ((Main.sockets.get(user.id) ?? 0) >= SOCKETS || !Main.spend(USERS, user.id)) {
           return new Response("too many requests", { status: 429 });
         }
         const q    = new URL(req.url).searchParams;
-        const who  = Cloud.hash(Cloud.token(req));
+        const who  = "local";
         const work = q.get("work") ?? "~/.unii/work";
         const data = { user, who, tab: q.get("tab") ?? "", wire: q.get("wire"), host: q.get("device"), computer: q.get("computer") === "1", work, device: null, seen: new Set<string>() };
         return server.upgrade(req, { data }) ? undefined : new Response("upgrade failed", { status: 400 });
@@ -1662,11 +1657,9 @@ export namespace Main {
         Chat.change(chat);
       }
     };
-    const signed = (session: string) => (send === undefined ? Cloud.wake(Chat.cloud, session) : send({ $: "signed", session }));
-    const post = (mail: object) => (send === undefined ? Mail.send(config.KEYS.resend, mail) : Main.mail(send, mail));
     const hand = HAND + Main.index;
     Main.port = port;
-    Chat.cloud = Cloud.open(change, signed, post);
+    Chat.cloud = Cloud.open(change);
     Main.back = await Main.dial(hand);
     if (Main.back === null) {
       Main.listed.resolve();
@@ -1748,33 +1741,11 @@ export namespace Main {
     Main.listen(hand);
   }
 
-  // a mail, sent by the supervisor: its answer
-  export function mail(send: (msg: object) => void, mail: object): Promise<string | null> {
-    const id = crypto.randomUUID();
-    send({ $: "mail", id, mail });
-    return new Promise((done) => Main.mails.set(id, done));
-  }
-
   // a failure no owner took: every background promise has one that ends
   // it (a chat's note, a log line), so this is a bug, logged, never the
   // end of the worker and every chat it holds
   export function unowned(err: unknown): void {
     console.error("unii: a failure no one owned: " + ((err as any)?.stack ?? err));
-  }
-
-  // a worker hears its supervisor
-  export function heard(msg: any): void {
-    switch (msg.$) {
-      case "signed": {
-        Cloud.wake(Chat.cloud, String(msg.session));
-        return;
-      }
-      case "mailed": {
-        Main.mails.get(msg.id)?.(msg.err);
-        Main.mails.delete(msg.id);
-        return;
-      }
-    }
   }
 
   // Handover
@@ -2089,27 +2060,19 @@ export namespace Main {
   // the workers' supervisor (run: what starts one, on port+1+k,
   // UNII_WORKER=k): holds the lock, starts again a worker that dies,
   // answers each request with its worker's address (`x-unii-worker`:
-  // README; past its network's limit, NETS, 429), relays a worker's word
-  // to all, sends their mail. A deploy (SIGHUP) starts each worker anew,
+  // README; past its network's limit, NETS, 429). A deploy (SIGHUP) starts
+  // each worker anew,
   // which takes the chats of the one before (Main.start); one that fails
   // to start leaves that one serving. Its own code changes only on a
   // restart
   export function supervise(port: number, run: string[]): void {
-    const cloud = Cloud.open(() => {}, () => {}, async () => null);
+    const cloud = Cloud.open(() => {});
     const workers: Bun.Subprocess[] = [];
     const all = new Set<Bun.Subprocess>();
     const hear = (k: number, proc: Bun.Subprocess, msg: any) => {
       switch (msg.$) {
         case "ready": {
           workers[k] = proc;
-          return;
-        }
-        case "signed": {
-          all.forEach((w) => w.send(msg));
-          return;
-        }
-        case "mail": {
-          Mail.send(config.KEYS.resend, msg.mail).then((err) => proc.send({ $: "mailed", id: msg.id, err })).catch(() => {});
           return;
         }
       }
@@ -2130,11 +2093,13 @@ export namespace Main {
       port     : port,
       hostname : "127.0.0.1",
       fetch    : (req) => {
+        if (!local_request(req)) {
+          return new Response("loopback and same-origin requests only", { status: 403 });
+        }
         if (!Main.spend(NETS, Cloud.net(Cloud.ip(req) ?? ""))) {
           return new Response("too many requests", { status: 429 });
         }
-        const user = Cloud.who(cloud, req);
-        const k = Main.shard(user?.id ?? Cloud.token(req));
+        const k = Main.shard(Cloud.who(cloud, req).id);
         return new Response(null, { headers: { "x-unii-worker": "127.0.0.1:" + (port + 1 + k) } });
       },
     });

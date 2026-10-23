@@ -2,11 +2,9 @@
 // ================
 // The site (Site.swift) in a web view, and what only an app does there:
 //
-// - Notifications: once signed in, the app asks to notify, and gives the
+// - Notifications: the app asks to notify, and gives the
 //   server its phone's push token (/api/push); the server pushes each
 //   turn's last message (Cloud.ts). iOS shows none while the app is open.
-// - Sign-in links open the app (universal links: the server's
-//   apple-app-site-association names /auth), signing in its web view.
 // - The mic dictates (the site's own recorder; iOS asks once).
 // - Export Memory's download goes to the share sheet; the site's prompt()
 //   (Delete account asks the name) is an alert.
@@ -88,15 +86,11 @@ final class Page: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageH
     Task { await Store.resume() }
   }
 
-  // the page loaded: its sign-in kept for requests and the extension;
-  // signed in, the push token asked for (iOS asks the user once)
+  // the page loaded: ask for notification permission once.
   func webView(_ web: WKWebView, didFinish nav: WKNavigation!) {
     Task {
-      let cookies = await web.configuration.websiteDataStore.httpCookieStore.allCookies()
-      let session = cookies.first { $0.name == "unii" && $0.domain == Site.url.host }?.value
-      Site.group.set(session, forKey: "session")
       let center = UNUserNotificationCenter.current()
-      if session != nil, (try? await center.requestAuthorization(options: [.alert, .sound])) == true {
+      if (try? await center.requestAuthorization(options: [.alert, .sound])) == true {
         UIApplication.shared.registerForRemoteNotifications()
       }
     }

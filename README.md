@@ -42,20 +42,34 @@ AskAI.ts (model calls and the cache).
 Run it
 ------
 
-You need [Bun](https://bun.sh) and an Anthropic API key (or an OpenAI
-one, below).
+You need [Bun](https://bun.sh) >= 1.4.3 and an Anthropic API key (or an
+OpenAI one, below).
 
     export ANTHROPIC_API_KEY=sk-ant-...
+    bun build --compile Term.ts --outfile unii
+    ./unii                           # local TUI and server, data in ~/.unii
+
+`./unii` starts its loopback server when none is already listening, then
+opens the same persistent local chat. `./unii server` starts it in the
+background, `./unii tui` opens only the terminal UI, and `./unii web` starts
+it and opens its URL in a browser. The background server stays up when the
+TUI exits; use `/quit` or empty Ctrl+D to leave the TUI. Its output is in
+`$UNII_DIR/server.log` (default `~/.unii/server.log`). Set
+`UNII_URL=http://127.0.0.1:9000` (and `UNII_SITE` if it is not already set)
+for another local port; `localhost` and `[::1]` aliases resolve to its IPv4
+loopback listener. `./unii http://example.test` is client-only. ChatGPT
+provider sign-in is separate: run `./unii chatgpt`.
+
+To run the source server for a browser instead:
+
     bun Server.ts                    # http://127.0.0.1:8788, data in ~/.unii
 
-Then open http://127.0.0.1:8788 and type your email. With no mail key
-set, the server prints the sign-in link in its output: open it. Or chat
-from a terminal:
+Then open http://127.0.0.1:8788. `bun Term.ts help` lists the rest.
 
-    bun Term.ts http://127.0.0.1:8788
-
-It asks for your email, the server prints a link, and the page it opens
-asks for the code the terminal shows. `bun Term.ts help` lists the rest.
+The server is loopback-only: it accepts `127.0.0.1`, `localhost`, and
+`::1` hosts and same-origin browser requests. Do not put it behind a reverse
+proxy or expose it publicly without access controls; it has no application
+login or session authentication. Model-provider credentials remain required.
 
 Other commands:
 
@@ -74,7 +88,7 @@ Config
 `~/.unii/config.json` (optional; the dir is `$UNII_DIR`). Each key may
 also be set as the variable `UNII_<KEY>`:
 
-- `site`: the server's origin, for sign-in links (default
+- `site`: the server's local origin (default
   http://127.0.0.1:8788). Another port: `UNII_SITE=http://127.0.0.1:9000
   bun Server.ts 9000`.
 - `vendors`: what the server offers, comma-separated: `claude-api`
@@ -97,8 +111,7 @@ also be set as the variable `UNII_<KEY>`:
   ~/.unii/chatgpt.json).
 
 Keys are read from the environment: `ANTHROPIC_API_KEY`,
-`OPENAI_API_KEY`, `RESEND_API_KEY` (to email sign-in links; none: they
-print), `APNS_KEY`.
+`OPENAI_API_KEY`, `APNS_KEY`.
 
 With only an OpenAI key, set `vendors`, `pick` and `compactor` to
 `openai-api` models, e.g. `UNII_VENDORS=openai-api
@@ -119,8 +132,11 @@ The `unii` terminal
 -------------------
 
 `web/install.sh` (served at /install.sh) runs the official installer,
-which installs the released `unii` executable. `unii` alone opens
-uniichat.com; `unii <url>` opens any server. Run with
+which installs the released `unii` executable. `unii` alone starts and
+opens its local server; `unii <url>` is client-only for another local
+instance. It does not support older authenticated hosted servers or promise a
+hosted deployment.
+Run with
 `UNII_COMPUTER=1` on a Mac, the agent may use its screen (it compiles
 Computer.swift with swiftc; macOS asks for Screen Recording and
 Accessibility).

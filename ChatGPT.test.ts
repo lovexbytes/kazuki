@@ -378,7 +378,7 @@ test("a server that bills won't start offering openai-sub", () => {
   const open = spyOn(Billing, "open").mockImplementation(() => ({ bills: true }) as any);
   try {
     config.OFFER.vendors.splice(0, Infinity, "claude-api", "openai-sub");
-    expect(() => Cloud.open(() => {}, () => {}, async () => null)).toThrow("can't offer openai-sub");
+    expect(() => Cloud.open(() => {})).toThrow("can't offer openai-sub");
   } finally {
     open.mockRestore();
     config.OFFER.vendors.splice(0, Infinity, ...vendors);

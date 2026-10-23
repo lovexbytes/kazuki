@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- What the app and its share extension declare to Apple: no tracking;
      the one API with a required reason is UserDefaults, read and written
-     only in their app group (1C8F.1: Site.swift's sign-in). -->
+      only in their app group. -->
 <plist version="1.0">
 <dict>
   <key>NSPrivacyTracking</key>

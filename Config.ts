@@ -49,7 +49,6 @@ export const APNS       = config_get("apns", "");
 const VARS: Record<string, string> = {
   anthropic       : "ANTHROPIC_API_KEY",
   openai          : "OPENAI_API_KEY",
-  resend          : "RESEND_API_KEY",
   apns            : "APNS_KEY",
 };
 export const KEYS: Record<string, string> = Object.fromEntries(Object.entries(VARS).map(([name, v]) => [name, config_key(v)]));

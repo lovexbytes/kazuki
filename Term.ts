@@ -12,8 +12,8 @@
 // One executable per platform (the releases uniichat.com/install.sh
 // installs); once a day it asks bend-lang.com's /check (update_check) and
 // notes a newer one. `unii serve` runs the server it carries. The server:
-// the url given, else $UNII_URL, else uniichat.com; each server's session
-// is a file of its own (TOKEN).
+// the url given, else $UNII_URL, else the local server at 127.0.0.1:8788.
+// `unii update` without a url still uses uniichat.com's installer.
 //
 // Usage: USAGE (`unii help` prints it).
 
@@ -67,23 +67,27 @@ type Cmd = [use: string, keys: string, text: string, run: (t: Term, arg: string)
 const VERSION = "1.0.138";
 
 const ARGS   = process.argv.slice(2);
-const LOGIN  = ARGS.includes("login");
 const HELP   = ARGS.some((a) => ["help", "--help", "-h"].includes(a));
 const ASKVER = ARGS.includes("version");
 const UPDATE = ARGS.includes("update");
 const SERVE  = ARGS.includes("serve");
+const START  = ARGS.includes("server");
+const TUI    = ARGS.includes("tui");
+const SITE   = ARGS.includes("web");
 const PORT   = SERVE ? ARGS.find((a) => /^\d+$/.test(a)) : undefined;
 const SUB    = ARGS.includes("chatgpt");
-const WORDS  = ["login", "help", "--help", "-h", "version", "update", "serve", "chatgpt", ...(SUB ? ["logout"] : [])];
+const WORDS  = ["help", "--help", "-h", "version", "update", "serve", "server", "tui", "web", "chatgpt", ...(SUB ? ["logout"] : [])];
 const WEB    = /^https?:\/\//;
 const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const HOME   = process.env.UNII_HOME || os.homedir() + "/.unii";
 const OURS   = "https://uniichat.com";
-const SERVER = (ARGS.find((a) => WEB.test(a)) ?? process.env.UNII_URL ?? OURS).replace(/\/$/, "");
-const TOKEN  = HOME + "/" + new URL(SERVER).host + "/token";
+const REMOTE = ARGS.find((a) => WEB.test(a));
+const SERVER = (REMOTE ?? process.env.UNII_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
 
-const USAGE = `Usage: unii [url]           the chat (url: $UNII_URL, else https://uniichat.com)
-       unii login [url]     sign in
+const USAGE = `Usage: unii [url]           the chat (url: $UNII_URL, else http://127.0.0.1:8788)
+       unii server          start its local server in the background
+       unii tui             open the local server in this terminal
+       unii web             start the local server and open it in a browser
        unii update [url]    install the latest unii (curl | sh, shown first)
        unii version         this unii's version
        unii serve [port]    your own UniiChat server, at http://127.0.0.1:8788
@@ -97,7 +101,7 @@ const USAGE = `Usage: unii [url]           the chat (url: $UNII_URL, else https:
        unii help            this
 UNII_WORK: where the agent works on this computer (default
 ~/.unii/work). UNII_COMPUTER=1: it may use the screen. UNII_HOME: where
-it keeps its sign-in (default ~/.unii).
+it keeps telemetry state (default ~/.unii).
 Once a day, unii asks bend-lang.com for the latest version, sending only
 its version, OS and CPU type, and whether this computer ever ran its own
 server. UNII_NO_TELEMETRY=1 turns that off.
@@ -196,7 +200,6 @@ function term_groups(v: View.View): [group: string, cmds: Cmd[]][] {
       ...topup,
       ["/account",          "",                        "balance, top-ups, charges, calls",               term_account],
       ["/delete <name>",    "",                        "delete your account and chat (its name confirms)", term_delete],
-      ["/logout",           "",                        "sign out and quit",                              term_logout],
     ]],
   ];
 }
@@ -245,23 +248,16 @@ function term_new(url: string): Term {
 function term_connect(t: Term): void {
   const dev = "&device=" + encodeURIComponent(DEVICE) + "&computer=" + (COMPUTER ? 1 : 0) + "&work=" + encodeURIComponent(WORK);
   View.link_open(t.v, {
-    open : (query) => new WebSocket(t.url.replace(/^http/, "ws") + "/ws" + query + dev, { headers: term_auth() } as any),
-    post : (path, body) => fetch(t.url + path, { method: "POST", headers: term_auth(), body }),
+    open : (query) => new WebSocket(t.url.replace(/^http/, "ws") + "/ws" + query + dev),
+    post : (path, body) => fetch(t.url + path, { method: "POST", body }),
     hear : (msg) => term_hear(t, msg),
     lost : (up) => term_lost(t, up),
   });
 }
 
-// a socket lost (up: it had opened): the footer says offline; one that
-// never opened, if the server refuses this terminal's session, quits
-async function term_lost(t: Term, up: boolean): Promise<boolean> {
+// a socket lost: show the offline state and reconnect normally.
+async function term_lost(t: Term, _up: boolean): Promise<boolean> {
   term_draw(t);
-  if (!up && !await term_signed(t.url)) {
-    term_note(t, "This terminal is signed out: run unii again to sign in.");
-    process.exitCode = 1;
-    term_quit(t);
-    return false;
-  }
   return true;
 }
 
@@ -656,21 +652,13 @@ async function term_delete(t: Term, arg: string): Promise<void> {
     term_note(t, out.error ?? "No connection.");
     return;
   }
-  fs.rmSync(TOKEN, { force: true });
   term_note(t, "Your account and chat are deleted.");
-  term_quit(t);
-}
-
-async function term_logout(t: Term): Promise<void> {
-  await term_post(t, "/api/logout", {});
-  fs.rmSync(TOKEN, { force: true });
-  term_note(t, "Signed out. Run unii to sign in again.");
   term_quit(t);
 }
 
 // a GET of the server; failing, a note says it could not do `what`
 async function term_get(t: Term, path: string, what: string): Promise<Response | null> {
-  const res = await fetch(t.url + path, { headers: term_auth() }).catch(() => null);
+  const res = await fetch(t.url + path).catch(() => null);
   if (res === null || !res.ok) {
     term_note(t, "Could not " + what + ": " + (res === null ? "no connection" : "HTTP " + res.status) + ".");
     return null;
@@ -680,7 +668,7 @@ async function term_get(t: Term, path: string, what: string): Promise<Response |
 
 // a JSON POST to the server (View.post)
 function term_post(t: Term, path: string, body: object): Promise<any> {
-  return View.post(t.url + path, body, term_auth());
+  return View.post(t.url + path, body);
 }
 
 // a refusal's text; one for want of credit (402) says how to add some
@@ -969,84 +957,6 @@ async function term_run(t: Term, id: string, job: Job): Promise<void> {
   term_send(t, { $: "out", job: id, out: size > most ? big : out });
 }
 
-// Login
-// =====
-
-// signs in: what is typed (an email, or @ and a GitHub name where the
-// server takes one) begins a sign-in for a token made here, kept in TOKEN
-// once its link was opened; where the server bills, it accepts its terms.
-// A server that says nothing of itself (/api/hello) bills, as one of
-// before it did
-async function login_run(url: string): Promise<void> {
-  const hello = await fetch(url + "/api/hello").then((res) => res.json()).catch(() => ({}));
-  const { bills = true, github = true } = hello;
-  if (bills) {
-    console.log("Signing in, you accept the terms (" + url + "/terms.html) and the privacy policy (" + url + "/privacy.html).");
-  }
-  const key = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
-  const out = await login_ask(url, key, github);
-  if (out.url) {
-    browse(out.url);
-  }
-  console.log(out.url ? "Sign in with GitHub in the browser: " + out.url : "A sign-in link is on its way to " + out.who + ". Open it.");
-  console.log("On the page it opens, type this code: " + out.code);
-  // the link lives on the server, so only it ends the wait: signed in (ok),
-  // or the link gone (410); a wait that fails is asked again
-  const wait = { headers: { authorization: "Bearer " + key }, timeout: false } as RequestInit;
-  while (true) {
-    const done = await fetch(url + "/api/wait", wait).catch(() => null);
-    const ans  = await done?.json().catch(() => ({})) ?? {};
-    if (done?.status === 410) {
-      login_fail("the link expired: run unii again");
-    }
-    if (done?.ok && ans.ok) {
-      break;
-    }
-    if (done?.status !== 408) {
-      await Bun.sleep(View.RETRY);
-    }
-  }
-  fs.writeFileSync(TOKEN, key, { mode: 0o600 });
-  console.log("Signed in.");
-}
-
-// asks for an address (a GitHub login too, where the server takes one)
-// until the server takes one (it says why it doesn't): the address, and
-// the server's answer
-async function login_ask(url: string, key: string, github: boolean): Promise<{ who: string; url?: string; code: string }> {
-  while (true) {
-    process.stdout.write(github ? "Email or @github: " : "Email: ");
-    const who  = (await login_line()).trim();
-    const init = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ who, key }) };
-    const res  = await fetch(url + "/api/login", init).catch(() => null);
-    if (res === null) {
-      login_fail("no connection to " + url);
-    }
-    const out = await res.json().catch(() => ({ error: "HTTP " + res.status }));
-    if (out.error === undefined) {
-      return { ...out, who };
-    }
-    console.log(out.error);
-  }
-}
-
-// the next line typed; stdin is paused after it, till the screen reads it
-function login_line(): Promise<string> {
-  return new Promise((done) => {
-    const end  = () => login_fail("no address typed");
-    const take = (chunk: Buffer) => {
-      process.stdin.off("data", take).off("end", end).pause();
-      done(String(chunk).split("\n")[0]);
-    };
-    process.stdin.on("data", take).on("end", end).resume();
-  });
-}
-
-function login_fail(why: string): never {
-  console.error("unii: " + why);
-  process.exit(1);
-}
-
 // Update
 // ======
 
@@ -1098,52 +1008,120 @@ function update_run(url: string): void {
   process.exitCode = child.spawnSync("sh", ["-c", cmd], { stdio: "inherit" }).status ?? 1;
 }
 
+function cli_error(why: string): void {
+  console.error("unii: " + why);
+  process.exitCode = 1;
+}
+
+function local_url(url: string): number | null {
+  try {
+    const got = new URL(url);
+    return got.protocol === "http:" && got.hostname === "127.0.0.1" ? Number(got.port || 80) : null;
+  } catch {
+    return null;
+  }
+}
+
+// whether the local port is ours, occupied, or has no HTTP listener
+async function local_live(url: string): Promise<"ours" | "occupied" | "absent"> {
+  const res = await fetch(url + "/api/me", { signal: AbortSignal.timeout(750) }).catch(() => null);
+  if (res === null) return "absent";
+  const me = await res.json().catch(() => null);
+  return res.ok && me?.id === "local" ? "ours" : "occupied";
+}
+
+// starts the server carried by this executable, then waits briefly for it.
+async function local_start(url: string): Promise<boolean> {
+  const port = local_url(url);
+  if (port === null) {
+    cli_error("local server must use http://127.0.0.1:<port>.");
+    return false;
+  }
+  const live = await local_live(url);
+  if (live === "ours") return true;
+  if (live === "occupied") {
+    cli_error(url + " is occupied by another HTTP service.");
+    return false;
+  }
+  const set = process.env.UNII_DIR || os.homedir() + "/.unii";
+  const dir = set.startsWith("~/") ? os.homedir() + set.slice(1) : set;
+  const log = dir + "/server.log";
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const out = fs.openSync(log, "a", 0o600);
+  let proc: child.ChildProcess;
+  try {
+    const source = process.argv[1] === import.meta.path && process.execPath === process.argv[0];
+    const args = source ? [import.meta.path, "serve", String(port)] : ["serve", String(port)];
+    proc = child.spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out], env: { ...process.env, UNII_SITE: process.env.UNII_SITE ?? url } });
+  } catch (err: any) {
+    fs.closeSync(out);
+    cli_error("could not start local server at " + url + ": " + (err?.message ?? err) + " (log: " + log + ")");
+    return false;
+  }
+  fs.closeSync(out);
+  proc.unref();
+  for (let k = 0; k < 40; k++) {
+    if (await local_live(url) === "ours") {
+      console.log("unii: local server started at " + url + " (pid " + proc.pid + ")");
+      return true;
+    }
+    await Bun.sleep(100);
+  }
+  proc.kill("SIGTERM");
+  cli_error("could not start local server at " + url + " (log: " + log + ")");
+  return false;
+}
+
+// a TUI never starts a server: a failed local connection must not queue acts
+async function local_tui(url: string): Promise<boolean> {
+  if (local_url(url) !== null && await local_live(url) !== "ours") {
+    cli_error("local server is not running at " + url + "; run unii server.");
+    return false;
+  }
+  return true;
+}
+
 // Main
 // ====
 
-// the session's header, if signed in
-function term_auth(): Record<string, string> {
-  if (!fs.existsSync(TOKEN)) {
-    return {};
-  }
-  return { authorization: "Bearer " + fs.readFileSync(TOKEN, "utf8").trim() };
-}
-
-// whether this terminal is signed in: it holds a session the server
-// doesn't refuse (one it can't reach may: the chat waits for it)
-async function term_signed(url: string): Promise<boolean> {
-  if (!fs.existsSync(TOKEN)) {
-    return false;
-  }
-  const res = await fetch(url + "/api/me", { headers: term_auth() }).catch(() => null);
-  return res === null || res.status !== 401;
-}
-
-fs.mkdirSync(TOKEN.slice(0, -"/token".length), { recursive: true, mode: 0o700 });
-
 if (HELP || ODD !== undefined) {
   if (ODD !== undefined) {
-    login_fail("no argument " + ODD + ".\n\n" + USAGE);
+    cli_error("no argument " + ODD + ".");
   }
   console.log(USAGE);
 } else if (ASKVER) {
   console.log("unii " + VERSION);
 } else if (UPDATE) {
-  update_run(SERVER);
+  update_run(REMOTE ?? OURS);
 } else if (SUB) {
-  await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => login_fail(err.message));
+  await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => cli_error(err.message));
 } else if (SERVE) {
   self_mark();
   await (await import("./Server.ts")).serve(Number(PORT ?? 8788), null);
-} else if (LOGIN) {
-  await login_run(SERVER);
-} else {
-  if (!await term_signed(SERVER)) {
-    await login_run(SERVER);
+} else if (START) {
+  if (await local_start(SERVER)) self_mark();
+} else if (TUI) {
+  if (await local_tui(SERVER)) {
+    const t = term_new(SERVER);
+    term_connect(t);
   }
-  if (SERVER !== OURS) {
+} else if (SITE) {
+  if (await local_start(SERVER)) {
     self_mark();
+    console.log(SERVER);
+    browse(SERVER);
   }
-  const t = term_new(SERVER);
-  term_connect(t);
+} else {
+  if (local_url(SERVER) === null) {
+    const t = term_new(SERVER);
+    term_connect(t);
+  } else if (!await local_start(SERVER)) {
+    // local_start has reported the error; do not open an offline terminal.
+  } else {
+    if (SERVER !== OURS) {
+      self_mark();
+    }
+    const t = term_new(SERVER);
+    term_connect(t);
+  }
 }

@@ -1,15 +1,15 @@
 // Billing
 // =======
 // All a server does for money, behind one boundary: Billing.open gives
-// the server's billing, which the accounts hold (Cloud.ts), and no other
+// the server's billing, which the local chat holds (Cloud.ts), and no other
 // file knows what it is. It says whether the server bills (`bills`:
 // /api/hello, /api/me, /api/account and each chat's state carry it, and
-// no client shows a price, a balance or a payment where it is false),
-// whose the accounts are, what a chat may spend, and the payer each of
+// no client shows a price, a balance or a payment where it is false), what
+// a chat may spend, and the payer each of
 // its paid requests asks right before it is sent (AskAI.ts Bill).
 //
-// This one is FREE: the server runs on its own API keys. An account is
-// an email here (Cloud.ts users), no request waits for a payer, nothing
+// This one is FREE: the server runs on its own API keys. The local account
+// needs no creation or sign-in, no request waits for a payer, nothing
 // is owed, and no route but the accounts' answers. A hosted server plugs
 // in a billing of its own with the same shape.
 
@@ -42,11 +42,9 @@ export type Wallet = {
   changed : () => string | null;
 };
 
-// the server's billing: whether it bills; where a sign-in link's GitHub
-// login signs in (null: a sign-in takes none); what a sign-in mail adds;
-// by user, the cents they may spend as last told (below zero: a debt;
-// moved with a chat); a link's account (signing in, it consents); what
-// is held on a user but their chat; why no money may leave their account
+// the server's billing: whether it bills; by user, the cents they may spend as last told (below zero: a debt;
+// moved with a chat); what is held on a user but their chat; why no money
+// may leave their account
 // yet (null: none); its closing (why not: a debt, a refusal; null:
 // closed), and what that also does, said; its requests (null: none of
 // them); its start, as a worker (mine: its users; chats: those loaded);
@@ -55,10 +53,7 @@ export type Wallet = {
 // they owe, charged; a chat's wallet
 export type Billing = {
   bills   : boolean;
-  github  : ((link: string, login: string) => string) | null;
-  mail    : { consent: string; reply_to?: string };
   credit  : Map<string, number>;
-  account : (who: string, code: string | null, req: Request) => Promise<User | null>;
   data    : (user: User) => Promise<object>;
   owing   : (user: string) => Promise<string | null>;
   close   : (user: User, req: Request) => Promise<string | null>;
@@ -85,15 +80,11 @@ export namespace Billing {
     return Billing.free(cloud);
   }
 
-  // a free server's: its accounts are the emails here, whose ids are
-  // never reused (Cloud.ts users)
+  // a free server's local chat
   export function free(cloud: Accounts): Billing {
     return {
       bills   : false,
-      github  : null,
-      mail    : { consent: "" },
       credit  : new Map(),
-      account : async (who) => Billing.here(cloud, who),
       data    : async () => ({}),
       owing   : async () => null,
       close   : async () => null,
@@ -108,10 +99,5 @@ export namespace Billing {
     };
   }
 
-  export function here(cloud: Accounts, who: string): User {
-    cloud.db.query("insert into users (email) values (?) on conflict do nothing").run(who);
-    const row = cloud.db.query("select id from users where email = ?").get(who) as { id: number };
-    return { id: String(row.id), name: who };
-  }
 
 }

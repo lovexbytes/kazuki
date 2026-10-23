@@ -43,11 +43,8 @@ export type Progress = { done: number; total: number; spent: number; left: numbe
 // a real import: 990 s for 162,900)
 const PACE = 1e-4;
 
-// what a guest is asked after the hello: an email, or a GitHub name but in
-// the iOS app (main.ts guest); a new account's chat opens with it, its
-// email and the line it signed in by, OPENING messages (Server.ts)
-export const email_ask = (github: boolean) => "First, what's your email" + (github ? " or @github" : "") + "? I'll send you a quick sign-up link.";
-export const OPENING = 3;
+// A new local chat has a short hello and its opening prompt (Server.ts).
+export const OPENING = 2;
 
 // what a turn waits on while nothing streams: nothing (""), SUMMARIES,
 // or the first piece of the model it names (a request out, no tool

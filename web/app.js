@@ -1,11 +1,9 @@
 // Clip.ts
-var CAP = 30000;
 function clip_end(str, at) {
   if (str.length - at <= CAP) {
     return str.length;
   }
-  const nl = str.lastIndexOf(`
-`, at + CAP - 1);
+  const nl = str.lastIndexOf("\n", at + CAP - 1);
   const low = str.charCodeAt(at + CAP) >> 10 === 55;
   return nl >= at ? nl + 1 : at + CAP - (low ? 1 : 0);
 }
@@ -23,32 +21,18 @@ async function* stream_lines(stream) {
   const reader = stream.pipeThrough(new TextDecoderStream).getReader();
   let rest = "";
   for (let got = await reader.read();!got.done; got = await reader.read()) {
-    const nl = got.value.lastIndexOf(`
-`);
+    const nl = got.value.lastIndexOf("\n");
     if (nl >= 0) {
-      yield (rest + got.value.slice(0, nl)).split(`
-`);
+      yield (rest + got.value.slice(0, nl)).split("\n");
       rest = "";
     }
     rest += got.value.slice(nl + 1);
   }
   yield [rest];
 }
+var CAP = 30000;
 
 // Import.ts
-var NODE = 512;
-var LINE = 480;
-var PRICE = { base: 187, byte: 735, depth: 628 };
-var PART = 2 ** 20;
-var OLD = "Nothing new: these chats are in Unii's memory already.";
-var NOT_EXPORT = "Not a Claude or ChatGPT export.";
-var MIDWAY = "Meanwhile, UniiChat can answer with a partial tree.";
-var DONE = "Your past chats are in Unii's memory: ask about them any time.";
-var DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });
-var COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
-var EXPORTS = { Claude: "Settings › Privacy › Export data", ChatGPT: "Settings › Data controls › Export data" };
-var INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
-var SKIP = /^(<command-|<local-command|\[Request interrupted)/;
 function import_file(path) {
   const session = /(^|\/)(projects|sessions|archived_sessions)\//.test(path);
   return session && path.endsWith(".jsonl") && !path.includes("subagents/");
@@ -71,24 +55,24 @@ async function* import_read(s) {
     }
   }
 }
-function line_log(s, j, last) {
+var line_log = function(s, j, last) {
   s.app ||= j.type === "session_meta" ? "ChatGPT" : "Claude";
   return s.app === "ChatGPT" ? line_codex(s, j, last) : line_claude(s, j, last);
-}
-function line_msgs(s, line, last) {
+};
+var line_msgs = function(s, line, last) {
   try {
     const j = JSON.parse(line);
     return s.form === "msgs" ? [j] : line_log(s, j, last);
   } catch {
     return [];
   }
-}
-function import_pick(sessions, want, done) {
+};
+var import_pick = function(sessions, want, done) {
   const old = [...sessions].sort((a, b) => a.start.localeCompare(b.start));
   const keep = (m, last) => (want.tools || m.kind === "user" || m.kind === "unii") && m.date >= want.since && import_new(m, last);
   const kept = (s, last) => s.heads.filter((m) => keep(m, last));
   return old.map((s) => ({ ...s, heads: kept(s, done[import_id(s)]) })).filter((s) => s.heads.length > 0);
-}
+};
 function import_plan(sessions, want, done, count) {
   const all = import_pick(sessions, { ...want, since: "" }, done);
   const shown = import_pick(all, want, {});
@@ -100,25 +84,25 @@ function import_plan(sessions, want, done, count) {
 function import_new(m, last) {
   return last === undefined || (m.date ?? "") > last;
 }
-function import_name(s) {
+var import_name = function(s) {
   return s.app + " " + s.where + ", from " + new Date(s.start).toLocaleString("sv-SE").slice(0, 16);
-}
+};
 function import_cells(s) {
   const day = DAY.format(new Date(s.start));
   const where = s.where.startsWith("session in ") ? path_short(s.where.slice(11)) : s.where.replace(/^chat "(.*)"$/, "$1") || "untitled";
   return [day, count_short(s.heads.length), where];
 }
-function count_short(n) {
+var count_short = function(n) {
   return COUNT.format(n).toLowerCase();
-}
+};
 function path_short(path) {
   const parts = path.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~").split("/");
   const head = parts[0] === "" ? 2 : 1;
-  return parts.length - head > 3 ? [...parts.slice(0, head + 1), "…", ...parts.slice(-2)].join("/") : parts.join("/");
+  return parts.length - head > 3 ? [...parts.slice(0, head + 1), "\u2026", ...parts.slice(-2)].join("/") : parts.join("/");
 }
-function import_note(s) {
+var import_note = function(s) {
   return { kind: "note", text: import_name(s) + " (imported)", date: s.start };
-}
+};
 function import_id(s) {
   return import_key(import_note(s));
 }
@@ -130,11 +114,9 @@ async function* import_body(picked) {
   for (const s of picked) {
     const kept = new Set(s.heads.map((m) => m.n));
     let n = 0;
-    part += JSON.stringify(import_note(s)) + `
-`;
+    part += JSON.stringify(import_note(s)) + "\n";
     for await (const m of import_read(s)) {
-      part += kept.has(n++) ? JSON.stringify(m) + `
-` : "";
+      part += kept.has(n++) ? JSON.stringify(m) + "\n" : "";
       if (part.length >= PART) {
         yield part;
         part = "";
@@ -170,19 +152,19 @@ function topup(guess, credits) {
 function guess_usd(usd) {
   return "$" + Math.max(0.01, usd).toFixed(2);
 }
-function node_usd(node) {
+var node_usd = function(node) {
   if (node.bytes <= NODE) {
     return 0;
   }
   const { base, byte, depth } = PRICE;
   return Math.round(base + byte * Math.log2(node.bytes / NODE) + depth * (node.depth + 1));
-}
-function node_line(node) {
+};
+var node_line = function(node) {
   return node.bytes > NODE ? { bytes: LINE, depth: node.depth + 1 } : { bytes: node.bytes, depth: 0 };
-}
-function node_merge(a, b) {
+};
+var node_merge = function(a, b) {
   return { bytes: a.bytes + 1 + b.bytes, depth: Math.max(a.depth, b.depth) };
-}
+};
 async function import_export(file) {
   const zip = await file.slice(0, 2).text() === "PK";
   const json = zip ? await zip_file(file, "conversations.json") : file;
@@ -196,13 +178,12 @@ async function import_export(file) {
   const sessions = await Promise.all(chats.map(chat_session));
   return sessions.filter((s) => s !== null);
 }
-function chat_session(chat) {
+var chat_session = function(chat) {
   const [app, msgs] = chat.mapping ? ["ChatGPT", chat_openai(chat)] : ["Claude", chat_claude(chat)];
-  const file = new Blob(msgs.map((m) => JSON.stringify(m) + `
-`));
+  const file = new Blob(msgs.map((m) => JSON.stringify(m) + "\n"));
   return import_session(file, "msgs", app, 'chat "' + String(chat.title ?? chat.name ?? "") + '"');
-}
-function chat_openai(chat) {
+};
+var chat_openai = function(chat) {
   const nodes = [];
   for (let id = chat.current_node;id; id = chat.mapping[id]?.parent) {
     nodes.unshift(chat.mapping[id]?.message);
@@ -216,8 +197,8 @@ function chat_openai(chat) {
     date = import_date(m?.create_time, date);
     return skip ? [] : msgs_of(kind, (kind === "tool" ? m.recipient + " " : "") + parts_text(m.content.parts ?? [m.content.text]), date);
   });
-}
-function chat_claude(chat) {
+};
+var chat_claude = function(chat) {
   let date = import_date(chat.created_at, "");
   return (chat.chat_messages ?? []).flatMap((m) => {
     date = import_date(m.created_at, date);
@@ -226,7 +207,7 @@ function chat_claude(chat) {
     const files = [...m.attachments ?? [], ...m.files ?? []].map((f) => ({ type: "text", text: "[file " + f.file_name + "]" }));
     return blocks_msgs(kind, [...blocks, ...files], date);
   });
-}
+};
 async function zip_file(zip, name) {
   const view = async (at, n) => new DataView(await zip.slice(at, at + n).arrayBuffer());
   const back = Math.min(zip.size, 65577);
@@ -256,7 +237,7 @@ async function zip_file(zip, name) {
   }
   return null;
 }
-function zip_sizes(dir, p) {
+var zip_sizes = function(dir, p) {
   const short = [p + 24, p + 20, p + 42].map((at) => dir.getUint32(at, true));
   const extra = p + 46 + dir.getUint16(p + 28, true);
   let x = extra;
@@ -265,8 +246,8 @@ function zip_sizes(dir, p) {
   }
   let k = 0;
   return short.map((n) => n === 4294967295 ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n);
-}
-function line_claude(s, j, last) {
+};
+var line_claude = function(s, j, last) {
   const date = import_date(j.timestamp, last);
   const own = (j.type === "user" || j.type === "assistant") && !j.isMeta && !j.isSidechain && !j.isCompactSummary;
   const content = j.message?.content;
@@ -276,21 +257,21 @@ function line_claude(s, j, last) {
     return msgs_of("user", String(j.attachment.prompt ?? ""), date);
   }
   return blocks_msgs(j.type === "user" ? "user" : "unii", blocks, date);
-}
-function blocks_msgs(kind, blocks, date) {
+};
+var blocks_msgs = function(kind, blocks, date) {
   const say = blocks.filter((b) => b.type === "image" || b.type === "text" && !SKIP.test(b.text));
   const tools = blocks.flatMap((b) => b.type === "tool_use" ? msgs_of("tool", b.name + " " + JSON.stringify(b.input), date) : b.type === "tool_result" ? msgs_of("echo", parts_text(b.content), date) : []);
   return [...msgs_of(kind, parts_text(say), date), ...tools];
-}
-function line_codex(s, j, last) {
+};
+var line_codex = function(s, j, last) {
   const p = j.payload ?? {};
   const date = import_date(j.timestamp, last);
   if (j.type === "session_meta") {
     s.where = p.source?.subagent ?? p.source?.internal ? "" : "session in " + String(p.cwd ?? "");
   }
   return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : [];
-}
-function item_codex(p, date) {
+};
+var item_codex = function(p, date) {
   switch (p.type) {
     case "message": {
       const kind = p.role === "user" ? "user" : p.role === "assistant" ? "unii" : null;
@@ -312,25 +293,49 @@ function item_codex(p, date) {
     }
   }
   return [];
-}
-function import_date(at, last) {
+};
+var import_date = function(at, last) {
   const ms = typeof at === "number" ? at * 1000 : Date.parse(String(at));
   return Number.isNaN(ms) ? last : new Date(ms).toISOString();
-}
-function msgs_of(kind, text, date) {
+};
+var msgs_of = function(kind, text, date) {
   const pages = text.trim() === "" ? [] : clip_pages(text);
   return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1 }));
-}
-function parts_text(content) {
+};
+var parts_text = function(content) {
   if (typeof content === "string") {
     return content;
   }
   const parts = Array.isArray(content) ? content : [];
-  return parts.map((c) => typeof c === "string" ? c : typeof c.text === "string" ? c.text : String(c.type ?? c.content_type).includes("image") ? "[image]" : "").join(`
-`);
-}
+  return parts.map((c) => typeof c === "string" ? c : typeof c.text === "string" ? c.text : String(c.type ?? c.content_type).includes("image") ? "[image]" : "").join("\n");
+};
+var NODE = 512;
+var LINE = 480;
+var PRICE = { base: 187, byte: 735, depth: 628 };
+var PART = 1048576;
+var OLD = "Nothing new: these chats are in Unii's memory already.";
+var NOT_EXPORT = "Not a Claude or ChatGPT export.";
+var MIDWAY = "Meanwhile, UniiChat can answer with a partial tree.";
+var DONE = "Your past chats are in Unii's memory: ask about them any time.";
+var DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });
+var COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
+var EXPORTS = { Claude: "Settings \u203A Privacy \u203A Export data", ChatGPT: "Settings \u203A Data controls \u203A Export data" };
+var INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
+var SKIP = /^(<command-|<local-command|\[Request interrupted)/;
 
 // Theme.ts
+function tool_glyph(name) {
+  return TOOL[name] ?? TOOL_ANY;
+}
+function theme_css() {
+  return Object.entries(KIND).map(([k, look]) => look_css(k, look)).join("");
+}
+var look_css = function(kind, look) {
+  const ink = look.dim ? "mid" : "ink";
+  const style = look.it ? "italic" : "normal";
+  const body = "--fg:var(--" + ink + ");--it:" + style;
+  return ".msg." + kind + "{" + body + "}";
+};
 var WHO = { work: "Report", note: "Note" };
 var KIND = {
   user: { dim: false, it: false },
@@ -344,49 +349,23 @@ var KIND = {
 var TOOL = {
   zoom: "\uD83D\uDD0D",
   date: "\uD83D\uDCC5",
-  shell: "⌨️",
+  shell: "\u2328\uFE0F",
   read: "\uD83D\uDCD6",
   write: "\uD83D\uDCC4",
   edit: "\uD83D\uDCDD",
   spawn: "\uD83E\uDD16",
   tell: "\uD83D\uDCAC",
-  computer: "\uD83D\uDDB1️"
+  computer: "\uD83D\uDDB1\uFE0F"
 };
 var TOOL_ANY = "\uD83D\uDD27";
 var GLYPH = {
-  tab: "◯",
-  here: "●",
+  tab: "\u25EF",
+  here: "\u25CF",
   input: "> ",
-  open: "▾"
+  open: "\u25BE"
 };
-function tool_glyph(name) {
-  return TOOL[name] ?? TOOL_ANY;
-}
-function theme_css() {
-  return Object.entries(KIND).map(([k, look]) => look_css(k, look)).join("");
-}
-function look_css(kind, look) {
-  const ink = look.dim ? "mid" : "ink";
-  const style = look.it ? "italic" : "normal";
-  const body = "--fg:var(--" + ink + ");--it:" + style;
-  return ".msg." + kind + "{" + body + "}";
-}
 
 // Call.ts
-var SHORT = 60;
-var CALL = /^(\S+) (\{[\s\S]*)$/;
-var MCP = /^mcp__.+?__/;
-var READS = new Map([
-  ["shell", (x) => ({ head: String(x.command ?? ""), blocks: [] })],
-  ["read", (x) => ({ head: String(x.path ?? "") + lines_show(x.offset, x.limit), blocks: [] })],
-  ["write", (x) => ({ head: String(x.path ?? ""), blocks: [] })],
-  ["edit", (x) => Array.isArray(x.edits) ? { head: edits_files(x.edits), blocks: [] } : input_shown(x)],
-  ["zoom", (x) => ({ head: msg_show(x.id, x.n) + (x.at === undefined ? "" : " from char " + x.at), blocks: [] })],
-  ["date", (x) => ({ head: msg_show(x.id, 1), blocks: [] })],
-  ["spawn", (x) => ({ head: tasks_show(x.tasks, x.effort), blocks: (Array.isArray(x.tasks) ? x.tasks : []).flatMap(text_block) })],
-  ["tell", (x) => ({ head: String(x.name ?? ""), blocks: text_block(x.message) })],
-  ["computer", (x) => ({ head: "", blocks: text_block(x.task) })]
-]);
 function report_read(text) {
   const m = /^\[([^\]\n]+)\]\s*([\s\S]*?)(?:\s*Full chat: zoom\("[^"\n]*"\))?\s*$/.exec(text);
   return m === null ? null : { name: m[1], text: m[2] };
@@ -404,14 +383,13 @@ function call_parse(text) {
 }
 function call_line(c) {
   const blocks = c.blocks.map((b) => (b.k === "" ? "" : b.k + ": ") + b.x);
-  const where = c.device === "" ? [] : ["· " + c.device];
+  const where = c.device === "" ? [] : ["\xB7 " + c.device];
   return [c.head, ...blocks, ...where].join(" ").replace(/\s+/g, " ").trim();
 }
 function call_text(c) {
-  return [(c.name + " " + c.head).trim(), ...c.blocks.map((b) => b.x)].join(`
-`);
+  return [(c.name + " " + c.head).trim(), ...c.blocks.map((b) => b.x)].join("\n");
 }
-function input_shown(input) {
+var input_shown = function(input) {
   const keys = Object.keys(input);
   const args = [];
   const blocks = [];
@@ -427,28 +405,28 @@ function input_shown(input) {
     }
   }
   return { head: args.join(" "), blocks };
-}
-function text_block(x) {
+};
+var text_block = function(x) {
   return typeof x === "string" && x !== "" ? [{ $: "Code", k: "", x: x.replace(/\n$/, "") }] : [];
-}
-function msg_show(id, n) {
+};
+var msg_show = function(id, n) {
   const many = typeof n === "number" && n > 1 ? "+" + n : "";
   return typeof id === "number" ? "#" + id + many : String(id ?? "");
-}
-function tasks_show(tasks, effort) {
+};
+var tasks_show = function(tasks, effort) {
   const n = Array.isArray(tasks) ? tasks.length : 0;
-  return n + (n === 1 ? " agent" : " agents") + (typeof effort === "string" ? " · " + effort : "");
-}
-function lines_show(offset, limit) {
+  return n + (n === 1 ? " agent" : " agents") + (typeof effort === "string" ? " \xB7 " + effort : "");
+};
+var lines_show = function(offset, limit) {
   const from = typeof offset === "number" ? offset : 1;
   const to = typeof limit === "number" ? String(from + limit - 1) : "";
   return offset === undefined && limit === undefined ? "" : ":" + from + "-" + to;
-}
-function edits_files(edits) {
+};
+var edits_files = function(edits) {
   const paths = edits.map((e) => e?.path).filter((p) => typeof p === "string");
   return [...new Set(paths)].join(", ");
-}
-function input_parse(text) {
+};
+var input_parse = function(text) {
   const shut = [];
   let quote = false;
   let esc = false;
@@ -472,17 +450,34 @@ function input_parse(text) {
   const open2 = quote ? (esc ? text.slice(0, -1) : text) + '"' : text;
   const full = open2.replace(/[\s,]*$/, "") + shut.reverse().join("");
   return object_parse(full) ?? object_parse(text.slice(0, field) + "}");
-}
-function object_parse(text) {
+};
+var object_parse = function(text) {
   try {
     const x = JSON.parse(text);
     return typeof x === "object" && x !== null && !Array.isArray(x) ? x : null;
   } catch {
     return null;
   }
-}
+};
+var SHORT = 60;
+var CALL = /^(\S+) (\{[\s\S]*)$/;
+var MCP = /^mcp__.+?__/;
+var READS = new Map([
+  ["shell", (x) => ({ head: String(x.command ?? ""), blocks: [] })],
+  ["read", (x) => ({ head: String(x.path ?? "") + lines_show(x.offset, x.limit), blocks: [] })],
+  ["write", (x) => ({ head: String(x.path ?? ""), blocks: [] })],
+  ["edit", (x) => Array.isArray(x.edits) ? { head: edits_files(x.edits), blocks: [] } : input_shown(x)],
+  ["zoom", (x) => ({ head: msg_show(x.id, x.n) + (x.at === undefined ? "" : " from char " + x.at), blocks: [] })],
+  ["date", (x) => ({ head: msg_show(x.id, 1), blocks: [] })],
+  ["spawn", (x) => ({ head: tasks_show(x.tasks, x.effort), blocks: (Array.isArray(x.tasks) ? x.tasks : []).flatMap(text_block) })],
+  ["tell", (x) => ({ head: String(x.name ?? ""), blocks: text_block(x.message) })],
+  ["computer", (x) => ({ head: "", blocks: text_block(x.task) })]
+]);
 
 // Names.ts
+var name_word = function(word) {
+  return word[0].toUpperCase() + word.slice(1);
+};
 var ADJS = `
 red blue green yellow orange purple pink brown black white gray silver golden
 amber azure bronze copper jade lemon lime mint navy peach plum ruby violet
@@ -509,38 +504,15 @@ banana bagel cookie mango melon muffin noodle pancake pepper potato pretzel
 radish taco waffle
 `.split(/\s+/).filter(Boolean);
 var NAME = "(?:" + ADJS.map(name_word).join("|") + ")-?(?:" + NOUNS.map(name_word).join("|") + ")";
-function name_word(word) {
-  return word[0].toUpperCase() + word.slice(1);
-}
 
 // Md.ts
-var NAME2 = new RegExp("\\[(" + NAME + ")\\]", "g");
-var SPAN = new RegExp([
-  /`([^`\n]+)`/.source,
-  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/(?!\/)[^\s)]*)\)/.source,
-  NAME2.source,
-  /\*\*([^*\n]+)\*\*/.source,
-  /(?<![*\w])\*([^*\s][^*\n]*?)\*(?![\w*])/.source,
-  /(?<![^\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/.source
-].join("|"), "g");
-var LIST = /^\s*([-*+]|\d+[.)])\s+/;
-var MORE = /^\s{2,}\S/;
-var FENCE = /^\s*```/;
-var HEAD = /^(#{1,6})\s+(.*)$/;
-var RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
-var QUOT = /^\s*>\s?/;
-var ROW = /^\s*\|.*\|\s*$/;
-var BAR = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/;
-var NEW = /^\+\+\+ (.*)$/;
-var READ = /^\[(lines (\d+)-\d+ of \d+[^\]]*)\]$/;
-var HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 function Text(x) {
   return { $: "Text", x };
 }
 function Name(x) {
   return { $: "Name", x };
 }
-function spans_by(s, re, mark) {
+var spans_by = function(s, re, mark) {
   const out = [];
   let at = 0;
   for (const m of s.matchAll(re)) {
@@ -555,11 +527,11 @@ function spans_by(s, re, mark) {
     out.push(Text(s.slice(at)));
   }
   return out;
-}
+};
 function span_parse(s) {
   return spans_by(s, SPAN, span_mark);
 }
-function span_mark(m) {
+var span_mark = function(m) {
   if (m[1] !== undefined) {
     return { $: "Code", x: m[1] };
   }
@@ -576,22 +548,20 @@ function span_mark(m) {
     return { $: "Ital", x: m[6] };
   }
   return { $: "Link", x: m[7], k: m[7] };
-}
+};
 function md_flat(s) {
   return span_parse(s).map((span) => span.x).join("");
 }
 function md_plain(s) {
   const paras = s.replace(/\r/g, "").split(/\n(?:[ \t]*\n)+/);
   const kept = paras.filter((p) => p.trim() !== "");
-  return kept.map((p) => ({ $: "Para", x: p.split(`
-`).map(plain_line) }));
+  return kept.map((p) => ({ $: "Para", x: p.split("\n").map(plain_line) }));
 }
-function plain_line(s) {
+var plain_line = function(s) {
   return spans_by(s, NAME2, (m) => Name(m[1]));
-}
+};
 function md_output(s) {
-  const lines = s.replace(/\r/g, "").split(`
-`);
+  const lines = s.replace(/\r/g, "").split("\n");
   const read = READ.exec(lines[lines.length - 1]);
   if (read !== null) {
     return [{ $: "File", k: read[1], n: Number(read[2]), x: lines.slice(0, -1) }];
@@ -608,12 +578,12 @@ function md_output(s) {
   }
   return [...out, ...output_lines(lines.slice(at))];
 }
-function output_lines(lines) {
+var output_lines = function(lines) {
   const from = lines.findIndex((l) => l.trim() !== "");
   const upto = lines.findLastIndex((l) => l.trim() !== "");
   return from < 0 ? [] : [{ $: "File", k: "result", n: 1, x: lines.slice(from, upto + 1) }];
-}
-function diff_parse(lines, i) {
+};
+var diff_parse = function(lines, i) {
   const file = NEW.exec(lines[i + 1] ?? "");
   const hunks = [];
   if (file === null || !lines[i].startsWith("--- ")) {
@@ -629,8 +599,8 @@ function diff_parse(lines, i) {
     j = next;
   }
   return hunks.length === 0 ? [null, i + 1] : [{ $: "Diff", k: file[1], x: hunks }, j];
-}
-function hunk_parse(lines, j, h) {
+};
+var hunk_parse = function(lines, j, h) {
   let [olds, news] = [Number(h[2] ?? 1), Number(h[4] ?? 1)];
   let [o, n] = [Number(h[1]), Number(h[3])];
   const out = [];
@@ -651,10 +621,9 @@ function hunk_parse(lines, j, h) {
     }
   }
   return [out, j];
-}
+};
 function md_parse(src) {
-  const lines = src.replace(/\r/g, "").split(`
-`);
+  const lines = src.replace(/\r/g, "").split("\n");
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -666,7 +635,7 @@ function md_parse(src) {
   }
   return out;
 }
-function block_parse(lines, i) {
+var block_parse = function(lines, i) {
   const line = lines[i];
   const head = HEAD.exec(line);
   const numbered = list_numbered(line);
@@ -675,66 +644,84 @@ function block_parse(lines, i) {
     return [null, i + 1];
   }
   if (FENCE.test(line)) {
-    const end = runs((l) => !FENCE.test(l));
+    const end2 = runs((l) => !FENCE.test(l));
     const k = line.trim().slice(3).trim();
-    const x = lines.slice(i + 1, end).join(`
-`);
-    return [{ $: "Code", k, x }, end + 1];
+    const x2 = lines.slice(i + 1, end2).join("\n");
+    return [{ $: "Code", k, x: x2 }, end2 + 1];
   }
   if (head !== null) {
-    const x = span_parse(head[2]);
-    return [{ $: "Head", k: head[1].length, x }, i + 1];
+    const x2 = span_parse(head[2]);
+    return [{ $: "Head", k: head[1].length, x: x2 }, i + 1];
   }
   if (RULE.test(line)) {
     return [{ $: "Rule" }, i + 1];
   }
   if (QUOT.test(line)) {
-    const end = runs((l) => QUOT.test(l));
-    const body = lines.slice(i, end).map((l) => l.replace(QUOT, ""));
-    return [{ $: "Quot", x: md_parse(body.join(`
-`)) }, end];
+    const end2 = runs((l) => QUOT.test(l));
+    const body = lines.slice(i, end2).map((l) => l.replace(QUOT, ""));
+    return [{ $: "Quot", x: md_parse(body.join("\n")) }, end2];
   }
   if (numbered !== null) {
     const item = (l) => list_numbered(l) === numbered;
-    const end = runs((l) => item(l) || MORE.test(l));
+    const end2 = runs((l) => item(l) || MORE.test(l));
     const items = [];
-    for (const l of lines.slice(i, end)) {
+    for (const l of lines.slice(i, end2)) {
       if (item(l)) {
         items.push(l.replace(LIST, ""));
       } else {
         items[items.length - 1] += " " + l.trim();
       }
     }
-    return [{ $: "List", k: numbered, x: items.map(span_parse) }, end];
+    return [{ $: "List", k: numbered, x: items.map(span_parse) }, end2];
   }
   if (ROW.test(line) && BAR.test(lines[i + 1] ?? "")) {
-    const end = lines_run(lines, i + 1, (l) => ROW.test(l));
-    const rows = [line, ...lines.slice(i + 2, end)];
-    return [{ $: "Tabl", x: rows.map(row_cells) }, end];
+    const end2 = lines_run(lines, i + 1, (l) => ROW.test(l));
+    const rows = [line, ...lines.slice(i + 2, end2)];
+    return [{ $: "Tabl", x: rows.map(row_cells) }, end2];
   }
   const end = runs((l, j) => l.trim() !== "" && !block_starts(lines, j));
   const x = lines.slice(i, end).map(span_parse);
   return [{ $: "Para", x }, end];
-}
-function lines_run(lines, i, test) {
+};
+var lines_run = function(lines, i, test) {
   let j = i + 1;
   while (j < lines.length && test(lines[j], j)) {
     j++;
   }
   return j;
-}
-function block_starts(lines, j) {
+};
+var block_starts = function(lines, j) {
   const l = lines[j];
   return FENCE.test(l) || HEAD.test(l) || RULE.test(l) || QUOT.test(l) || LIST.test(l) || ROW.test(l) && BAR.test(lines[j + 1] ?? "");
-}
-function list_numbered(l) {
+};
+var list_numbered = function(l) {
   const m = LIST.exec(l);
   return m === null ? null : /\d/.test(m[1]);
-}
-function row_cells(line) {
+};
+var row_cells = function(line) {
   const cells = line.trim().replace(/^\||(?<!\\)\|$/g, "").split(/(?<!\\)\|/);
   return cells.map((c) => span_parse(c.trim().replace(/\\\|/g, "|")));
-}
+};
+var NAME2 = new RegExp("\\[(" + NAME + ")\\]", "g");
+var SPAN = new RegExp([
+  /`([^`\n]+)`/.source,
+  /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|\/(?!\/)[^\s)]*)\)/.source,
+  NAME2.source,
+  /\*\*([^*\n]+)\*\*/.source,
+  /(?<![*\w])\*([^*\s][^*\n]*?)\*(?![\w*])/.source,
+  /(?<![^\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/.source
+].join("|"), "g");
+var LIST = /^\s*([-*+]|\d+[.)])\s+/;
+var MORE = /^\s{2,}\S/;
+var FENCE = /^\s*```/;
+var HEAD = /^(#{1,6})\s+(.*)$/;
+var RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+var QUOT = /^\s*>\s?/;
+var ROW = /^\s*\|.*\|\s*$/;
+var BAR = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/;
+var NEW = /^\+\+\+ (.*)$/;
+var READ = /^\[(lines (\d+)-\d+ of \d+[^\]]*)\]$/;
+var HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 // Pick.ts
 var OPUS = { label: "opus-5.5", id: "claude-opus-5-5", speeds: ["slow", "fast"] };
@@ -755,25 +742,25 @@ var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 var SPEEDS = ["slow", "fast", "ultrafast"];
 var LABELS = [...new Set(Object.values(MODELS).flat().map((m) => m.label))];
 var Pick;
-((Pick2) => {
-  function model(vendor, label) {
-    return MODELS[vendor].find((m) => m.label === label);
+(function(Pick) {
+  function model(vendor, label2) {
+    return MODELS[vendor].find((m) => m.label === label2);
   }
-  Pick2.model = model;
-  function on(pick, vendor, model) {
+  Pick.model = model;
+  function on(pick, vendor, model2) {
     const below = SPEEDS.slice(0, SPEEDS.indexOf(pick.speed) + 1);
-    const speed = below.filter((s) => model.speeds.includes(s)).pop() ?? "slow";
-    return { ...pick, vendor, model: model.label, speed };
+    const speed = below.filter((s) => model2.speeds.includes(s)).pop() ?? "slow";
+    return { ...pick, vendor, model: model2.label, speed };
   }
-  Pick2.on = on;
+  Pick.on = on;
   function models(vendors, labels) {
     return vendors.flatMap((v) => MODELS[v].filter((m) => labels.includes(m.label)).map((m) => [v, m]));
   }
-  Pick2.models = models;
-  function options(pick, move, { vendors, models }) {
+  Pick.models = models;
+  function options(pick, move2, { vendors, models: models2 }) {
     const speeds = Pick.model(pick.vendor, pick.model)?.speeds ?? [];
-    const all = (vs) => Pick.models(vs, models).map(([v, m]) => [m.label, Pick.on(pick, v, m)]);
-    switch (move) {
+    const all = (vs) => Pick.models(vs, models2).map(([v, m]) => [m.label, Pick.on(pick, v, m)]);
+    switch (move2) {
       case "next":
       case "prev":
       case "model": {
@@ -789,13 +776,13 @@ var Pick;
       }
     }
   }
-  Pick2.options = options;
-  function move(pick, move, offer, to) {
-    const list = Pick.options(pick, move, offer);
+  Pick.options = options;
+  function move(pick, move2, offer, to) {
+    const list = Pick.options(pick, move2, offer);
     const n = list.length;
     const at = list.findIndex(([, p]) => Pick.label(p) === Pick.label(pick));
-    const d = move === "prev" || move === "down" ? -1 : 1;
-    const ends = move === "up" || move === "down";
+    const d = move2 === "prev" || move2 === "down" ? -1 : 1;
+    const ends = move2 === "up" || move2 === "down";
     const next = ends ? Math.max(0, Math.min(n - 1, at + d)) : (at + d + n) % n;
     const mine = ([, p]) => p.vendor === pick.vendor;
     const same = list.filter(([part, p]) => part === to || p.vendor + ":" + part === to);
@@ -804,33 +791,33 @@ var Pick;
     const hit = to === undefined ? list[next] : same.find(mine) ?? same[0] ?? one;
     return hit === undefined ? null : hit[1];
   }
-  Pick2.move = move;
-  function twin(vendor, label, vendors) {
-    return vendors.some((v) => v !== vendor && Pick.model(v, label) !== undefined);
+  Pick.move = move;
+  function twin(vendor, label2, vendors) {
+    return vendors.some((v) => v !== vendor && Pick.model(v, label2) !== undefined);
   }
-  Pick2.twin = twin;
+  Pick.twin = twin;
   function label(pick) {
     return [pick.vendor, pick.model, pick.effort, pick.speed].join(":");
   }
-  Pick2.label = label;
+  Pick.label = label;
   function ask(pick) {
-    const model = Pick.model(pick.vendor, pick.model);
-    return { ...pick, model: model?.id ?? pick.model };
+    const model2 = Pick.model(pick.vendor, pick.model);
+    return { ...pick, model: model2?.id ?? pick.model };
   }
-  Pick2.ask = ask;
+  Pick.ask = ask;
   function read(x, offer) {
-    const model = offer.vendors.includes(x.vendor) && offer.models.includes(x.model) ? Pick.model(x.vendor, x.model) : undefined;
-    if (model === undefined || !EFFORTS.includes(x.effort) || !model.speeds.includes(x.speed)) {
+    const model2 = offer.vendors.includes(x.vendor) && offer.models.includes(x.model) ? Pick.model(x.vendor, x.model) : undefined;
+    if (model2 === undefined || !EFFORTS.includes(x.effort) || !model2.speeds.includes(x.speed)) {
       return null;
     }
     return { vendor: x.vendor, model: x.model, effort: x.effort, speed: x.speed };
   }
-  Pick2.read = read;
+  Pick.read = read;
   function load(saved, offer, def) {
     return Pick.read(saved ?? def, offer) ?? def;
   }
-  Pick2.load = load;
-})(Pick ||= {});
+  Pick.load = load;
+})(Pick || (Pick = {}));
 
 // Price.ts
 var SEARCH = 0.01;
@@ -851,65 +838,34 @@ var MINUTES = {
 };
 var SPEEDS2 = { slow: 1, fast: 2, ultrafast: 6 };
 var Price;
-((Price2) => {
+(function(Price) {
   function usage(speed) {
     return { input: 0, write: 0, read: 0, output: 0, searches: 0, seconds: 0, speed };
   }
-  Price2.usage = usage;
+  Price.usage = usage;
   function rate(model) {
     return RATES[model];
   }
-  Price2.rate = rate;
+  Price.rate = rate;
   function times(speed) {
     return SPEEDS2[speed] ?? 1;
   }
-  Price2.times = times;
+  Price.times = times;
   function cost(model, use) {
     const long = use.input + use.write + use.read > PROMPT ? LONG[model] : undefined;
-    const rate = long ?? RATES[model];
+    const rate2 = long ?? RATES[model];
     const minute = MINUTES[model];
-    if (rate === undefined && minute === undefined) {
+    if (rate2 === undefined && minute === undefined) {
       throw new Error("no price for " + model);
     }
-    const tokens = rate === undefined ? 0 : use.input * rate.input + use.write * rate.write + use.read * rate.read + use.output * rate.output;
+    const tokens = rate2 === undefined ? 0 : use.input * rate2.input + use.write * rate2.write + use.read * rate2.read + use.output * rate2.output;
     const audio = minute === undefined ? 0 : use.seconds / 60 * minute * 1e6;
     return Math.ceil(tokens * Price.times(use.speed) + use.searches * SEARCH * 1e6 + audio);
   }
-  Price2.cost = cost;
-})(Price ||= {});
+  Price.cost = cost;
+})(Price || (Price = {}));
 
 // View.ts
-var BROKE = "out of credit";
-var PACE = 0.0001;
-var email_ask = (github) => "First, what's your email" + (github ? " or @github" : "") + "? I'll send you a quick sign-up link.";
-var OPENING = 3;
-var SUMMARIES = "summaries";
-var MAIN = "UniiChat";
-var TURN = "Unii's turn";
-var WIRE = 2;
-var PING = 1e4;
-var RETRY = 1000;
-var TICK = "+";
-var MOVE = 4001;
-var FRAME = 2 ** 22;
-var HINT = "Message UniiChat";
-var AI = "Unii is an AI, not a person, and can make mistakes.";
-var NOTICE = 3 * 60 * 60 * 1000;
-var WAIT = "compressing…";
-var SUMS = "compressing earlier messages…";
-var UNSENT = "Sends once connected.";
-var TOOL2 = "tool: ";
-var FOLD = "The whole chat, folded into the fewest blocks.";
-var TOPUP = ["#", "Date", "Credit", "Paid", "Left", ""];
-var SERVED = {
-  chat: ["reply", "replies"],
-  compactor: ["summary", "summaries"],
-  import: ["import summary", "import summaries"],
-  voice: ["voice note", "voice notes"],
-  agent: ["agent step", "agent steps"],
-  computer: ["computer step", "computer steps"],
-  earlier: ["earlier use", "earlier uses"]
-};
 function Cap(text) {
   return { $: "Cap", text };
 }
@@ -939,7 +895,8 @@ function view_new() {
     out: [],
     ws: null,
     up: false,
-    flush: () => {}
+    flush: () => {
+    }
   };
 }
 function view_hear(v, msg) {
@@ -1037,7 +994,7 @@ function view_act(v, act) {
         return [];
       }
       if (word !== undefined && goal === null) {
-        v.notes.push(word + " is no command; nothing was sent. The terminal's /help lists its commands; the site's are in its ☰ menu.");
+        v.notes.push(word + " is no command; nothing was sent. The terminal's /help lists its commands; the site's are in its \u2630 menu.");
         return [];
       }
       const blob = new Blob([...images, text]);
@@ -1114,7 +1071,7 @@ function view_tail(v, live = view_stream(v)) {
   if (v.page !== null || rows.length > 0 || v.wait === "") {
     return [...rows, ...kept, ...load];
   }
-  return [Cap(v.wait === SUMMARIES ? SUMS : "waiting for " + v.wait + "…"), ...kept, ...load];
+  return [Cap(v.wait === SUMMARIES ? SUMS : "waiting for " + v.wait + "\u2026"), ...kept, ...load];
 }
 function view_stream(v) {
   return v.page === null ? v.live : v.page.live;
@@ -1122,9 +1079,9 @@ function view_stream(v) {
 function progress_show(v, p) {
   const n = (k) => k.toLocaleString("en-US");
   const merges = p.open.reduce((x, y) => x + y, 0);
-  const phase = p.open[0] > 0 ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs) : "Merging the top of the tree: " + merges + (merges === 1 ? " merge" : " merges") + " left · about " + Math.ceil((p.total - p.done) * PACE) + " min";
-  const why = p.why === null ? "" : p.why === BROKE ? " · waiting for credit: add $" + progress_need(p, v.credits) + " and it goes on by itself" : " · paused";
-  const usd = v.bills ? " · $" + p.spent.toFixed(2) + " spent, estimated $" + p.left.toFixed(2) + " left" : "";
+  const phase = p.open[0] > 0 ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs) : "Merging the top of the tree: " + merges + (merges === 1 ? " merge" : " merges") + " left \xB7 about " + Math.ceil((p.total - p.done) * PACE) + " min";
+  const why = p.why === null ? "" : p.why === BROKE ? " \xB7 waiting for credit: add $" + progress_need(p, v.credits) + " and it goes on by itself" : " \xB7 paused";
+  const usd = v.bills ? " \xB7 $" + p.spent.toFixed(2) + " spent, estimated $" + p.left.toFixed(2) + " left" : "";
   return phase + usd + why;
 }
 function progress_need(p, credits) {
@@ -1159,7 +1116,7 @@ function view_pick(v) {
   return [
     { text: model, move: "model", hint: model + whose + price },
     { text: effort, move: "effort", hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" },
-    { text: speed, move: "speed", hint: speed + ": ×" + Price.times(speed) + " the price" }
+    { text: speed, move: "speed", hint: speed + ": \xD7" + Price.times(speed) + " the price" }
   ];
 }
 function view_count(v) {
@@ -1168,15 +1125,15 @@ function view_count(v) {
 function view_credits(v) {
   return v.credits === null ? null : usd_show(v.credits);
 }
-function view_learn(v, pack) {
+var view_learn = function(v, pack) {
   for (const [key, node] of Object.entries(pack.nodes ?? {})) {
     v.nodes.set(key, node);
   }
   for (const [id, entry] of Object.entries(pack.whole ?? {})) {
     v.whole.set(Number(id), entry);
   }
-}
-function view_entry(v, msg) {
+};
+var view_entry = function(v, msg) {
   const { $, agent, id, ...entry } = msg;
   const last = v.parts[v.parts.length - 1];
   if (agent !== undefined) {
@@ -1191,13 +1148,13 @@ function view_entry(v, msg) {
     const at = last[0] + last[1] - 1;
     v.minds.set(at, [...v.minds.get(at) ?? [], msg.text]);
   }
-}
-function view_live(v, agent) {
+};
+var view_live = function(v, agent) {
   if (agent === undefined) {
     return v.live;
   }
   return v.pages.get(agent)?.live ?? null;
-}
+};
 function link_open(v, link) {
   const ws = link.open("?tab=" + v.tab + "&wire=" + WIRE);
   let heard = Date.now();
@@ -1273,11 +1230,11 @@ function part_due(v, part, before) {
   const last = before === undefined ? NaN : part_window(v, before);
   return part[1] === 1 && part[0] >= v.turn && !Number.isNaN(last) && part_window(v, part) !== last;
 }
-function part_window(v, [id, n]) {
+var part_window = function(v, [id, n]) {
   const date = n === 1 ? v.whole.get(id)?.date : v.nodes.get(id + "+" + n)?.to;
   return Math.floor(Date.parse(date ?? "") / NOTICE);
-}
-function part_rows(v, id, n, t, talk) {
+};
+var part_rows = function(v, id, n, t, talk) {
   const key = id + "+" + n;
   const entry = v.whole.get(id);
   const half = n / 2;
@@ -1290,27 +1247,26 @@ function part_rows(v, id, n, t, talk) {
   if (!(v.open.get(key) ?? open2)) {
     return sum_rows(id, n, v.nodes.get(key));
   }
-  const text = n === 1 ? "fold" : GLYPH.open + " " + n + "x · fold";
+  const text = n === 1 ? "fold" : GLYPH.open + " " + n + "x \xB7 fold";
   if (n > 1) {
-    const rows = [...part_rows(v, id, half, t, talk), ...part_rows(v, id + half, half, t, talk)];
-    return [{ $: "Box", id, n, text, rows }];
+    const rows2 = [...part_rows(v, id, half, t, talk), ...part_rows(v, id + half, half, t, talk)];
+    return [{ $: "Box", id, n, text, rows: rows2 }];
   }
   const rows = entry === undefined ? [] : whole_rows(id, entry);
   return [{ $: "Box", id, n, text, rows }];
-}
-var ROWS = new WeakMap;
-function whole_rows(id, entry) {
+};
+var whole_rows = function(id, entry) {
   const rows = ROWS.get(entry) ?? entry_rows(id, entry.kind, entry.text, entry.images);
   ROWS.set(entry, rows);
   return rows;
-}
-function sum_rows(id, n, node = { text: WAIT, to: "" }) {
+};
+var sum_rows = function(id, n, node = { text: WAIT, to: "" }) {
   const rows = ROWS.get(node) ?? [{ $: "Sum", id, n, text: md_flat(node.text), call: sum_call(n, node.text) }];
   ROWS.set(node, rows);
   return rows;
-}
+};
 function page_rows(v, page, from = 0) {
-  const head = Cap(page.name + (v.agents.includes(page.name) ? " · at work" : " · done"));
+  const head = Cap(page.name + (v.agents.includes(page.name) ? " \xB7 at work" : " \xB7 done"));
   return [head, ...(page.log ?? []).slice(from).flatMap((e) => whole_rows(null, e))];
 }
 function live_push(live, kind, text, fresh = false) {
@@ -1321,20 +1277,20 @@ function live_push(live, kind, text, fresh = false) {
     live.push({ kind, text });
   }
 }
-function live_set(live, now) {
+var live_set = function(live, now) {
   const goes = live.every((l, k) => now[k]?.kind === l.kind && now[k].text.startsWith(l.text));
   const held = goes ? live : [];
   const next = now.map((l, k) => k < held.length ? Object.assign(held[k], l) : l);
   live.splice(0, live.length, ...next);
-}
-function sum_call(n, text) {
+};
+var sum_call = function(n, text) {
   const call = n === 1 && text.startsWith(TOOL2) ? call_parse(text.slice(TOOL2.length)) : null;
   return call === null || call.name === "" ? null : call;
-}
+};
 function topup_cells(t) {
   const usd = (cents) => usd_show(cents / 100);
   const paid = t.source === "apple" ? "App Store" : usd(t.paid_cents);
-  const left = usd(t.left_cents) + (t.status === "paid" ? "" : " · " + t.status);
+  const left = usd(t.left_cents) + (t.status === "paid" ? "" : " \xB7 " + t.status);
   const bill = t.receipt_url ? "[Receipt](" + t.receipt_url + ")" : "";
   return ["#" + t.id, day_show(new Date(t.at)), usd(t.credits_cents), paid, left, bill];
 }
@@ -1370,7 +1326,7 @@ function entry_rows(id, kind, text, images = []) {
   const who = report?.name ?? WHO[kind] ?? "";
   return call === null && body.length === 0 && images.length === 0 ? [] : [{ $: "Msg", id, kind, who, text, body, call, images }];
 }
-function entry_body(kind, text) {
+var entry_body = function(kind, text) {
   switch (kind) {
     case "user":
     case "work": {
@@ -1383,30 +1339,54 @@ function entry_body(kind, text) {
       return md_parse(text);
     }
   }
-}
+};
+var BROKE = "out of credit";
+var PACE = 0.0001;
+var OPENING = 2;
+var SUMMARIES = "summaries";
+var MAIN = "UniiChat";
+var TURN = "Unii's turn";
+var WIRE = 2;
+var PING = 1e4;
+var RETRY = 1000;
+var TICK = "+";
+var MOVE = 4001;
+var HINT = "Message UniiChat";
+var AI = "Unii is an AI, not a person, and can make mistakes.";
+var NOTICE = 10800000;
+var WAIT = "compressing\u2026";
+var SUMS = "compressing earlier messages\u2026";
+var UNSENT = "Sends once connected.";
+var TOOL2 = "tool: ";
+var FOLD = "The whole chat, folded into the fewest blocks.";
+var TOPUP = ["#", "Date", "Credit", "Paid", "Left", ""];
+var SERVED = {
+  chat: ["reply", "replies"],
+  compactor: ["summary", "summaries"],
+  import: ["import summary", "import summaries"],
+  voice: ["voice note", "voice notes"],
+  agent: ["agent step", "agent steps"],
+  computer: ["computer step", "computer steps"],
+  earlier: ["earlier use", "earlier uses"]
+};
+var ROWS = new WeakMap;
 
 // web/src/Html.ts
-var ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-var TALL = 4000;
-var SHEETS = `<svg viewBox="0 0 16 16" width="15" height="15"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5v-.2A1.8 1.8 0 0 0 8.7 1.5H4.3A1.8 1.8 0 0 0 2.5 3.3v4.4a1.8 1.8 0 0 0 1.8 1.8h.2"/></svg>`;
-var CHECK = `<svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5"/></svg>`;
-var MARKS = { " ": "", "-": "del", "+": "add" };
 function esc(s) {
   return s.replace(/[&<>"]/g, (c) => ESC[c]);
 }
-function act_html(act) {
+var act_html = function(act) {
   return ` data-act="${esc(JSON.stringify(act))}"`;
-}
-function copy_html(text) {
+};
+var copy_html = function(text) {
   return `<button class="copy" data-copy="${esc(text)}" title="Copy">${SHEETS}</button>`;
-}
-var MADE = new WeakMap;
+};
 function row_html(row) {
   const html = MADE.get(row) ?? row_make(row);
   MADE.set(row, html);
   return html;
 }
-function row_make(row) {
+var row_make = function(row) {
   switch (row.$) {
     case "Sum": {
       const open2 = act_html({ $: "Open", id: row.id, n: row.n });
@@ -1424,8 +1404,7 @@ function row_make(row) {
       const copy = copy_html(row.call === null ? row.text : call_text(row.call));
       const body = row.call === null ? row.body.map(block_html).join("") : call_html(row.call);
       const pics = images_html(row.images);
-      const tall = ["user", "work"].includes(row.kind) && row.text.length + 80 * row.text.split(`
-`).length > TALL;
+      const tall = ["user", "work"].includes(row.kind) && row.text.length + 80 * row.text.split("\n").length > TALL;
       const fold = tall ? `<div class="clip">${body}</div><details class="more"><summary></summary></details>` : body;
       const who = row.who === "" ? "" : ` data-who="${esc(row.who)}"`;
       return `<div class="msg ${row.kind}"${at}${who}>${copy}${fold}${pics}</div>`;
@@ -1434,27 +1413,27 @@ function row_make(row) {
       return `<p class="cap">${esc(row.text)}</p>`;
     }
   }
-}
-function call_html(c) {
+};
+var call_html = function(c) {
   return head_html(c, c.head, c.device) + c.blocks.map(block_html).join("");
-}
-function head_html(c, text, device) {
+};
+var head_html = function(c, text, device) {
   const icon = `<span class="ic">${tool_glyph(c.name)}</span>`;
   const verb = c.name === "" ? "" : `<b>${esc(c.name)}</b> `;
-  const where = device === "" ? "" : `<span class="on">· ${esc(device)}</span>`;
+  const where = device === "" ? "" : `<span class="on">\xB7 ${esc(device)}</span>`;
   return `<p class="call">${where}${icon}${verb}${esc(text)}</p>`;
-}
-function images_html(names) {
+};
+var images_html = function(names) {
   const pics = names.map((name) => {
     const url = "/image/" + esc(name);
     return `<a href="${url}" target="_blank"><img src="${url}" alt="${esc(name)}" loading="lazy"></a>`;
   });
   return names.length === 0 ? "" : `<div class="pics">${pics.join("")}</div>`;
-}
+};
 function pick_html(fold, on, knobs) {
   const parts = knobs.map((k) => `<button title="${esc(k.hint)}"${act_html({ $: "Move", move: k.move })}>${esc(k.text)}</button>`);
   const all = fold === null ? [] : [`<button class="all"${act_html({ $: "Fold", on })}>${esc(fold)}</button>`];
-  return [...all, `<span class="rule"></span>`, ...parts.flatMap((part, i) => i === 0 ? [part] : [`<span class="dot">·</span>`, part])];
+  return [...all, `<span class="rule"></span>`, ...parts.flatMap((part, i) => i === 0 ? [part] : [`<span class="dot">\xB7</span>`, part])];
 }
 function tabs_html(tabs) {
   return tabs.map((tab) => {
@@ -1463,7 +1442,7 @@ function tabs_html(tabs) {
   });
 }
 function credit_html(app) {
-  const buttons = [10, 25, 50, 100].map((usd) => `<button data-usd="${usd}">$${usd}</button>`).join("");
+  const buttons = [10, 25, 50, 100].map((usd) => `<button data-usd="${usd}">\$${usd}</button>`).join("");
   return `<div class="credit"><div class="usd">${buttons}</div>${fine_html(app)}</div>`;
 }
 function fine_html(app) {
@@ -1481,22 +1460,22 @@ function account_html(a, app) {
   const closes = a.bills ? `<p>This also closes your BendAI account (same sign-in). Credit you bought and didn't use goes back to your card.</p>` : "";
   const kill = `<form class="kill" hidden>${closes}<p>Type <b>${esc(a.name)}</b> to confirm.</p><input name="name" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(a.name)}"><p class="why"></p><div><button type="button" class="chip keep">Cancel</button><button class="chip red" disabled>Delete for good</button></div></form>`;
   const acts = [
-    item(esc(a.name), "", `<button class="chip out">Sign out</button>`),
+    item("Local chat", "This server is available only on this computer.", ""),
     item("Export memory", "Chat and account, in one file.", `<a class="chip" href="/export">Download</a>`),
     item("Delete account", "Erases chat and memory for good.", `<button class="chip red del">Delete</button>`)
   ];
-  const account = section_html("Sign-in and data", acts.join("") + kill);
-  const links = a.bills ? `<p class="foot"><a href="/pricing" target="_blank">Prices</a> · <a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="mailto:contact@higherorderco.com">Help</a></p>` : "";
-  return `<a class="back" href="/" data-go="/">← Chat</a><h1>Account</h1>` + money + account + links;
+  const account = section_html("Local data", acts.join("") + kill);
+  const links = a.bills ? `<p class="foot"><a href="/pricing" target="_blank">Prices</a> \xB7 <a href="/terms.html" target="_blank">Terms</a> \xB7 <a href="/privacy.html" target="_blank">Privacy</a> \xB7 <a href="mailto:contact@higherorderco.com">Help</a></p>` : "";
+  return `<a class="back" href="/" data-go="/">\u2190 Chat</a><h1>Account</h1>` + money + account + links;
 }
-function section_html(title, body) {
+var section_html = function(title, body) {
   return `<section><h2>${esc(title)}</h2>${body}</section>`;
-}
-function table_html(cls, head, rows) {
+};
+var table_html = function(cls, head, rows) {
   const cells = (row, tag) => row.map((x) => `<${tag}>${spans_html(span_parse(x))}</${tag}>`).join("");
   const body = rows.map((row) => `<tr>${cells(row, "td")}</tr>`).join("");
   return `<div class="wide ${cls}"><table><tr>${cells(head, "th")}</tr>${body}</table></div>`;
-}
+};
 function block_html(b) {
   switch (b.$) {
     case "Para": {
@@ -1537,26 +1516,26 @@ function block_html(b) {
     }
   }
 }
-function diff_html(file, hunks) {
+var diff_html = function(file, hunks) {
   const all = hunks.flat();
   const nw = all.reduce((w, l) => Math.max(w, String(l.n).length), 0);
   const adds = all.filter((l) => l.s === "+").length;
   const dels = all.filter((l) => l.s === "-").length;
   const head = `<span class="lang">${esc(file)} <b class="add">+${adds}</b> <b class="del">-${dels}</b></span>`;
   const line = (l) => `<span class="${MARKS[l.s]}"><i>${l.n}</i>${l.s} ${esc(l.x)}</span>`;
-  const lines = hunks.map((h) => h.map(line).join("")).join(`<span class="gap">⋯</span>`);
+  const lines = hunks.map((h) => h.map(line).join("")).join(`<span class="gap">\u22EF</span>`);
   return `<pre class="diff" style="--nw:${nw}ch">${head}<code>${lines}</code></pre>`;
-}
-function file_html(shown, from, lines) {
+};
+var file_html = function(shown, from, lines) {
   const nw = String(from + lines.length - 1).length;
   const head = `<span class="lang">${esc(shown)}</span>`;
   const body = lines.map((x, k) => `<span class="file"><i>${from + k}</i>${esc(x)}</span>`).join("");
   return `<pre class="diff" style="--nw:${nw}ch">${head}<code>${body}</code></pre>`;
-}
-function spans_html(spans) {
+};
+var spans_html = function(spans) {
   return spans.map(span_html).join("");
-}
-function span_html(s) {
+};
+var span_html = function(s) {
   switch (s.$) {
     case "Text": {
       return esc(s.x).replaceAll("UniiChat", `<span class="brand">UniiChat</span>`);
@@ -1577,138 +1556,74 @@ function span_html(s) {
       return `<button class="name"${act_html({ $: "Goto", name: s.x })}>[${esc(s.x)}]</button>`;
     }
   }
-}
+};
+var ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+var TALL = 4000;
+var SHEETS = `<svg viewBox="0 0 16 16" width="15" height="15"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5v-.2A1.8 1.8 0 0 0 8.7 1.5H4.3A1.8 1.8 0 0 0 2.5 3.3v4.4a1.8 1.8 0 0 0 1.8 1.8h.2"/></svg>`;
+var CHECK = `<svg viewBox="0 0 16 16" width="15" height="15"><path d="M3 8.5l3.2 3L13 4.5"/></svg>`;
+var MARKS = { " ": "", "-": "del", "+": "add" };
+var MADE = new WeakMap;
 
 // web/src/main.ts
-var APP = window.webkit?.messageHandlers?.unii ?? null;
-var DESK = matchMedia("(hover: hover)");
-var EXPIRED = "That sign-in link expired. What's your email? I'll send you a new one.";
-var GUEST_AI = `By signing in, you accept the <a href="/terms.html" target="_blank">terms</a> and <a href="/privacy.html" target="_blank">privacy policy</a>, and that Anthropic's and OpenAI's models answer you.`;
-var SENT = (email) => `Thanks! I sent a link to ${email}. Open it, and we'll go on from here.`;
-var NONE = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
-var PAYING = "Waiting for your payment in the new tab…";
-var PAID = new BroadcastChannel("unii.paid");
-var SCENES = `
-  <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
-  <div class="scene"><i class="mark"></i><h1>UniiChat</h1></div>`;
-var v = view_new();
-var BOX = $("textarea");
-var BACK = $("#import [name=back]");
-var P = {
-  id: "",
-  guest: false,
-  imgs: [],
-  rec: null,
-  shown: "",
-  end: true,
-  stick: true,
-  frame: 0,
-  rows: true,
-  toast: 0,
-  found: new Map,
-  done: {},
-  off: new Set,
-  step: ""
-};
-function $(sel) {
+var $ = function(sel) {
   return document.querySelector(sel);
-}
-function kept(fact) {
+};
+var kept = function(fact) {
   return "unii." + fact + "." + P.id;
-}
+};
 async function boot() {
   document.head.insertAdjacentHTML("beforeend", `<style>${theme_css()}</style>`);
   const q = new URLSearchParams(location.search);
   history.replaceState(null, "", location.pathname === "/account" ? "/account" : "/");
-  if (q.has("terminal")) {
-    solo("Your terminal is signed in.", "You can close this tab and go back to it.");
-    return;
-  }
   if (q.has("deleted")) {
-    solo("Your account was deleted.", `Your chat and Unii's memory are erased. <a href="/">Back to UniiChat</a>`);
+    solo("Your local chat was deleted.", `<a href="/">Start a new chat</a>`);
     return;
   }
   if (q.get("paid") === "tab") {
     PAID.postMessage(true);
     close();
-    solo("Payment received.", "Close this tab: your import starts in the UniiChat tab you came from.");
+    solo("Payment received.", "Close this tab.");
     return;
   }
   const me = await boot_me();
-  P.guest = me === null;
-  chat();
-  if (me === null) {
-    history.replaceState(null, "", "/");
-    guest(q.has("expired"));
-    return;
-  }
   P.id = me.id;
-  signed();
+  chat();
+  document.body.className = "";
+  BOX.placeholder = HINT;
+  BOX.removeAttribute("inputmode");
+  BOX.removeAttribute("enterkeyhint");
+  BOX.removeAttribute("autocomplete");
+  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
+  BOX.dispatchEvent(new Event("input"));
   route();
   v.bills = me.bills;
   v.credits = me.credits;
   connect();
-  if (q.has("paid")) {
+  if (q.has("paid"))
     toast("Payment received. Your credit shows up in a moment.");
-  }
 }
 async function boot_me() {
   for (;; ) {
     const res = await fetch("/api/me").catch(() => null);
-    if (res?.status === 200 || res?.status === 401) {
-      return res.ok ? res.json() : null;
-    }
+    if (res?.ok)
+      return res.json();
     await new Promise((ok) => setTimeout(ok, RETRY));
   }
 }
-function solo(title, sub) {
+var solo = function(title, sub) {
   document.body.className = "solo";
   document.body.innerHTML = `<main><h1>${title}</h1><p class="sub">${sub}</p></main>`;
-}
-async function guest(expired) {
-  document.onvisibilitychange = async () => {
-    const res = await fetch("/api/me").catch(() => null);
-    if (res?.ok) {
-      location.reload();
-    }
-  };
-  const { hello, bills, github } = await fetch("/api/hello").then((res) => res.json());
-  const ask = github && APP === null;
-  document.body.classList.toggle("bills", bills);
-  $(".ai").innerHTML = bills ? GUEST_AI : "";
-  BOX.placeholder = "Enter your email" + (ask ? " or @github" : "");
-  P.end = false;
-  guest_say(hello + `
-
-` + (expired ? EXPIRED : email_ask(ask)));
-}
-async function guest_send(text) {
-  P.end = true;
-  v.live.push({ kind: "user", text });
-  draw(true);
-  const res = await post("/api/login", { who: text });
-  if (res.url) {
-    location.href = res.url;
-    return;
-  }
-  guest_say(res.error ?? SENT(res.who));
-}
-function guest_say(text) {
-  v.live.push({ kind: "unii", text });
-  draw(true);
-}
-function chat() {
+};
+var chat = function() {
   const file = $("input[type=file]");
   BOX.oninput = () => {
-    if (!P.guest) {
-      sessionStorage.setItem(kept("draft"), BOX.value);
-    }
+    sessionStorage.setItem(kept("draft"), BOX.value);
     BOX.style.height = "auto";
     BOX.style.height = Math.min(BOX.scrollHeight, innerHeight * 0.4) + "px";
     draw(true);
   };
   BOX.onkeydown = (ev) => {
-    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && (DESK.matches || P.guest)) {
+    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && DESK.matches) {
       ev.preventDefault();
       submit();
     }
@@ -1719,7 +1634,6 @@ function chat() {
     submit();
   };
   $(".attach").onclick = () => file.click();
-  $("#menu .out").onclick = signout;
   $(".mic").onclick = mic;
   file.onchange = () => {
     attach([...file.files ?? []]);
@@ -1739,31 +1653,15 @@ function chat() {
     P.end = innerHeight + scrollY >= document.documentElement.scrollHeight - 1;
   };
   draw(true);
-}
-function signed() {
-  document.body.className = "";
-  BOX.placeholder = HINT;
-  BOX.removeAttribute("inputmode");
-  BOX.removeAttribute("enterkeyhint");
-  BOX.removeAttribute("autocomplete");
-  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
-  BOX.dispatchEvent(new Event("input"));
-}
-function submit() {
+};
+var submit = function() {
   const text = BOX.value.trim();
-  if (P.guest) {
-    BOX.value = "";
-    if (text !== "") {
-      guest_send(text);
-    }
-    return;
-  }
   act({ $: "Send", text, images: P.imgs });
   pics([]);
   BOX.value = "";
   BOX.dispatchEvent(new Event("input"));
-}
-function back(sent, out) {
+};
+var back = function(sent, out) {
   if (out.error === undefined) {
     return;
   }
@@ -1778,13 +1676,13 @@ function back(sent, out) {
   }
   $("#wallet .title").textContent = out.error;
   $("#wallet").showPopover();
-}
-function attach(files) {
-  if (!P.guest && files.length > 0) {
+};
+var attach = function(files) {
+  if (files.length > 0) {
     pics([...P.imgs, ...files]);
   }
-}
-function pics(imgs) {
+};
+var pics = function(imgs) {
   const els = imgs.map((img) => {
     const el = new Image;
     el.src = URL.createObjectURL(img);
@@ -1795,8 +1693,8 @@ function pics(imgs) {
   P.imgs = imgs;
   $("#pics").replaceChildren(...els);
   draw(true);
-}
-function act(a) {
+};
+var act = function(a) {
   const said = a.$ === "Send" ? a.text.trim() : "";
   P.end = P.end || a.$ === "Send";
   P.rows = true;
@@ -1804,8 +1702,8 @@ function act(a) {
     link_send(v, msg, a.$ === "Send" ? (out) => back(a, out) : undefined, said);
   }
   draw(a.$ === "Send");
-}
-function click(ev) {
+};
+var click = function(ev) {
   const el = ev.target.closest("[data-act], [data-copy], [data-go], [data-usd]");
   const sel = getSelection();
   if (el === null || sel !== null && !sel.isCollapsed && el.contains(sel.focusNode)) {
@@ -1829,11 +1727,11 @@ function click(ev) {
   if (text !== undefined) {
     navigator.clipboard.writeText(text).then(() => copied(el), () => toast("Could not copy."));
   }
-}
-function copied(button) {
+};
+var copied = function(button) {
   button.innerHTML = CHECK;
   setTimeout(() => button.innerHTML = SHEETS, 1200);
-}
+};
 async function mic() {
   if (P.rec !== null) {
     P.rec.stop();
@@ -1858,7 +1756,7 @@ async function mic() {
   draw(false);
   meter(stream, rec);
 }
-function meter(stream, rec) {
+var meter = function(stream, rec) {
   const audio = new AudioContext;
   const probe = audio.createAnalyser();
   audio.createMediaStreamSource(stream).connect(probe);
@@ -1891,13 +1789,13 @@ function meter(stream, rec) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
-}
-function words(audio) {
-  const act = { $: "voice", type: audio.type, body: () => audio };
-  link_send(v, act, heard);
+};
+var words = function(audio) {
+  const act2 = { $: "voice", type: audio.type, body: () => audio };
+  link_send(v, act2, heard);
   draw(false);
-}
-function heard(out) {
+};
+var heard = function(out) {
   draw(false);
   const text = out.text?.trim() ?? "";
   if (text === "") {
@@ -1908,25 +1806,20 @@ function heard(out) {
   BOX.setRangeText(gap + text, BOX.selectionStart, BOX.selectionEnd, "end");
   BOX.dispatchEvent(new Event("input"));
   BOX.focus();
-}
-function connect() {
+};
+var connect = function() {
   link_open(v, {
     open: (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
     post: (path, body) => fetch(path, { method: "POST", body }),
     hear,
     lost
   });
-}
-async function lost(up) {
+};
+async function lost(_up) {
   draw(true);
-  const me = up ? null : await fetch("/api/me").catch(() => null);
-  if (me !== null && me.status === 401) {
-    location.href = "/";
-    return false;
-  }
   return true;
 }
-function hear(msg) {
+var hear = function(msg) {
   const was = view_pick(v);
   const agents = v.agents.join();
   for (const out of view_hear(v, msg)) {
@@ -1939,8 +1832,8 @@ function hear(msg) {
   P.rows ||= msg.$ === "state" ? v.agents.join() !== agents : msg.$ !== "delta" && msg.$ !== "live";
   import_welcome();
   draw(true);
-}
-function importer() {
+};
+var importer = function() {
   const form = $("#import form");
   const dir = $("#import [name=dir]");
   $(".imp").onclick = () => import_open(false);
@@ -1975,7 +1868,7 @@ function importer() {
     const files = all.filter((f) => import_file(f.webkitRelativePath));
     const found = [];
     let moved = 0;
-    const reading = (k) => "Reading " + k + " of " + files.length + " files…";
+    const reading = (k) => "Reading " + k + " of " + files.length + " files\u2026";
     import_draw(reading(1));
     for (const [k, f] of files.entries()) {
       $("#import .guess").textContent = reading(k + 1);
@@ -1990,7 +1883,7 @@ function importer() {
   };
   zip.onchange = async () => {
     for (const f of zip.files ?? []) {
-      import_draw("Reading " + f.name + "…");
+      import_draw("Reading " + f.name + "\u2026");
       try {
         const found = await import_export(await import_copy(f));
         import_took(f.name, { sessions: found, moved: 0 }, found.length > 0 ? "" : "No chats in " + f.name + ".");
@@ -2004,21 +1897,21 @@ function importer() {
     ev.preventDefault();
     warned(form, import_go);
   };
-}
-function import_go() {
+};
+var import_go = function() {
   const add = import_add(import_plan2());
   if (add === 0) {
     return import_send();
   }
   import_buy(add);
-}
-function import_flow() {
+};
+var import_flow = function() {
   const run = v.importing;
   if (run?.why === BROKE) {
     return warned($("#import .flow"), () => import_buy(progress_need(run, v.credits)));
   }
   link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.error && toast(out.error));
-}
+};
 async function import_buy(usd) {
   P.step = "pay";
   import_draw(PAYING);
@@ -2028,7 +1921,7 @@ async function import_buy(usd) {
   P.step = "";
   import_draw("");
 }
-function warned(from, then) {
+var warned = function(from, then) {
   if (localStorage.getItem(kept("risked")) !== null) {
     return then();
   }
@@ -2041,7 +1934,7 @@ function warned(from, then) {
     then();
   };
   box.showPopover();
-}
+};
 async function import_open(first) {
   $("#menu").hidePopover();
   P.done = await fetch("/api/imported").then((res) => res.json()).catch(() => ({}));
@@ -2050,12 +1943,12 @@ async function import_open(first) {
   import_draw("");
   $("#import").showPopover();
 }
-function import_took(name, read, status) {
+var import_took = function(name, read, status) {
   P.found.set(name, read);
   BACK.min = "0";
   BACK.value = "0";
   import_draw(status);
-}
+};
 async function import_welcome() {
   await INTRO;
   const key = kept("welcomed");
@@ -2077,34 +1970,34 @@ async function import_pay() {
     }
   }
 }
-function import_send() {
+var import_send = function() {
   const picked = import_plan2().picked;
   P.step = "send";
   import_draw("");
   const body = async () => new Blob(await Array.fromAsync(import_body(picked), (part) => new Blob([part])));
   link_send(v, { $: "import", body }, import_sent);
-}
-function import_sent(out) {
+};
+var import_sent = function(out) {
   P.step = out.error !== undefined ? "" : out.going ? "run" : "done";
   if (out.error === undefined) {
     P.found.clear();
   }
   import_draw(out.error === undefined ? "" : "Not imported: " + out.error);
   $("#import").showPopover();
-}
-function import_add(plan) {
+};
+var import_add = function(plan) {
   return plan.msgs > 0 && v.credits !== null ? topup(plan.guess, v.credits) : 0;
-}
-function import_plan2() {
+};
+var import_plan2 = function() {
   const form = new FormData($("#import form"));
   const want = { off: [...P.off], since: import_since(), tools: form.has("tools") };
   const found = [...P.found.values()].flatMap((read) => read.sessions);
   return import_plan(found, want, P.done, view_count(v));
-}
-function import_since() {
+};
+var import_since = function() {
   return BACK.valueAsNumber > Number(BACK.min) ? new Date(BACK.valueAsNumber * 86400000).toISOString().slice(0, 10) : "";
-}
-function import_bar() {
+};
+var import_bar = function() {
   const run = v.importing;
   const broke = run?.why === BROKE;
   const paying = broke && P.step === "pay";
@@ -2113,7 +2006,7 @@ function import_bar() {
   const going = paying || ["send", "run", "seen", "done"].includes(P.step);
   const part = run === null ? Number(done) : run.done / Math.max(1, run.total);
   const why = Boolean(run?.why);
-  const said = run !== null ? progress_show(v, run) : done ? DONE : P.step === "send" ? "Sending…" : "Starting…";
+  const said = run !== null ? progress_show(v, run) : done ? DONE : P.step === "send" ? "Sending\u2026" : "Starting\u2026";
   $("#import .start").hidden = P.step !== "start";
   $("#import form").hidden = going || P.step === "start";
   $("#import .prog").hidden = !going;
@@ -2130,8 +2023,8 @@ function import_bar() {
   $("#import .flow").disabled = paying;
   markup($("#import .prog .topup"), broke ? [fine_html(APP !== null)] : []);
   return going;
-}
-function import_draw(status) {
+};
+var import_draw = function(status) {
   if (import_bar()) {
     return;
   }
@@ -2142,8 +2035,8 @@ function import_draw(status) {
   const add = import_add(plan);
   const left = reads.reduce((n, read) => n + read.moved, 0);
   const moved = left === 0 ? "" : " (" + left + (left === 1 ? " file" : " files") + " changed while read: choose the folder again to add them)";
-  const has = add > 0 ? " · you have " + usd_show(v.credits) : "";
-  const found = sessions.length === 0 ? "" : plan.first === "" ? OLD : import_count(msgs, "new ") + (msgs > 0 ? " · about " + guess_usd(plan.guess) + has : "");
+  const has = add > 0 ? " \xB7 you have " + usd_show(v.credits) : "";
+  const found = sessions.length === 0 ? "" : plan.first === "" ? OLD : import_count(msgs, "new ") + (msgs > 0 ? " \xB7 about " + guess_usd(plan.guess) + has : "");
   const day = (at) => new Date(at).getUTCDate() + " " + new Date(at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
   BACK.min = String(Math.floor(Date.parse(plan.first || new Date().toISOString()) / 86400000));
   BACK.max = String(Math.floor(Date.now() / 86400000));
@@ -2160,7 +2053,7 @@ function import_draw(status) {
     list.querySelectorAll("input").forEach((box) => box.checked = !P.off.has(box.value));
     const on = shown.filter((s) => !P.off.has(import_id(s))).length;
     src.querySelector(".pick").hidden = shown.length === 0;
-    src.querySelector(".pick summary").textContent = (on < shown.length ? on + " of " : shown.length > 1 ? "All " : "") + shown.length + (shown.length === 1 ? " session" : " sessions") + " picked · choose";
+    src.querySelector(".pick summary").textContent = (on < shown.length ? on + " of " : shown.length > 1 ? "All " : "") + shown.length + (shown.length === 1 ? " session" : " sessions") + " picked \xB7 choose";
   }
   $("#import .guess").textContent = status;
   markup($("#import form .topup"), add > 0 ? [fine_html(APP !== null)] : []);
@@ -2172,10 +2065,10 @@ function import_draw(status) {
   dir.classList.toggle("alt", msgs > 0);
   dir.disabled = go.disabled;
   import_srcs().forEach((src) => src.querySelector(".pickzip").disabled = dir.disabled);
-}
-function import_srcs() {
+};
+var import_srcs = function() {
   return [...document.querySelectorAll("#import .src")];
-}
+};
 async function import_copy(file) {
   const reader = file.stream().getReader();
   const parts = [];
@@ -2184,8 +2077,7 @@ async function import_copy(file) {
   }
   return new Blob(parts);
 }
-var MARKUP = new WeakMap;
-function markup(el, htmls) {
+var markup = function(el, htmls) {
   const had = new Map;
   for (const child of el.children) {
     const html = MARKUP.get(child);
@@ -2205,21 +2097,21 @@ function markup(el, htmls) {
       el.insertBefore(kid, at);
     }
   }
-}
-function html_parse(html) {
+};
+var html_parse = function(html) {
   const made = document.createElement("template");
   made.innerHTML = html;
   const child = made.content.firstElementChild;
   MARKUP.set(child, html);
   return child;
-}
-function draw(stick) {
+};
+var draw = function(stick) {
   P.stick = P.stick && stick;
   if (P.frame === 0) {
     P.frame = requestAnimationFrame(paint);
   }
-}
-function paint() {
+};
+var paint = function() {
   if (!$("#account").hidden) {
     P.frame = 0;
     bars();
@@ -2254,8 +2146,8 @@ function paint() {
   if (el !== undefined) {
     scrollBy(0, el.getBoundingClientRect().top - at.top);
   }
-}
-function bars() {
+};
+var bars = function() {
   for (const note of v.notes.splice(0)) {
     toast(note);
   }
@@ -2280,8 +2172,8 @@ function bars() {
   $("#tabs").hidden = tabs.length < 2;
   markup($("#tabs"), tabs_html(tabs));
   import_bar();
-}
-function anchor() {
+};
+var anchor = function() {
   for (const r of document.querySelectorAll("#log [data-a]")) {
     const box = r.getBoundingClientRect();
     if (box.bottom > 60 && r.querySelector("[data-a]") === null) {
@@ -2289,14 +2181,14 @@ function anchor() {
     }
   }
   return null;
-}
-function go(path) {
+};
+var go = function(path) {
   if (location.pathname !== path) {
     history.pushState(null, "", path);
   }
   route();
-}
-function route() {
+};
+var route = function() {
   const page = location.pathname === "/account";
   $("#log").hidden = page;
   document.body.classList.toggle("account", page);
@@ -2306,7 +2198,7 @@ function route() {
     account();
   }
   draw(false);
-}
+};
 async function account() {
   const el = $("#account");
   const res = await fetch("/api/account").catch(() => null);
@@ -2329,15 +2221,10 @@ async function account() {
   };
   $("#account .keep").onclick = () => sure(false);
   name.oninput = () => kill.querySelector(".red").disabled = name.value.trim().toLowerCase() !== a.name.toLowerCase();
-  $("#account .out").onclick = signout;
   kill.onsubmit = (ev) => {
     ev.preventDefault();
     account_delete(kill);
   };
-}
-async function signout() {
-  await post("/api/logout", {});
-  location.href = "/";
 }
 async function account_delete(kill) {
   const name = kill.querySelector("input").value;
@@ -2364,14 +2251,14 @@ async function topup2(usd) {
   toast(out.error ?? "Could not start the payment.");
   return false;
 }
-function toast(text) {
+var toast = function(text) {
   const el = $("#toast");
   el.textContent = text;
   el.hidden = false;
   clearTimeout(P.toast);
   P.toast = setTimeout(() => el.hidden = true, 7000);
-}
-function intro_play() {
+};
+var intro_play = function() {
   const skip = new URLSearchParams(location.search).has("skip");
   if (localStorage.getItem("unii.intro") !== null || skip) {
     return Promise.resolve();
@@ -2401,6 +2288,33 @@ function intro_play() {
     addEventListener("keydown", end);
     document.documentElement.append(el);
   });
-}
+};
+var APP = window.webkit?.messageHandlers?.unii ?? null;
+var DESK = matchMedia("(hover: hover)");
+var NONE = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
+var PAYING = "Waiting for your payment in the new tab\u2026";
+var PAID = new BroadcastChannel("unii.paid");
+var SCENES = `
+  <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
+  <div class="scene"><i class="mark"></i><h1>UniiChat</h1></div>`;
+var v = view_new();
+var BOX = $("textarea");
+var BACK = $("#import [name=back]");
+var P = {
+  id: "",
+  imgs: [],
+  rec: null,
+  shown: "",
+  end: true,
+  stick: true,
+  frame: 0,
+  rows: true,
+  toast: 0,
+  found: new Map,
+  done: {},
+  off: new Set,
+  step: ""
+};
+var MARKUP = new WeakMap;
 var INTRO = intro_play();
 boot();

@@ -9,9 +9,8 @@
 // streaming, touches no row.
 // The markup is index.html's: the header, the chat or the account page
 // (/account), and the footer as the terminal's. A tab is no device; a
-// signed-out one gets the chat offline (Guest). In the iOS app (ios/),
-// credit is bought through the App Store (APP), and sign-in is by email
-// only (another company's would need Sign in with Apple).
+// every local browser opens the same chat. In the iOS app (ios/),
+// credit is bought through the App Store (APP).
 
 import * as Import from "../../Import.ts";
 import { theme_css } from "../../Theme.ts";
@@ -35,15 +34,6 @@ const APP = (window as any).webkit?.messageHandlers?.unii ?? null;
 // Enter types a new line (the arrow sends), and the page never focuses
 // the box itself, which would pop the keyboard up
 const DESK = matchMedia("(hover: hover)");
-
-// what a guest is told after the hello but its ask (View.ask): the ask
-// again (a link expired), the link sent
-const EXPIRED = "That sign-in link expired. What's your email? I'll send you a new one.";
-// the line under a guest's box, where the server bills: signing in is
-// the consent (Billing.ts CONSENT says it in full); its links open a tab,
-// as the menu's do, so the chat stays
-const GUEST_AI = 'By signing in, you accept the <a href="/terms.html" target="_blank">terms</a> and <a href="/privacy.html" target="_blank">privacy policy</a>, and that Anthropic\'s and OpenAI\'s models answer you.';
-const SENT    = (email: string) => `Thanks! I sent a link to ${email}. Open it, and we'll go on from here.`;
 
 // a folder without sessions
 const NONE   = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
@@ -74,7 +64,6 @@ const BACK = $<HTMLInputElement>("#import [name=back]");
 // left out (Import.Want); step: the import's
 const P = {
   id    : "",
-  guest : false,
   imgs  : [] as Blob[],
   rec   : null as MediaRecorder | null,
   shown : "",
@@ -93,8 +82,7 @@ function $<T extends HTMLElement>(sel: string): T {
   return document.querySelector(sel) as T;
 }
 
-// where this browser keeps a fact of the account signed in, so another
-// account on it starts anew: "draft", the box's text, for the tab (a
+// where this browser keeps local-chat facts: "draft", the box's text, for the tab (a
 // reload or a top-up's trip to Stripe keeps it); "welcomed", offered the
 // import; "risked", the risk accepted
 function kept(fact: string): string {
@@ -108,50 +96,23 @@ async function boot(): Promise<void> {
   document.head.insertAdjacentHTML("beforeend", `<style>${theme_css()}</style>`);
   const q = new URLSearchParams(location.search);
   history.replaceState(null, "", location.pathname === "/account" ? "/account" : "/");
-  if (q.has("terminal")) {
-    solo("Your terminal is signed in.", "You can close this tab and go back to it.");
-    return;
-  }
-  if (q.has("deleted")) {
-    solo("Your account was deleted.", `Your chat and Unii's memory are erased. <a href="/">Back to UniiChat</a>`);
-    return;
-  }
-  if (q.get("paid") === "tab") {
-    PAID.postMessage(true);
-    close();
-    solo("Payment received.", "Close this tab: your import starts in the UniiChat tab you came from.");
-    return;
-  }
+  if (q.has("deleted")) { solo("Your local chat was deleted.", `<a href="/">Start a new chat</a>`); return; }
+  if (q.get("paid") === "tab") { PAID.postMessage(true); close(); solo("Payment received.", "Close this tab."); return; }
   const me = await boot_me();
-  P.guest = me === null;
-  chat();
-  if (me === null) {
-    history.replaceState(null, "", "/");
-    guest(q.has("expired"));
-    return;
-  }
   P.id = me.id;
-  signed();
-  route();
-  v.bills = me.bills;
-  v.credits = me.credits;
-  connect();
-  if (q.has("paid")) {
-    toast("Payment received. Your credit shows up in a moment.");
-  }
+  chat();
+  document.body.className = "";
+  BOX.placeholder = View.HINT;
+  BOX.removeAttribute("inputmode"); BOX.removeAttribute("enterkeyhint"); BOX.removeAttribute("autocomplete");
+  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
+  BOX.dispatchEvent(new Event("input"));
+  route(); v.bills = me.bills; v.credits = me.credits; connect();
+  if (q.has("paid")) toast("Payment received. Your credit shows up in a moment.");
 }
 
-// the account signed in (null: none, as the server refuses the session);
-// any other answer (a network past its limit, a deploy, no connection)
-// says nothing of who, so it is asked again
+// the local account is always available; retry transient failures.
 async function boot_me(): Promise<any> {
-  for (;;) {
-    const res = await fetch("/api/me").catch(() => null);
-    if (res?.status === 200 || res?.status === 401) {
-      return res.ok ? res.json() : null;
-    }
-    await new Promise((ok) => setTimeout(ok, View.RETRY));
-  }
+  for (;;) { const res = await fetch("/api/me").catch(() => null); if (res?.ok) return res.json(); await new Promise((ok) => setTimeout(ok, View.RETRY)); }
 }
 
 // a page of one note: the terminal signed in, the account deleted
@@ -160,66 +121,19 @@ function solo(title: string, sub: string): void {
   document.body.innerHTML = `<main><h1>${title}</h1><p class="sub">${sub}</p></main>`;
 }
 
-// Guest
-// =====
-// UniiChat's hello, ending in its ask for an email; the answers come from
-// here, by no AI: an email gets the sign-in link, "@name" goes to
-// GitHub, anything else gets the server's why. All in v.live (unlogged).
-
-// a guest's tab, shown or hidden once signed in elsewhere (the link opens
-// a new tab), becomes the user's
-async function guest(expired: boolean): Promise<void> {
-  document.onvisibilitychange = async () => {
-    const res = await fetch("/api/me").catch(() => null);
-    if (res?.ok) {
-      location.reload();
-    }
-  };
-  const { hello, bills, github } = await fetch("/api/hello").then((res) => res.json());
-  const ask = github && APP === null;
-  document.body.classList.toggle("bills", bills);
-  $(".ai").innerHTML = bills ? GUEST_AI : "";
-  BOX.placeholder = "Enter your email" + (ask ? " or @github" : "");
-  // read from its start: on a phone it is taller than the screen
-  P.end = false;
-  guest_say(hello + "\n\n" + (expired ? EXPIRED : View.email_ask(ask)));
-}
-
-async function guest_send(text: string): Promise<void> {
-  P.end = true;
-  v.live.push({ kind: "user", text });
-  draw(true);
-  const res = await View.post("/api/login", { who: text });
-  if (res.url) {
-    location.href = res.url;
-    return;
-  }
-  guest_say(res.error ?? SENT(res.who));
-}
-
-function guest_say(text: string): void {
-  v.live.push({ kind: "unii", text });
-  draw(true);
-}
-
 // Chat
 // ====
 
 function chat(): void {
   const file = $<HTMLInputElement>("input[type=file]");
   BOX.oninput = () => {
-    if (!P.guest) {
-      sessionStorage.setItem(kept("draft"), BOX.value);
-    }
+    sessionStorage.setItem(kept("draft"), BOX.value);
     BOX.style.height = "auto";
     BOX.style.height = Math.min(BOX.scrollHeight, innerHeight * 0.4) + "px";
     draw(true);
   };
-  // a guest's answer, an email, is one line: Enter sends it everywhere;
-  // never the Enter that ends a composition (Japanese, Chinese: Safari
-  // ends it first, so only its keyCode, 229, says so)
   BOX.onkeydown = (ev) => {
-    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && (DESK.matches || P.guest)) {
+    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && DESK.matches) {
       ev.preventDefault();
       submit();
     }
@@ -230,7 +144,6 @@ function chat(): void {
     submit();
   };
   $(".attach").onclick = () => file.click();
-  $("#menu .out").onclick = signout;
   $(".mic").onclick = mic;
   file.onchange = () => {
     attach([...(file.files ?? [])]);
@@ -253,26 +166,8 @@ function chat(): void {
   draw(true);
 }
 
-// the page of a user signed in, out of the guest's
-function signed(): void {
-  document.body.className = "";
-  BOX.placeholder = View.HINT;
-  BOX.removeAttribute("inputmode");
-  BOX.removeAttribute("enterkeyhint");
-  BOX.removeAttribute("autocomplete");
-  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
-  BOX.dispatchEvent(new Event("input"));
-}
-
 function submit(): void {
   const text = BOX.value.trim();
-  if (P.guest) {
-    BOX.value = "";
-    if (text !== "") {
-      guest_send(text);
-    }
-    return;
-  }
   act({ $: "Send", text, images: P.imgs });
   pics([]);
   BOX.value = "";
@@ -298,9 +193,9 @@ function back(sent: View.Sent, out: View.Answer): void {
   $("#wallet").showPopover();
 }
 
-// files to send with the next message, posted (a guest sends none)
+// files to send with the next message
 function attach(files: File[]): void {
-  if (!P.guest && files.length > 0) {
+  if (files.length > 0) {
     pics([...P.imgs, ...files]);
   }
 }
@@ -454,7 +349,7 @@ function heard(out: View.Answer): void {
 // Socket
 // ======
 // View's link; a socket lost opens again, but one that never showed the
-// chat may be a session gone: then the page starts over.
+// chat reconnects while the local server is available.
 
 function connect(): void {
   View.link_open(v, {
@@ -465,15 +360,7 @@ function connect(): void {
   });
 }
 
-async function lost(up: boolean): Promise<boolean> {
-  draw(true);
-  const me = up ? null : await fetch("/api/me").catch(() => null);
-  if (me !== null && me.status === 401) {
-    location.href = "/";
-    return false;
-  }
-  return true;
-}
+async function lost(_up: boolean): Promise<boolean> { draw(true); return true; }
 
 // a pick changed shows what it is now (a click on a knob moves it). The
 // rows change with what they show: a state (credits, ~10/s importing)
@@ -983,16 +870,10 @@ async function account(): Promise<void> {
   };
   $("#account .keep").onclick = () => sure(false);
   name.oninput = () => (kill.querySelector<HTMLButtonElement>(".red")!.disabled = name.value.trim().toLowerCase() !== a.name.toLowerCase());
-  $("#account .out").onclick = signout;
   kill.onsubmit = (ev) => {
     ev.preventDefault();
     account_delete(kill);
   };
-}
-
-async function signout(): Promise<void> {
-  await View.post("/api/logout", {});
-  location.href = "/";
 }
 
 // the server deletes it all, once the account's name is typed
