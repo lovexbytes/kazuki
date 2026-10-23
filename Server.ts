@@ -49,7 +49,7 @@ import * as config from "./Config.ts";
 import hello_md from "./hello.md" with { type: "text" };
 import app_js from "./web/app.js" with { type: "file" };
 import index_html from "./web/index.html" with { type: "file" };
-import install_sh from "./web/install.sh" with { type: "file" };
+import install_sh from "./install.sh" with { type: "file" };
 import legal_css from "./web/legal.css" with { type: "file" };
 import mark_svg from "./web/mark.svg" with { type: "file" };
 import experimental_jpg from "./web/experimental.jpg" with { type: "file" };

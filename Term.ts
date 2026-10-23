@@ -9,7 +9,7 @@
 // done or halted; all they left running dies as this unii quits. From a
 // pipe, each line is a message.
 //
-// One executable per platform (web/install.sh compiles it); once a day it
+// One executable per platform (install.sh fetches it); once a day it
 // asks bend-lang.com's /check (update_check) and
 // notes a newer one. `unii serve` runs the server it carries. The server:
 // the url given, else $UNII_URL, else the local server at 127.0.0.1:8788.
@@ -64,7 +64,7 @@ type Cmd = [use: string, keys: string, text: string, run: (t: Term, arg: string)
 
 // this unii's version: each release ships one, a new one for every
 // change to Term.ts or what it imports
-const VERSION = "1.0.138";
+const VERSION = "0.0.1";
 
 const ARGS   = process.argv.slice(2);
 const HELP   = ARGS.some((a) => ["help", "--help", "-h"].includes(a));
@@ -81,7 +81,7 @@ const WEB    = /^https?:\/\//;
 const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const HOME   = process.env.UNII_HOME || os.homedir() + "/.unii";
 const OURS   = "https://uniichat.com";
-const INSTALL = "https://raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh";
+const INSTALL = "https://raw.githubusercontent.com/lovexbytes/uniichat/main/install.sh";
 const REMOTE = ARGS.find((a) => WEB.test(a));
 const SERVER = (REMOTE ?? process.env.UNII_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
 

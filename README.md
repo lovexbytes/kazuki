@@ -42,9 +42,13 @@ AskAI.ts (model calls and the cache).
 Run it
 ------
 
-Install a compiled `unii` without Git, Node, or a preinstalled Bun:
+Install a verified release `unii` without Git, Node, or a preinstalled Bun:
 
-    curl -fsSL https://raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh | sh
+    curl -fsSL https://raw.githubusercontent.com/lovexbytes/uniichat/main/install.sh | sh
+
+Until the first GitHub Release exists, this temporarily falls back to a
+checksum-verified Bun source build. The old `web/install.sh` URL remains a
+forwarder for existing installs.
 
 You need an Anthropic API key (or an OpenAI one, below) to run a local chat.
 To build from source instead, install [Bun](https://bun.sh) >= 1.4.3:

@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - run: bun test --isolate
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: darwin-aarch64
+            target: bun-darwin-arm64
+          - runner: macos-15-intel
+            platform: darwin-x64-baseline
+            target: bun-darwin-x64-baseline
+          - runner: ubuntu-24.04-arm
+            platform: linux-aarch64
+            target: bun-linux-arm64
+          - runner: ubuntu-24.04
+            platform: linux-x64-baseline
+            target: bun-linux-x64-baseline
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+      - name: Build and check version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=${GITHUB_REF_NAME}
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          bun build --compile Term.ts --target=${{ matrix.target }} --outfile unii
+          test "$(./unii version)" = "unii ${tag#v}"
+      - name: Smoke outside checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d)
+          pid=
+          trap 'test -z "$pid" || kill "$pid" 2>/dev/null || true; rm -rf "$work"' EXIT
+          cp unii "$work/unii"
+          cd "$work"
+          export UNII_HOME="$work/home" UNII_DIR="$work/data" UNII_NO_TELEMETRY=1 UNII_SITE=http://127.0.0.1:9876
+          mkdir -p "$UNII_HOME" "$UNII_DIR"
+          ./unii serve 9876 >server.log 2>&1 &
+          pid=$!
+          for n in {1..100}; do curl -fsS http://127.0.0.1:9876/ >/dev/null && break; sleep .05; done
+          curl -fsS http://127.0.0.1:9876/ >/dev/null
+          curl -fsS http://127.0.0.1:9876/app.js >/dev/null
+          curl -fsS http://127.0.0.1:9876/install.sh >/dev/null
+          kill "$pid"
+          wait "$pid" || true
+      - name: Archive binary
+        run: tar -czf unii-${{ matrix.platform }}.tar.gz unii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unii-${{ matrix.platform }}
+          path: unii-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Verify assets and publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=${GITHUB_REF_NAME}
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          shopt -s nullglob
+          assets=(artifacts/*/*.tar.gz)
+          expected=(unii-darwin-aarch64.tar.gz unii-darwin-x64-baseline.tar.gz unii-linux-aarch64.tar.gz unii-linux-x64-baseline.tar.gz)
+          test ${#assets[@]} -eq ${#expected[@]}
+          for name in "${expected[@]}"; do
+            matches=(artifacts/*/"$name")
+            test ${#matches[@]} -eq 1
+            cp "${matches[0]}" "$name"
+          done
+          sha256sum "${expected[@]}" > SHA256SUMS
+          gh release create "$tag" --verify-tag SHA256SUMS "${expected[@]}"

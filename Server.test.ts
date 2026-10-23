@@ -94,7 +94,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
     const install = await fetch(site + "/install.sh", { signal: AbortSignal.timeout(1000) });
     expect(install.status).toBe(200);
     const script = await install.text();
-    expect(script).toContain("codeload.github.com");
+    expect(script).toContain("releases/latest");
     expect(script).not.toContain("uniichat.com/install.sh");
     fs.mkdirSync(dir + "/fake");
     fs.writeFileSync(dir + "/fake/curl", "#!/bin/sh\nexit 7\n", { mode: 0o755 });
@@ -102,7 +102,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
     const update_err = await new Response(update.stderr).text();
     await update.exited;
     expect(update.exitCode).toBe(7);
-    expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/uniichat/main/web/install.sh");
+    expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/uniichat/main/install.sh");
     tui = Bun.spawn([bin, "tui"], { cwd: dir, env, stdin: "pipe", stdout: "ignore", stderr: "pipe" });
     tui.stdin.write("/quit\n");
     await Promise.race([tui.exited, Bun.sleep(5000).then(() => { throw new Error("TUI did not exit"); })]);
@@ -120,6 +120,50 @@ test("the compiled terminal manages its local server separately from its TUI", a
     if (pid !== undefined) {
       process.kill(pid, "SIGTERM");
     }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the installer accepts a verified release and preserves a target on checksum failure", () => {
+  const dir = fs.mkdtempSync(os.tmpdir() + "/unii-install-");
+  const fixture = dir + "/fixture";
+  const home = dir + "/home";
+  const fake = dir + "/fake";
+  const platform = process.platform === "darwin" ? "darwin" : "linux";
+  const arch = process.arch === "arm64" ? "aarch64" : "x64-baseline";
+  const asset = `unii-${platform}-${arch}.tar.gz`;
+  const archive = fixture + "/" + asset;
+  try {
+    fs.mkdirSync(fixture);
+    fs.mkdirSync(fake);
+    fs.writeFileSync(fixture + "/unii", "#!/bin/sh\necho fixture\n", { mode: 0o755 });
+    expect(Bun.spawnSync(["tar", "-czf", archive, "unii"], { cwd: fixture }).exitCode).toBe(0);
+    const digest = Bun.spawnSync(["shasum", "-a", "256", archive]).stdout.toString().split(/\s/)[0];
+    fs.writeFileSync(fixture + "/SHA256SUMS", `${digest}  ${asset}\n`);
+    fs.writeFileSync(fake + "/curl", `#!/bin/sh
+out=
+url=
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift 2 ;; *) url=$1; shift ;; esac
+done
+case "$url" in
+  */releases/latest) printf '%s' "$LATEST" ;;
+  */SHA256SUMS) cp "$FIXTURE/SHA256SUMS" "$out" ;;
+  */*.tar.gz) cp "$ARCHIVE" "$out" ;;
+  *) exit 7 ;;
+esac
+`, { mode: 0o755 });
+    const env = { ...process.env, HOME: home, TMPDIR: dir, PATH: fake + ":" + process.env.PATH, FIXTURE: fixture, ARCHIVE: archive, LATEST: "https://github.com/lovexbytes/uniichat/releases/tag/v1.0.138" };
+    let run = Bun.spawnSync(["sh", import.meta.dir + "/install.sh"], { env, stdout: "ignore", stderr: "pipe" });
+    expect(run.exitCode).toBe(0);
+    const target = home + "/.local/bin/unii";
+    expect(fs.readFileSync(target, "utf8")).toContain("fixture");
+    fs.writeFileSync(target, "keep me\n", { mode: 0o755 });
+    fs.writeFileSync(fixture + "/SHA256SUMS", `${"0".repeat(64)}  ${asset}\n`);
+    run = Bun.spawnSync(["sh", import.meta.dir + "/install.sh"], { env, stdout: "ignore", stderr: "pipe" });
+    expect(run.exitCode).not.toBe(0);
+    expect(fs.readFileSync(target, "utf8")).toBe("keep me\n");
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
