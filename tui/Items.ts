@@ -41,6 +41,10 @@ export type Item =
 // =========
 
 const CALL = /^(\S+) (\{[\s\S]*)$/;
+
+// a line of one message kept word for word, by another than a result:
+// no call's result (a call stopped has none; the next message is not it)
+const OTHER = /^(user|unii|note|work|mind|tool): /;
 const FAIL = "error: ";
 const MCP  = /^mcp__.+?__/;
 
@@ -72,7 +76,7 @@ export function items_of(given: View.Row[], opened?: (id: number, n: number) => 
     const row  = rows[k];
     const next = rows[k + 1];
     const both = (row.$ === "Msg" && row.kind === "tool" && next?.$ === "Msg" && next.kind === "echo")
-      || (row.$ === "Sum" && row.call !== null && next?.$ === "Sum" && next.n === 1 && next.call === null && next.id === row.id + 1);
+      || (row.$ === "Sum" && row.call !== null && next?.$ === "Sum" && next.n === 1 && next.call === null && next.id === row.id + 1 && !OTHER.test(next.text));
     const made = both ? pair(row as Msg | Sum, next as Msg | Sum) : item(row, opened);
     const ids  = [...new Set((both ? [from[k], from[k + 1]] : [from[k]]).filter((x) => x !== null))];
     out.push(ids.length === 0 ? made : opened_of(made, ids));
@@ -81,16 +85,18 @@ export function items_of(given: View.Row[], opened?: (id: number, n: number) => 
   return out;
 }
 
-// an item opened by hand, wrapped once
-const OPENED = new WeakMap<Item, Item>();
+// an item opened by hand, wrapped once for the blocks opened (a call
+// opened, then its result too, is wrapped anew: a click shuts both)
+const OPENED = new WeakMap<Item, Map<string, Item>>();
 
 function opened_of(made: Item, ids: number[]): Item {
-  const known = OPENED.get(made);
+  const key   = ids.join(",");
+  const known = OPENED.get(made)?.get(key);
   if (known !== undefined) {
     return known;
   }
   const out: Item = { $: "Opened", blocks: ids.map((id): Block => [id, 1]), item: made };
-  OPENED.set(made, out);
+  OPENED.set(made, (OPENED.get(made) ?? new Map()).set(key, out));
   return out;
 }
 

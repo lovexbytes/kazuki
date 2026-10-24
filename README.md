@@ -90,6 +90,9 @@ bun build.ts --outfile kazuki    # the executable (--target=bun-linux-x64 ...)
 bun Term.ts tui                  # the terminal UI from source
 ```
 
+Run `bun Term.ts` from the repository root: Bun reads `bunfig.toml` (the
+terminal UI's JSX transform) only from the current directory.
+
 ## The terminal
 
 `kazuki` in a terminal is a client of the server, as a browser tab is: it

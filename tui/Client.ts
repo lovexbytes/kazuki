@@ -7,7 +7,6 @@
 // of its views, local or remote, as the web is. The UI (App.tsx) reads
 // the View after each `rev` and tells the person what the hooks say.
 
-import * as child from "node:child_process";
 import * as os from "node:os";
 import { batch, createSignal, type Accessor } from "solid-js";
 import { Machine, type Job } from "../Machine.ts";
@@ -205,19 +204,10 @@ export function client_post(c: Client, path: string, body: object): Promise<any>
   return View.post(c.url + path, body);
 }
 
-// leaves, telling the server (its jobs here end)
+// leaves, telling the server; its jobs here end as the process exits
+// (main.tsx)
 export function client_close(c: Client): void {
   c.v.ws?.close(View.QUIT);
-  Machine.end();
-}
-
-// a link opened in the browser here, if any: a Linux with no desktop has
-// no xdg-open (spawning one missing throws)
-export function browse(url: string): void {
-  const open = Bun.which(process.platform === "darwin" ? "open" : "xdg-open");
-  if (open !== null) {
-    child.spawn(open, [url], { detached: true, stdio: "ignore" }).unref();
-  }
 }
 
 // a path as typed or dropped: quoted, escaped, ~

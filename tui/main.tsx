@@ -69,7 +69,9 @@ async function pipe_run(c: Client): Promise<void> {
   let ended = false;
   let last  = -1;
   const idle = () => {
-    if (ended && c.pending <= 0 && c.v.up && c.v.out.length === 0 && !View.view_running(c.v)) {
+    // nothing left to send, run or answer: a link lost then keeps it no
+    // longer
+    if (ended && c.pending <= 0 && c.v.out.length === 0 && !View.view_running(c.v)) {
       client_close(c);
       process.exit(process.exitCode ?? 0);
     }
