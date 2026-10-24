@@ -52,7 +52,8 @@ To build from source instead, install [Bun](https://bun.sh) >= 1.4.3:
 
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
-bun build --compile Term.ts --outfile kazuki
+bun install
+bun build.ts --outfile kazuki
 ./kazuki
 ```
 
@@ -85,8 +86,22 @@ Other commands:
 ```sh
 bun run test                     # the tests, each file on its own
 bun run web                      # rebuild web/app.js from web/src
-bun build --compile Term.ts --outfile kazuki
+bun build.ts --outfile kazuki    # the executable (--target=bun-linux-x64 ...)
+bun Term.ts tui                  # the terminal UI from source
 ```
+
+## The terminal
+
+`kazuki` in a terminal is a client of the server, as a browser tab is: it
+connects by the server's socket (`View.ts`), and any server it can reach will
+do (`kazuki http://host:port`). It is built on
+[OpenTUI](https://github.com/anomalyco/opentui) (Solid), in `tui/`:
+`Client.ts` (the link, and the agent's jobs this device runs), `App.tsx` (the
+page), `Transcript.tsx` (the chat), `Tool.tsx` (each tool call: a command and
+its output, a file read, a write's or edit's diff, the agents spawned),
+`Prompt.tsx` (the input, its `/` commands and history). There is one chat, so
+there are no sessions to manage: older messages show as the memory tree's
+summaries, opened by a click, and each subagent at work is a tab (Tab).
 
 Your chats live in `~/.kazuki/users/<id>`, one JSON line per message (`main/`)
 and per summary (`tree/`). They are the memory: back them up.
