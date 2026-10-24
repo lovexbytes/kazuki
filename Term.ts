@@ -19,6 +19,7 @@
 import * as child from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { browse } from "./Browse.ts";
 
 // Constants
 // =========
@@ -89,15 +90,6 @@ function update_run(url: string): void {
     return;
   }
   process.exitCode = child.spawnSync("sh", [], { input: got.stdout, stdio: ["pipe", "inherit", "inherit"] }).status ?? 1;
-}
-
-// a link opened in the browser here, if any: a Linux with no desktop has
-// no xdg-open (spawning one missing throws)
-function browse(url: string): void {
-  const open = Bun.which(process.platform === "darwin" ? "open" : "xdg-open");
-  if (open !== null) {
-    child.spawn(open, [url], { detached: true, stdio: "ignore" }).unref();
-  }
 }
 
 // the terminal's chat on the server (tui/main.tsx, loaded only here: the

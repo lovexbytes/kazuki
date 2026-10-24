@@ -364,7 +364,7 @@ function Footer(props: { openPick: (move: "model" | "effort" | "speed") => void 
               fg={tab.here ? (tab.name === null ? p.accent : p.agent) : p.faint}
               onMouseUp={() => client_act(c, { $: "Goto", name: tab.name })}
             >
-              {(tab.here ? "● " : "○ ") + (tab.name ?? View.MAIN)}
+              {tab.text}
             </text>
           )}
         </For>
@@ -430,7 +430,9 @@ function PickerView(props: { move: "model" | "effort" | "speed"; close: () => vo
   const ctx  = useCtx();
   const c    = ctx.c;
   const p    = ctx.p;
-  const opts = createMemo(() => (c.rev(), pick_options(c, props.move)));
+  // made again only as the chat's state changes, not at each piece of a
+  // stream (the highlight stays where the keys moved it)
+  const opts = createMemo(() => (c.log(), pick_options(c, props.move)));
   const now  = () => Math.max(0, opts().findIndex((o) => o.now));
   const title = { model: "Model", effort: "Effort", speed: "Speed" }[props.move];
   const hint  = () => (c.v.pick === null ? "" : Pick.label(c.v.pick));

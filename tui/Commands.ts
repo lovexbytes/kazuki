@@ -9,7 +9,8 @@ import * as Import from "../Import.ts";
 import { Pick, type Move } from "../Pick.ts";
 import { Price } from "../Price.ts";
 import * as View from "../View.ts";
-import { browse, client_act, client_get, client_post, client_refusal, client_send, path_read, type Client } from "./Client.ts";
+import { browse } from "../Browse.ts";
+import { client_act, client_get, client_post, client_refusal, client_send, path_read, type Client } from "./Client.ts";
 
 // Types
 // =====

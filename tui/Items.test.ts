@@ -52,3 +52,17 @@ test("a thought made anew keeps its item, so a redraw keeps it", () => {
   const b = items_of([msg(null, "mind", "thinking it over")])[0];
   expect(b).toBe(a);
 });
+
+test("a call stopped does not take the next message's summary as its result", () => {
+  const call  = Call.call_parse('shell {"command":"ls"}');
+  const items = items_of([sum(4, 1, "shell ls", call), sum(5, 1, "user: stop, do X instead")]);
+  expect(items).toHaveLength(2);
+  expect(items[0]).toMatchObject({ $: "Sum", id: 4, then: null });
+});
+
+test("a call opened, then its result too, is wrapped anew to shut both", () => {
+  const box  = (id: number, row: View.Row): View.Row => ({ $: "Box", id, n: 1, text: "fold", rows: [row] });
+  const rows = [box(1, msg(1, "tool", 'shell {"command":"pwd"}')), box(2, msg(2, "echo", "/"))];
+  expect(items_of(rows, (id) => id === 1)[0]).toMatchObject({ $: "Opened", blocks: [[1, 1]] });
+  expect(items_of(rows, () => true)[0]).toMatchObject({ $: "Opened", blocks: [[1, 1], [2, 1]] });
+});
