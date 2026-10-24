@@ -68,7 +68,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
   let update: Bun.Subprocess | undefined;
   let pid: number | undefined;
   try {
-    const build = Bun.spawnSync([process.execPath, "build", "--compile", import.meta.dir + "/Term.ts", "--outfile", bin], { cwd: import.meta.dir });
+    const build = Bun.spawnSync([process.execPath, import.meta.dir + "/build.ts", "--outfile", bin], { cwd: import.meta.dir });
     expect(build.exitCode).toBe(0);
     absent = Bun.spawn([bin, "tui"], { cwd: dir, env, stdout: "ignore", stderr: "pipe" });
     const absent_err = await Promise.race([

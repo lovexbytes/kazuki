@@ -4,5 +4,14 @@
   "scripts": {
     "test": "bun test --isolate",
     "web": "bun build web/src/main.ts --outfile web/app.js --target browser"
+  },
+  "dependencies": {
+    "@opentui/core": "0.6.8",
+    "@opentui/solid": "0.6.8",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
   }
 }
