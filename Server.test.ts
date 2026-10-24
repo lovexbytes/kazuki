@@ -163,6 +163,10 @@ esac
     run = Bun.spawnSync(["sh", import.meta.dir + "/install.sh"], { env, stdout: "ignore", stderr: "pipe" });
     expect(run.exitCode).not.toBe(0);
     expect(fs.readFileSync(target, "utf8")).toBe("keep me\n");
+    run = Bun.spawnSync(["sh", import.meta.dir + "/install.sh"], { env: { ...env, LATEST: "https://github.com/lovexbytes/kazuki/releases" }, stdout: "ignore", stderr: "pipe" });
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr.toString()).toContain("no published release");
+    expect(fs.readFileSync(target, "utf8")).toBe("keep me\n");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
