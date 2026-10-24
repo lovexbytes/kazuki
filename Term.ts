@@ -26,7 +26,7 @@ import { browse } from "./Browse.ts";
 
 // this kazuki's version: each release ships one, a new one for every
 // change to Term.ts or what it imports
-const VERSION = "0.0.1";
+const VERSION = "0.0.2";
 
 const ARGS   = process.argv.slice(2);
 const HELP   = ARGS.some((a) => ["help", "--help", "-h"].includes(a));
