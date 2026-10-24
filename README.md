@@ -136,8 +136,11 @@ shows a link and a code to enter in any browser; `logout` signs out) and use
 
 ## The `kazuki` terminal
 
-`install.sh` downloads a pinned Bun, verifies it, and compiles the source
-archive into `~/.local/bin/kazuki`. `kazuki` alone starts and opens its local
+`install.sh` downloads the latest release's archive for this platform, checks
+it against the release's `SHA256SUMS`, and installs it to `~/.local/bin/kazuki`;
+with no published release it stops. Each release's assets also carry a GitHub
+build provenance attestation, which `gh attestation verify <archive> --repo
+lovexbytes/kazuki` checks. `kazuki` alone starts and opens its local
 server; `kazuki <url>` is client-only for another local instance.
 
 Run with `KAZUKI_COMPUTER=1` on a Mac and the agent may use its screen (it
