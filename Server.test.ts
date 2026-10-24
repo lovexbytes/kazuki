@@ -220,3 +220,34 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
   expect(out.picked).toBe(out.to);
   expect(out.after).toBe(out.model);
 });
+
+// an import paused stays paused once its chat opens again (import.json
+// keeps why); any other why (an old file's "out of credit") goes on
+const RESUME = `
+const fs = await import("node:fs");
+const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")});
+const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
+Chat.cloud = Cloud.open(() => {});
+const file = (id) => process.env.KAZUKI_DIR + "/users/" + id + "/import.json";
+const why = (id) => JSON.parse(fs.readFileSync(file(id), "utf8")).why;
+for (const [id, saved] of [["u1", "paused"], ["u2", "out of credit"]]) {
+  fs.mkdirSync(process.env.KAZUKI_DIR + "/users/" + id, { recursive: true });
+  fs.writeFileSync(file(id), JSON.stringify({ a: 0, b: 0, said: 0, why: saved }));
+}
+const [held, old] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
+const out = { held: Chat.state(held).importing?.why, old: Chat.state(old).importing?.why };
+Chat.go(held, true);
+out.went = why("u1");
+Chat.go(held, false);
+out.kept = why("u1");
+console.log(JSON.stringify(out));
+process.exit(0);
+`;
+
+test("an import's pause survives its chat opening again", async () => {
+  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-");
+  fs.writeFileSync(dir + "/resume.ts", RESUME);
+  const proc = Bun.spawn([process.execPath, dir + "/resume.ts"], { env: { ...process.env, KAZUKI_DIR: dir }, stdout: "pipe", stderr: "inherit" });
+  const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
+  expect(out).toEqual({ held: "paused", old: null, went: null, kept: "paused" });
+});
