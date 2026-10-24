@@ -10,14 +10,13 @@
 
 import type { Ask, Img } from "./AskAI.ts";
 import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./Agent.ts";
-import { Price, type Usage } from "./Price.ts";
 import * as config from "./Config.ts";
 
 // Types
 // =====
 
-// a stream read so far: the final response, or an error event; usage
-export type State = { res: any; error: any; use: Usage };
+// a stream read so far: the final response, or an error event
+export type State = { res: any; error: any };
 
 // Constants
 // =========
@@ -109,7 +108,6 @@ export namespace OpenAI {
       case "response.incomplete":
       case "response.failed": {
         st.res = ev.response;
-        OpenAI.usage(st.use, ev.response);
         return true;
       }
       case "error": {
@@ -129,16 +127,6 @@ export namespace OpenAI {
     if (item.type === "web_search_call") {
       on("tool", "web_search ", true);
     }
-  }
-
-  export function usage(use: Usage, res: any): void {
-    const u = res.usage ?? {};
-    use.read     = u.input_tokens_details?.cached_tokens ?? 0;
-    use.write    = u.input_tokens_details?.cache_write_tokens ?? 0;
-    use.input    = (u.input_tokens ?? 0) - use.read - use.write;
-    use.output   = u.output_tokens ?? 0;
-    use.searches = (res.output ?? []).filter((o: any) => o.type === "web_search_call").length;
-    use.speed    = OpenAI.tier(res);
   }
 
   // the speed a response ran at
@@ -219,12 +207,10 @@ export namespace OpenAI {
     url     : "https://api.openai.com/v1/responses",
     headers : (key) => ({ authorization: "Bearer " + key, "content-type": "application/json" }),
     body    : OpenAI.body,
-    count   : async () => null,
-    start   : (ask) => ({ res: null, error: null, use: Price.usage(ask.speed) }),
+    start   : () => ({ res: null, error: null }),
     read    : OpenAI.read,
     begun   : (ev) => ev.type === "response.output_item.added",
     step    : OpenAI.step,
-    usage   : (st) => st.use,
   };
 
 }

@@ -14,12 +14,9 @@
 // outage only delays a node, never harms it); answered with no line (a
 // refusal: its input's doing), its node is its source clipped. Every
 // node builds so, an imported one too; the import's are a side of their
-// own (`side`: the chat's turns don't wait on them). A side is held as
-// the user's credit says (its payer refusing a call holds it:
-// Billing.ts), an import's also as its user does (`hold`; a pause cuts
-// its calls): its nodes wait, with no call, till it goes on, and a turn
-// needing the chat's is told why (settle), never left waiting. Of each
-// side, JOBS build at once, in the order the messages came. A try cut
+// own (`side`: the chat's turns don't wait on them). An import's side is
+// held as its user does (`paused`; a pause cuts its calls): its nodes
+// wait, with no call, till it goes on. Of each side, JOBS build at once, in the order the messages came. A try cut
 // after a line keeps the best one. A chat
 // moving to another process (a deploy) takes its summaries along, their
 // calls going on where they began (give, take): none is cut or asked
@@ -50,7 +47,7 @@
 // hash; an agent's log in docs/agent/<Name>.jsonl.
 
 import * as fs from "node:fs";
-import { AskAI, type Ask, type Bill, type Block, type Call, type Img, type Kind, type Pay, type Say, type Served } from "./AskAI.ts";
+import { AskAI, type Ask, type Block, type Call, type Img, type Kind, type Say, type Served } from "./AskAI.ts";
 import { clip_page, clip_pages } from "./Clip.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
@@ -106,10 +103,11 @@ type Saved = Kept & { seen?: Kept; main: End; tree: End; pick: object | null; go
 // built whose halves are, by side and level, in order; ends: how far
 // each log is indexed; busy: nodes building, by slot, with their side;
 // sides: the side by the last message of nodes not built; calls: those
-// building's calls; hold: why each side is held (null: it builds);
+// building's calls; paused: the import's side is held (its user's
+// pause; the chat's side always builds);
 // wait: checks run as the views change; share: what
-// compactions share with the chat's turns; pay: what pays them (none:
-// free); made, acted: told of each node built, of each act indexed
+// compactions share with the chat's turns; made, acted: told of each
+// node built, of each act indexed
 export type Memory = {
   dir    : string;
   fds    : Map<string, number>;
@@ -127,11 +125,10 @@ export type Memory = {
   busy   : Map<number, number>;
   sides  : Map<number, number>;
   calls  : Map<Call, Sum>;
-  hold   : Array<string | null>;
+  paused : boolean;
   done   : boolean;
   wait   : Set<() => void>;
   share  : () => Share;
-  pay?   : Pay;
   made?  : (l: number, i: number) => void;
   acted  : (id: string, ans: object) => void;
 };
@@ -198,7 +195,7 @@ export namespace Memory {
     const mem: Memory = {
       dir, fds: new Map(), count: 0, open: 0, pick: null, goal: null, work: [], nodes: new Map(), agents: new Map(), ready: [[], []], ends: { main: [0, 0], tree: [0, 0] },
       view: { parts: [], size: 0, batch: false, high: HIGH }, seen: { parts: [], size: 0, batch: false, high: SEEN },
-      busy: new Map(), sides: new Map(), calls: new Map(), hold: [null, "paused"], done: false, wait: new Set(), share, acted,
+      busy: new Map(), sides: new Map(), calls: new Map(), paused: true, done: false, wait: new Set(), share, acted,
     };
     const saved = Memory.saved(dir);
     mem.pick = saved?.pick ?? null;
@@ -631,7 +628,7 @@ export namespace Memory {
   // whose source fits
   export function starts(mem: Memory): Array<Part & { text: string }> {
     const free: Array<Part & { text: string }> = [];
-    for (const side of [0, 1].filter((side) => mem.hold[side] === null)) {
+    for (const side of [0, 1].filter((side) => side === 0 || !mem.paused)) {
       const end = Memory.first(mem, JOBS - 1, side);
       const next: Part[] = [];
       mem.ready[side].forEach((queue, l) => {
@@ -658,7 +655,7 @@ export namespace Memory {
   // an import held by its user, at once: its calls out cut; their nodes
   // build as it goes on
   export function pause(mem: Memory): void {
-    mem.hold[1] = "paused";
+    mem.paused = true;
     mem.calls.forEach((sum, call) => sum.kind === "import" && call.stop());
   }
 
@@ -715,11 +712,11 @@ export namespace Memory {
   }
 
   // the summaries a chat moved here was running (Memory.give) build here
-  // as their calls end there: `far` makes the call of an id, paid here
-  export function take(mem: Memory, given: Given[], far: (id: string, bill?: Bill) => Call): void {
+  // as their calls end there: `far` makes the call of an id
+  export function take(mem: Memory, given: Given[], far: (id: string) => Call): void {
     for (const [l, i, id] of given) {
       const text = Memory.source(mem, l, i)!;
-      Memory.job(mem, l, i, text, far(id, Memory.bill(mem, l, i, text)));
+      Memory.job(mem, l, i, text, far(id));
     }
   }
 
@@ -729,7 +726,7 @@ export namespace Memory {
   // thoughts; one after a line too long adds only its size and where the
   // limit cuts it (`over`): never more than the first and that note. No
   // line (a refusal: its input's doing): its source clipped; a try cut
-  // (a pause, a stop) or refused by its payer throws, unless a line came
+  // (a pause, a stop) throws, unless a line came
   export async function build(mem: Memory, l: number, i: number, text: string, call: Call | null): Promise<void> {
     const task = { text: Memory.task(l, i) + text + "\n</input>", mark: false };
     const upto = Math.min(Memory.ctx(l, i), Memory.first(mem, 0, Memory.side(mem, l, i)));
@@ -760,11 +757,6 @@ export namespace Memory {
     return Memory.side(mem, l, i) === 1 ? "import" : "compactor";
   }
 
-  // what pays node (l,i)'s summary (none: free)
-  export function bill(mem: Memory, l: number, i: number, text: string): Bill | undefined {
-    return mem.pay?.(Memory.served(mem, l, i), Memory.ref({ l, i }), Memory.bytes(text));
-  }
-
   // nodes built: logged in one write, kept
   export function store(mem: Memory, parts: Array<Part & { text: string }>): void {
     Memory.log(mem, "tree", parts.map(({ l, i, text }) => ({ l, i, text, size: Memory.bytes(text) })));
@@ -785,8 +777,7 @@ export namespace Memory {
 
   // a call of node (l,i)'s summary, on the compactor
   export function ask(mem: Memory, l: number, i: number, text: string, blocks: Block[]): Call {
-    const bill = Memory.bill(mem, l, i, text);
-    return AskAI.ask({ ...mem.share(), ...Pick.ask(config.COMPACTOR), blocks, bill, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
+    return AskAI.ask({ ...mem.share(), ...Pick.ask(config.COMPACTOR), blocks, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
   }
 
   // a summary's try: its call's end, the call held in `calls` till then
@@ -837,7 +828,7 @@ ${Memory.cut(line)}| ← LIMIT`;
   export function fit(mem: Memory, next = false): void {
     const gone: Part[] = [];
     let changed = false;
-    const sides = [0, 1].filter((side) => mem.hold[side] === null).map((side) => Memory.first(mem, 0, side));
+    const sides = [0, 1].filter((side) => side === 0 || !mem.paused).map((side) => Memory.first(mem, 0, side));
     Memory.reach(mem, mem.view, mem.count);
     Memory.reach(mem, mem.seen, Math.min(mem.count, ...sides));
     for (const view of [mem.view, mem.seen]) {
@@ -956,14 +947,13 @@ ${Memory.cut(line)}| ← LIMIT`;
   }
 
   // once the chat's messages before `end` are built (not an import's):
-  // null; else why they won't be: "Stopped." (signal aborted), or why
-  // their side is held (no credit for them: Billing.ts book), so no
-  // turn or agent waits on summaries no call is building
+  // null; else "Stopped." (signal aborted), so no turn or agent waits
+  // past a stop
   export function settle(mem: Memory, end: number, signal: AbortSignal): Promise<string | null> {
     return new Promise((resolve) => {
       const check = () => {
         const built = Memory.first(mem) >= end;
-        const why = signal.aborted ? "Stopped." : built ? null : mem.hold[0];
+        const why = signal.aborted ? "Stopped." : null;
         if (built || why !== null) {
           mem.wait.delete(check);
           signal.removeEventListener("abort", check);

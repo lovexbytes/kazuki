@@ -7,13 +7,12 @@ import type { Database } from "bun:sqlite";
 import * as crypto from "node:crypto";
 import * as http2 from "node:http2";
 import * as path from "node:path";
-import { Billing } from "./Billing.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
 
 export type User = { id: string; name: string };
 export type Account = { cloud: Cloud; user: string };
-export type Cloud = { db: Database; wal: string; change: (user: string) => void; billing: Billing };
+export type Cloud = { db: Database; wal: string; change: (user: string) => void };
 
 export const LOCAL: User = { id: "local", name: "local" };
 const ACTS = 7 * 864e5;
@@ -34,12 +33,7 @@ export namespace Cloud {
     const file = path.join(config.DIR, "cloud.db");
     const db = Disk.db(file);
     db.exec(SCHEMA);
-    const base = { db, wal: file + "-wal", change };
-    const billing = Billing.open(base);
-    if (billing.bills && config.OFFER.vendors.includes("openai-sub")) {
-      throw new Error("config: a server that bills can't offer openai-sub (a ChatGPT plan is one person's, not its users)");
-    }
-    return { ...base, billing };
+    return { db, wal: file + "-wal", change };
   }
 
   export function who(_cloud: Cloud, _req: Request): User { return LOCAL; }
@@ -60,17 +54,13 @@ export namespace Cloud {
     return all.slice(0, 3).map((h) => parseInt(h, 16).toString(16)).join(":") + "::/48";
   }
 
-  export async function data(cloud: Cloud, user: User): Promise<object> {
-    return { id: user.id, name: user.name, ...(await cloud.billing.data(user)) };
+  export async function data(_cloud: Cloud, user: User): Promise<object> {
+    return { id: user.id, name: user.name };
   }
 
-  export async function close(cloud: Cloud, user: User, req: Request): Promise<string | null> {
-    const why = await cloud.billing.close(user, req);
-    if (why === null) {
-      cloud.db.query("delete from pushes where user = ?").run(user.id);
-      cloud.db.query("delete from acts where user = ?").run(user.id);
-    }
-    return why;
+  export function close(cloud: Cloud, user: User): void {
+    cloud.db.query("delete from pushes where user = ?").run(user.id);
+    cloud.db.query("delete from acts where user = ?").run(user.id);
   }
 
   export function push(cloud: Cloud, user: string, text: string): void {
@@ -116,11 +106,9 @@ export namespace Cloud {
   export async function http(cloud: Cloud, req: Request): Promise<Response | null> {
     const user = LOCAL;
     const url = new URL(req.url);
-    const billed = await cloud.billing.http(req, user);
-    if (billed !== null) return billed;
     switch (url.pathname) {
-      case "/api/me": await cloud.billing.balance(user.id); return Response.json({ id: user.id, name: user.name, bills: cloud.billing.bills, credits: cloud.billing.credits(user.id) });
-      case "/api/account": await cloud.billing.balance(user.id); return Response.json({ ...(await Cloud.data(cloud, user)), bills: cloud.billing.bills, credits: cloud.billing.credits(user.id) });
+      case "/api/me": return Response.json({ id: user.id, name: user.name });
+      case "/api/account": return Response.json(await Cloud.data(cloud, user));
       case "/api/push": {
         const token = (await req.text()).trim();
         if (!/^[0-9a-f]{64,256}$/.test(token)) return Response.json({ error: "Not a push token" }, { status: 400 });

@@ -23,7 +23,7 @@
 // there anew).
 
 import * as fs from "node:fs";
-import { AskAI, type Ask, type Bill, type Block, type Call, type Event, type Kind, type Pay } from "./AskAI.ts";
+import { AskAI, type Ask, type Block, type Call, type Event, type Kind } from "./AskAI.ts";
 import type { Out } from "./Agent.ts";
 import { report_text } from "./Call.ts";
 import { clip_page } from "./Clip.ts";
@@ -85,8 +85,7 @@ type Hooks = {
   halt   : () => AbortSignal;
 };
 
-// the tools: what pays the calls (none: the vendors' keys); where its
-// chat moved (a process's tools URL), once it did
+// the tools: where its chat moved (a process's tools URL), once it did
 export type Tools = {
   mem     : Memory;
   devices : Map<string, Device>;
@@ -94,7 +93,6 @@ export type Tools = {
   key     : string;
   url     : string;
   hooks   : Hooks;
-  pay?    : Pay;
   away    : PromiseWithResolvers<string>;
 };
 
@@ -571,29 +569,23 @@ export namespace Tools {
     tools.hooks.report(agent, report_text(agent.name, agent.replies.join("\n\n")), agent.stop);
   }
 
-  // what pays an agent's calls
-  export function bill(tools: Tools, agent: Agent): Bill | undefined {
-    return tools.pay?.(agent.role.$ === "sub" ? "agent" : "computer", agent.name);
-  }
-
   // a call of an agent, on config.AGENTS or else the chat's pick (a
   // computer task's sees no view, and only its computer tool)
   export function ask(tools: Tools, agent: Agent): Ask {
     const log = { text: Memory.agent_show(tools.mem, agent.name), mark: true };
     const server = Tools.at(tools, agent.name);
     const run = Pick.ask(config.AGENTS ?? tools.hooks.pick());
-    const bill = Tools.bill(tools, agent);
     const role = agent.role;
     switch (role.$) {
       case "sub": {
         const system = Tools.system(SUB);
         const blocks = [...agent.view, Tools.devices(tools), log];
         const effort = role.effort ?? run.effort;
-        return { ...run, effort, system, blocks, searches: SEARCHES, server, bill };
+        return { ...run, effort, system, blocks, searches: SEARCHES, server };
       }
       case "hands": {
         const system = Tools.system(HANDS.replace("{device}", role.device));
-        return { ...run, system, blocks: [...agent.view, log], searches: 0, server, bill };
+        return { ...run, system, blocks: [...agent.view, log], searches: 0, server };
       }
     }
   }
@@ -629,7 +621,7 @@ export namespace Tools {
   }
 
   // a chat's tools come here (Tools.give): `far` makes the call of id
-  export function take(tools: Tools, moved: Moved, far: (id: string, on: (ev: Event) => void, bill?: Bill) => Call): void {
+  export function take(tools: Tools, moved: Moved, far: (id: string, on: (ev: Event) => void) => Call): void {
     for (const [name, who, jobs] of moved.devices) {
       const d: Device = { who, terms: new Map(), jobs: new Map() };
       jobs.forEach(([id, term, job]) => Tools.track(d, id, term, job));
@@ -637,7 +629,7 @@ export namespace Tools {
     }
     for (const { call, ...was } of moved.agents) {
       const agent = Object.assign(Tools.agent(tools, was.name)!, was);
-      Tools.run(tools, agent, far(call, (ev) => tools.hooks.on(agent, ev), Tools.bill(tools, agent)));
+      Tools.run(tools, agent, far(call, (ev) => tools.hooks.on(agent, ev)));
     }
   }
 

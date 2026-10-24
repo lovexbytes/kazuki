@@ -3,8 +3,7 @@
 // What View.ts draws and Md.ts's tokens, as HTML, every text escaped, one
 // element per row, knob or tab; and the account page's parts. A click's
 // effect is in the markup: `data-act`, the View.Act it makes;
-// `data-copy`, what Copy copies; `data-usd`, the credit it buys
-// (main.ts), so `credit_html` works wherever it is put.
+// `data-copy`, what Copy copies (main.ts).
 
 import * as Call from "../../Call.ts";
 import * as Md from "../../Md.ts";
@@ -122,52 +121,23 @@ export function tabs_html(tabs: View.Tab[]): string[] {
 // Account
 // =======
 
-// buying credit: a button per amount, then the fine print (in the iOS
-// app, the App Store's)
-export function credit_html(app: boolean): string {
-  const buttons = [10, 25, 50, 100].map((usd) => `<button data-usd="${usd}">$${usd}</button>`).join("");
-  return `<div class="credit"><div class="usd">${buttons}</div>${fine_html(app)}</div>`;
-}
-
-// what buying credit costs and means, in one line (the terms say the rest)
-export function fine_html(app: boolean): string {
-  const fee = app ? "Paid at the App Store's price." : "+10% platform fee (min $0.80).";
-  return `<p class="fine">${fee} Buying accepts the <a href="/terms.html" target="_blank">terms</a>.</p>`;
-}
-
-// the account page (/account): where the server bills, the balance and
-// credit to add, the use by day and the purchases; then the account's
-// own acts; deleting asks first, in place (main.ts)
-export function account_html(a: View.Account, app: boolean): string {
-  const tops    = a.topups ?? [];
-  const days    = View.account_days(a);
-  const balance = a.credits === null ? "" : section_html("Balance", `<p class="big">${View.usd_show(a.credits)}</p>` + credit_html(app));
-  const usage   = section_html("Usage", days.length === 0 ? `<p class="sub">Nothing yet.</p>` : table_html("days", ["Day", "Use", "Cost"], days.map((d) => [d.date, d.what, View.cost_show(d.usd)])));
-  const buys    = tops.length === 0 ? "" : section_html("Purchases", table_html("buys", View.TOPUP, tops.map(View.topup_cells)));
-  const money   = a.bills ? balance + usage + buys : "";
+// the account page (/account): the account's own acts; deleting asks
+// first, in place (main.ts)
+export function account_html(a: View.Account): string {
   const item    = (what: string, note: string, act: string) => `<div class="item"><p>${what}${note === "" ? "" : `<small>${note}</small>`}</p>${act}</div>`;
-  const closes  = a.bills ? `<p>This also closes your BendAI account (same sign-in). Credit you bought and didn't use goes back to your card.</p>` : "";
-  const kill    = `<form class="kill" hidden>${closes}<p>Type <b>${esc(a.name)}</b> to confirm.</p><input name="name" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(a.name)}"><p class="why"></p><div><button type="button" class="chip keep">Cancel</button><button class="chip red" disabled>Delete for good</button></div></form>`;
+  const kill    = `<form class="kill" hidden><p id="kill-say">Type <b>${esc(a.name)}</b> to confirm.</p><input name="name" aria-labelledby="kill-say" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(a.name)}"><p class="why"></p><div><button type="button" class="chip keep">Cancel</button><button class="chip red" disabled>Delete for good</button></div></form>`;
   const acts    = [
     item("Local chat", "This server is available only on this computer.", ""),
     item("Export memory", "Chat and account, in one file.", `<a class="chip" href="/export">Download</a>`),
     item("Delete account", "Erases chat and memory for good.", `<button class="chip red del">Delete</button>`),
   ];
   const account = section_html("Local data", acts.join("") + kill);
-  const links   = "";
-  return `<a class="back" href="/" data-go="/">← Chat</a><h1>Account</h1>` + money + account + links;
+  return `<a class="back" href="/" data-go="/">← Chat</a><h1>Account</h1>` + account;
 }
 
 // a section of the account page: its title, then its markup
 function section_html(title: string, body: string): string {
   return `<section><h2>${esc(title)}</h2>${body}</section>`;
-}
-
-// a table (cls: its class) of inline markdown cells
-function table_html(cls: string, head: string[], rows: string[][]): string {
-  const cells = (row: string[], tag: string) => row.map((x) => `<${tag}>${spans_html(Md.span_parse(x))}</${tag}>`).join("");
-  const body  = rows.map((row) => `<tr>${cells(row, "td")}</tr>`).join("");
-  return `<div class="wide ${cls}"><table><tr>${cells(head, "th")}</tr>${body}</table></div>`;
 }
 
 export function block_html(b: Md.Block): string {

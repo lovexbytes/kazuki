@@ -10,7 +10,7 @@ import { Pick, type Move } from "../Pick.ts";
 import { Price } from "../Price.ts";
 import * as View from "../View.ts";
 import { browse } from "../Browse.ts";
-import { client_act, client_get, client_post, client_refusal, client_send, path_read, type Client } from "./Client.ts";
+import { client_act, client_get, client_post, client_send, path_read, type Client } from "./Client.ts";
 
 // Types
 // =====
@@ -59,10 +59,8 @@ export const KEYS: [keys: string, text: string][] = [
 // Commands
 // ========
 
-// all a person can type, by group; credit added only where the server
-// bills
+// all a person can type, by group
 export function cmd_groups(c: Client): [group: string, cmds: Cmd[]][] {
-  const topup: Cmd[] = c.v.bills ? [{ use: "/topup <usd>", text: "add Bend Credits, paid in the browser", run: cmd_topup }] : [];
   return [
     ["Chat", [
       { use: "/goal <message>", text: "send a message as the goal: at each turn's end, Kazuki asks itself if it is met, and goes on till it is", run: (c, a) => void client_act(c, { $: "Send", text: "/goal " + a }) },
@@ -87,8 +85,6 @@ export function cmd_groups(c: Client): [group: string, cmds: Cmd[]][] {
       { use: "/stop [name]",    text: "stop all work, agents too; or that agent", run: cmd_stop },
     ]],
     ["Account", [
-      ...topup,
-      { use: "/account",        text: "balance, top-ups, charges, calls", run: cmd_account },
       { use: "/delete <name>",  text: "delete your account and chat (its name confirms)", run: cmd_delete },
     ]],
   ];
@@ -249,8 +245,7 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
   }
   if (!words.includes("go")) {
     const which = words.includes("sessions") ? "\n\n" + shown.map((s, k) => "- #" + (k + 1) + " " + s.app + ": " + Import.import_line(s) + (want.off.includes(Import.import_id(s)) ? " (left out)" : "")).join("\n") : "";
-    const out   = await new Promise<View.Answer>((ok) => View.link_send(c.v, { $: "guess", body: () => plan.sizes.join(",") }, ok));
-    const cost  = out.usd === undefined ? "Not priced: " + client_refusal(out) : "Importing them costs about " + Import.guess_usd(out.usd) + ". To import them, type:\n\n```\n/import " + (arg + " go").trim() + "\n```";
+    const cost  = "Importing them costs about " + Import.guess_usd(plan.guess) + " at API prices. To import them, type:\n\n```\n/import " + (arg + " go").trim() + "\n```";
     c.hooks.sheet("Import", found + which + "\n\n" + cost + "\n\n" + HOW);
     return;
   }
@@ -348,23 +343,6 @@ function agent_named(c: Client, arg: string): string {
 
 // Account
 // -------
-
-async function cmd_topup(c: Client, arg: string): Promise<void> {
-  const out = await client_post(c, "/api/topup", { usd: Number(arg) });
-  if (typeof out.url !== "string") {
-    c.hooks.note(out.error ?? "Could not top up: no connection.");
-    return;
-  }
-  cmd_browse(c, "The payment", out.url);
-}
-
-async function cmd_account(c: Client): Promise<void> {
-  const res = await client_get(c, "/api/account", "read the account");
-  const a   = res === null ? null : await res.json() as View.Account;
-  if (a !== null) {
-    c.hooks.sheet("Account", View.account_md(a));
-  }
-}
 
 // deletes the account, once its name is typed; the server says what
 // deleting does, and the name, when it isn't

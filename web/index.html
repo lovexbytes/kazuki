@@ -21,13 +21,12 @@
   <button class="brand" data-go="/" data-act='{"$":"Goto","name":null}'><i class="mark"></i><span>Kazuki</span></button>
   <span class="net">offline</span>
   <button class="imping" popovertarget="import" hidden><span></span><progress max="1" value="0"></progress></button>
-  <button class="credits" data-go="/account"></button>
   <button class="menu" popovertarget="menu">☰</button>
 </header>
 <main id="log"><div class="rows"></div><div class="tail"></div></main>
 <main id="account" hidden></main>
 <footer>
-  <div id="toast" hidden></div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
   <nav id="pick"></nav>
   <div id="pics" class="pics"></div>
   <form class="composer">
@@ -38,23 +37,17 @@
   <nav id="tabs"></nav>
   <p class="ai"></p>
 </footer>
-<!-- out of credit: what was refused, then credit to add (Html.credit_html) -->
-<div id="wallet" popover>
-  <p class="title"></p>
-</div>
 <div id="menu" popover>
   <button data-go="/account">Account</button>
   <button class="imp">Import History</button>
 </div>
-<!-- before an import or a payment, once per account (main.ts warned) -->
+<!-- before an import, once per account (main.ts warned) -->
 <div id="risk" popover="manual">
   <p class="title">⚠️ WARNING: use at your own risk</p>
   <ul>
     <li>Kazuki is <a href="/experimental.jpg" target="_blank">experimental</a>. Expect bugs.</li>
-    <li class="bill">Money you add may be lost. All of it.</li>
     <li>Your uploads may leak. Keep secrets out.</li>
-    <li class="bill">Billed by API use, not a subscription.</li>
-    <li>Served as is. No guarantees<span class="bill"> (<a href="/terms.html" target="_blank">Terms</a>)</span>.</li>
+    <li>Served as is. No guarantees.</li>
   </ul>
   <div class="acts"><button type="button" class="no">Cancel</button><button type="button" class="ok">I accept the risk</button></div>
 </div>
@@ -86,7 +79,6 @@
     </fieldset>
     <p class="found"></p>
     <p class="guess"></p>
-    <div class="topup"></div>
     <div class="acts"><button type="button" class="skip">Skip</button><button type="button" class="pickdir desk">Choose folder</button><button class="go" hidden>Import</button></div>
   </form>
   <section class="prog" hidden>
@@ -94,7 +86,6 @@
     <progress max="1" value="0"></progress>
     <p class="pct"></p>
     <p class="sub"></p>
-    <div class="topup"></div>
     <div class="acts"><button type="button" class="skip">Go to the chat</button><button type="button" class="go flow"></button></div>
   </section>
 </div>
