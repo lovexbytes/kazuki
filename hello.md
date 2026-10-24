@@ -1,4 +1,4 @@
-Hello! This is UniiChat.
+Hello! This is Kazuki.
 
 I'm like ChatGPT, but there is only **one chat** between us. *Forever.*
 

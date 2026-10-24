@@ -70,7 +70,7 @@ export type State = {
 // fold: the tops shown (null: not folded); nodes and whole: the summaries
 // ("id+n") and messages known; open: the blocks opened (true) or shut by
 // hand; minds: the thoughts after each message; pages: the agents' asked
-// for; page: the one shown (null: UniiChat's); the Link's: this view's
+// for; page: the one shown (null: Kazuki's); the Link's: this view's
 // id, acts not answered, socket (up: it showed the chat)
 export type View = State & {
   parts : Part[];
@@ -155,7 +155,7 @@ export type Act =
   | { $: "Open"; id: number; n: number }        // a click on a block
   | { $: "Shut"; id: number; n: number }        // a click on an open block's bar
   | { $: "Fold"; on: boolean }                  // fold all, unfold all
-  | { $: "Goto"; name: string | null }          // a tab, a name, the logo (null: UniiChat)
+  | { $: "Goto"; name: string | null }          // a tab, a name, the logo (null: Kazuki)
 
 // what a page draws, top to bottom
 export type Row =
@@ -184,10 +184,10 @@ export type Day = { date: string; what: string; usd: number };
 // Constants
 // =========
 
-export const MAIN = "UniiChat";
+export const MAIN = "Kazuki";
 
-// UniiChat's turn, as a stop names it among the agents at work
-export const TURN = "Unii's turn";
+// Kazuki's turn, as a stop names it among the agents at work
+export const TURN = "Kazuki's turn";
 
 // the messages' version, in a view's query; one more for each change an
 // older view would misread
@@ -208,11 +208,11 @@ export const MOVE  = 4001;
 // ~0.15 MB). A bigger one closes its socket (Server.ts)
 export const FRAME = 2 ** 22;
 
-export const HINT = "Message UniiChat";
+export const HINT = "Message Kazuki";
 
 // the disclosure both views show (EU AI Act art. 50, California SB 243,
 // New York GBL art. 47, Anthropic's usage policy)
-export const AI = "Unii is an AI, not a person, and can make mistakes.";
+export const AI = "Kazuki is an AI, not a person, and can make mistakes.";
 
 // the AI notice's period (ms)
 const NOTICE = 3 * 60 * 60 * 1000;
@@ -363,7 +363,7 @@ export function view_hear(v: View, msg: Server): Client[] {
       return [];
     }
     default: {
-      // a kind newer than this view: a unii runs the release it was
+      // a kind newer than this view: Kazuki runs the release it was
       // installed with (Term.ts), behind the server's
       return [];
     }
@@ -569,7 +569,7 @@ function view_learn(v: View, pack: Pack): void {
   }
 }
 
-// a message: on its agent's page, in Unii's chat, or, a thought (not
+// a message: on its agent's page, in Kazuki's chat, or, a thought (not
 // logged), after the last message
 function view_entry(v: View, msg: Server & { $: "entry" }): void {
   const { $, agent, id, ...entry } = msg;
@@ -711,7 +711,7 @@ function part_window(v: View, [id, n]: Part): number {
 
 // t: the turn; talk: whether talk opens by itself (not in Fold all). Open:
 // the person's choice (Open, Shut) if made, else a message of the user or
-// Unii (tool calls, reports and the rest stay folded)
+// Kazuki (tool calls, reports and the rest stay folded)
 function part_rows(v: View, id: number, n: number, t: number, talk: boolean): Row[] {
   const key   = id + "+" + n;
   const entry = v.whole.get(id);

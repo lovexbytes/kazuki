@@ -1,6 +1,6 @@
 // Agent
 // =====
-// claude-api, openai-api and openai-sub in Unii's own loop; a Wire
+// claude-api, openai-api and openai-sub in Kazuki's own loop; a Wire
 // (Anthropic.ts, OpenAI.ts, ChatGPT.ts) shapes requests and reads
 // streams. Each step sends every
 // item and streams one output; tool calls run in order, a message sent

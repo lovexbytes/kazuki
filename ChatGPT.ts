@@ -2,7 +2,7 @@
 // =======
 // The openai-sub vendor: a ChatGPT plan instead of an API key, signed in
 // and called as Codex CLI does (openai/codex: codex-rs login, codex-api).
-// `unii chatgpt` (or `bun ChatGPT.ts`) signs in as Codex's OAuth client,
+// `kazuki chatgpt` (or `bun ChatGPT.ts`) signs in as Codex's OAuth client,
 // by a device code typed at auth.openai.com/codex/device (no redirect
 // back to this computer: the server is often another). The tokens go to FILE
 // (config `chatgpt`), in Codex's auth.json shape, mode 600. Each request
@@ -65,7 +65,7 @@ const LIMITS: Record<string, string> = {
   insufficient_quota  : "is out of quota",
 };
 
-const SIGN_IN = "sign in again: `unii chatgpt` (or `bun ChatGPT.ts`) on the server";
+const SIGN_IN = "sign in again: `kazuki chatgpt` (or `bun ChatGPT.ts`) on the server";
 
 // the refresh under way in this process, which every call waits on
 let REFRESHING: Promise<Auth> | null = null;
@@ -274,7 +274,7 @@ export namespace ChatGPT {
     return (id.email ?? "an account") + (plan ? " (" + plan + " plan)" : "");
   }
 
-  // `unii chatgpt [logout]`
+  // `kazuki chatgpt [logout]`
   export async function cli(args: string[]): Promise<void> {
     if (args.includes("logout")) {
       console.log(await ChatGPT.logout());
@@ -304,7 +304,7 @@ export namespace ChatGPT {
       stream              : true,
       include             : ["reasoning.encrypted_content"],
       service_tier        : ask.speed === "fast" ? "priority" : undefined,
-      prompt_cache_key    : "unii-" + Bun.hash(JSON.stringify([ask.model, ask.system, ask.blocks[0]?.text ?? ""])).toString(36),
+      prompt_cache_key    : "kazuki-" + Bun.hash(JSON.stringify([ask.model, ask.system, ask.blocks[0]?.text ?? ""])).toString(36),
     };
   }
 
@@ -323,7 +323,7 @@ export namespace ChatGPT {
       "openai-beta"        : "responses=experimental",
       "content-type"       : "application/json",
       accept               : "text/event-stream",
-      originator           : "uniichat",
+      originator           : "kazuki",
     };
   }
 

@@ -80,16 +80,16 @@ const PART = 2 ** 20;
 export const APPS = ["Claude", "ChatGPT"];
 
 // sessions all imported before
-export const OLD = "Nothing new: these chats are in Unii's memory already.";
+export const OLD = "Nothing new: these chats are in Kazuki's memory already.";
 
 // a file given as a site's export that is none (import_export)
 const NOT_EXPORT = "Not a Claude or ChatGPT export.";
 
 // what a message sent while an import runs does (Memory.settle)
-export const MIDWAY = "Meanwhile, UniiChat can answer with a partial tree.";
+export const MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
 
 // an import's end, as it went
-export const DONE = "Your past chats are in Unii's memory: ask about them any time.";
+export const DONE = "Your past chats are in Kazuki's memory: ask about them any time.";
 
 // a session's day and count as listed (import_cells), made once
 const DAY   = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });

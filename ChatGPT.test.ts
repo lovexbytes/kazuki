@@ -13,7 +13,7 @@ import * as os from "node:os";
 // Fake
 // ====
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/unii-chatgpt-");
+const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-chatgpt-");
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -145,10 +145,10 @@ const server = Bun.serve({
   },
 });
 
-process.env.UNII_DIR = DIR;
-process.env.UNII_CHATGPT_ISSUER = "http://127.0.0.1:" + server.port;
-process.env.UNII_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex";
-process.env.UNII_VENDORS = "claude-api,openai-sub";
+process.env.KAZUKI_DIR = DIR;
+process.env.KAZUKI_CHATGPT_ISSUER = "http://127.0.0.1:" + server.port;
+process.env.KAZUKI_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex";
+process.env.KAZUKI_VENDORS = "claude-api,openai-sub";
 
 const config = await import("./Config.ts");
 const { ChatGPT } = await import("./ChatGPT.ts");

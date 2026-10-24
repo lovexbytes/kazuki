@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 
-process.env.UNII_DIR = fs.mkdtempSync(os.tmpdir() + "/unii-crash-");
+process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-crash-");
 
 const { Agent } = await import("./Agent.ts");
 const { Tools } = await import("./Tools.ts");

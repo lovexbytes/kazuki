@@ -154,7 +154,7 @@ export function account_html(a: View.Account, app: boolean): string {
     item("Delete account", "Erases chat and memory for good.", `<button class="chip red del">Delete</button>`),
   ];
   const account = section_html("Local data", acts.join("") + kill);
-  const links   = a.bills ? `<p class="foot"><a href="/pricing" target="_blank">Prices</a> · <a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="mailto:contact@higherorderco.com">Help</a></p>` : "";
+  const links   = "";
   return `<a class="back" href="/" data-go="/">← Chat</a><h1>Account</h1>` + money + account + links;
 }
 
@@ -241,7 +241,7 @@ function spans_html(spans: Md.Span[]): string {
 function span_html(s: Md.Span): string {
   switch (s.$) {
     case "Text": { // the name, in the brand's font
-      return esc(s.x).replaceAll("UniiChat", `<span class="brand">UniiChat</span>`);
+      return esc(s.x).replaceAll("Kazuki", `<span class="brand">Kazuki</span>`);
     }
     case "Code": {
       return `<code>${esc(s.x)}</code>`;

@@ -413,7 +413,7 @@ export namespace Memory {
   }
 
   // a message as models read it, tagged by its author: an imported chat's
-  // AI (its say and calls) is "ai", not Unii
+  // AI (its say and calls) is "ai", not Kazuki
   export function show(root: Root): string {
     const pics = (root.images ?? []).map((name) => "\n[image docs/images/" + name + "]");
     const who  = root.imported && (root.kind === "unii" || root.kind === "tool") ? "ai" : root.kind;
@@ -1126,7 +1126,7 @@ ${Memory.cut(line)}| ← LIMIT`;
     };
     const levels = Memory.levels(mem);
     const menu = ["VIEW", "ROOT", ...levels.map((l) => "LVL" + l)].map((name) => `<a href="#${name}">${name}</a>`);
-    yield `<!doctype html><meta charset="utf-8"><title>UniiChat memory</title>
+    yield `<!doctype html><meta charset="utf-8"><title>Kazuki memory</title>
 <style>
 body { font: 13px/1.4 ui-monospace, monospace; margin: 2em; } nav a { margin-right: 1em; }
 section { display: none; } section:target { display: block; }

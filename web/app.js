@@ -313,10 +313,10 @@ var NODE = 512;
 var LINE = 480;
 var PRICE = { base: 187, byte: 735, depth: 628 };
 var PART = 1048576;
-var OLD = "Nothing new: these chats are in Unii's memory already.";
+var OLD = "Nothing new: these chats are in Kazuki's memory already.";
 var NOT_EXPORT = "Not a Claude or ChatGPT export.";
-var MIDWAY = "Meanwhile, UniiChat can answer with a partial tree.";
-var DONE = "Your past chats are in Unii's memory: ask about them any time.";
+var MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
+var DONE = "Your past chats are in Kazuki's memory: ask about them any time.";
 var DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });
 var COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
 var EXPORTS = { Claude: "Settings \u203A Privacy \u203A Export data", ChatGPT: "Settings \u203A Data controls \u203A Export data" };
@@ -1344,15 +1344,15 @@ var BROKE = "out of credit";
 var PACE = 0.0001;
 var OPENING = 2;
 var SUMMARIES = "summaries";
-var MAIN = "UniiChat";
-var TURN = "Unii's turn";
+var MAIN = "Kazuki";
+var TURN = "Kazuki's turn";
 var WIRE = 2;
 var PING = 1e4;
 var RETRY = 1000;
 var TICK = "+";
 var MOVE = 4001;
-var HINT = "Message UniiChat";
-var AI = "Unii is an AI, not a person, and can make mistakes.";
+var HINT = "Message Kazuki";
+var AI = "Kazuki is an AI, not a person, and can make mistakes.";
 var NOTICE = 10800000;
 var WAIT = "compressing\u2026";
 var SUMS = "compressing earlier messages\u2026";
@@ -1465,7 +1465,7 @@ function account_html(a, app) {
     item("Delete account", "Erases chat and memory for good.", `<button class="chip red del">Delete</button>`)
   ];
   const account = section_html("Local data", acts.join("") + kill);
-  const links = a.bills ? `<p class="foot"><a href="/pricing" target="_blank">Prices</a> \xB7 <a href="/terms.html" target="_blank">Terms</a> \xB7 <a href="/privacy.html" target="_blank">Privacy</a> \xB7 <a href="mailto:contact@higherorderco.com">Help</a></p>` : "";
+  const links = "";
   return `<a class="back" href="/" data-go="/">\u2190 Chat</a><h1>Account</h1>` + money + account + links;
 }
 var section_html = function(title, body) {
@@ -1538,7 +1538,7 @@ var spans_html = function(spans) {
 var span_html = function(s) {
   switch (s.$) {
     case "Text": {
-      return esc(s.x).replaceAll("UniiChat", `<span class="brand">UniiChat</span>`);
+      return esc(s.x).replaceAll("Kazuki", `<span class="brand">Kazuki</span>`);
     }
     case "Code": {
       return `<code>${esc(s.x)}</code>`;
@@ -1569,7 +1569,7 @@ var $ = function(sel) {
   return document.querySelector(sel);
 };
 var kept = function(fact) {
-  return "unii." + fact + "." + P.id;
+  return "kazuki." + fact + "." + P.id;
 };
 async function boot() {
   document.head.insertAdjacentHTML("beforeend", `<style>${theme_css()}</style>`);
@@ -1739,7 +1739,7 @@ async function mic() {
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
   if (stream === null) {
-    toast("UniiChat can't use the microphone.");
+    toast("Kazuki can't use the microphone.");
     return;
   }
   const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -2260,10 +2260,10 @@ var toast = function(text) {
 };
 var intro_play = function() {
   const skip = new URLSearchParams(location.search).has("skip");
-  if (localStorage.getItem("unii.intro") !== null || skip) {
+  if (localStorage.getItem("kazuki.intro") !== null || skip) {
     return Promise.resolve();
   }
-  localStorage.setItem("unii.intro", "1");
+  localStorage.setItem("kazuki.intro", "1");
   const el = document.createElement("div");
   return new Promise((gone) => {
     function end() {
@@ -2289,14 +2289,14 @@ var intro_play = function() {
     document.documentElement.append(el);
   });
 };
-var APP = window.webkit?.messageHandlers?.unii ?? null;
+var APP = window.webkit?.messageHandlers?.kazuki ?? null;
 var DESK = matchMedia("(hover: hover)");
 var NONE = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
 var PAYING = "Waiting for your payment in the new tab\u2026";
-var PAID = new BroadcastChannel("unii.paid");
+var PAID = new BroadcastChannel("kazuki.paid");
 var SCENES = `
   <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
-  <div class="scene"><i class="mark"></i><h1>UniiChat</h1></div>`;
+  <div class="scene"><i class="mark"></i><h1>Kazuki</h1></div>`;
 var v = view_new();
 var BOX = $("textarea");
 var BACK = $("#import [name=back]");

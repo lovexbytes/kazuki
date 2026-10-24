@@ -1,5 +1,5 @@
 {
-  "name": "uniichat",
+  "name": "kazuki",
   "private": true,
   "scripts": {
     "test": "bun test --isolate",

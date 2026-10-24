@@ -47,8 +47,8 @@ jobs:
           set -euo pipefail
           tag=${GITHUB_REF_NAME}
           [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          bun build --compile Term.ts --target=${{ matrix.target }} --outfile unii
-          test "$(./unii version)" = "unii ${tag#v}"
+          bun build --compile Term.ts --target=${{ matrix.target }} --outfile kazuki
+          test "$(./kazuki version)" = "kazuki ${tag#v}"
       - name: Smoke outside checkout
         shell: bash
         run: |
@@ -56,11 +56,11 @@ jobs:
           work=$(mktemp -d)
           pid=
           trap 'test -z "$pid" || kill "$pid" 2>/dev/null || true; rm -rf "$work"' EXIT
-          cp unii "$work/unii"
+          cp kazuki "$work/kazuki"
           cd "$work"
-          export UNII_HOME="$work/home" UNII_DIR="$work/data" UNII_NO_TELEMETRY=1 UNII_SITE=http://127.0.0.1:9876
-          mkdir -p "$UNII_HOME" "$UNII_DIR"
-          ./unii serve 9876 >server.log 2>&1 &
+          export KAZUKI_DIR="$work/data" KAZUKI_SITE=http://127.0.0.1:9876
+          mkdir -p "$KAZUKI_DIR"
+          ./kazuki serve 9876 >server.log 2>&1 &
           pid=$!
           for n in {1..100}; do curl -fsS http://127.0.0.1:9876/ >/dev/null && break; sleep .05; done
           curl -fsS http://127.0.0.1:9876/ >/dev/null
@@ -69,11 +69,11 @@ jobs:
           kill "$pid"
           wait "$pid" || true
       - name: Archive binary
-        run: tar -czf unii-${{ matrix.platform }}.tar.gz unii
+        run: tar -czf kazuki-${{ matrix.platform }}.tar.gz kazuki
       - uses: actions/upload-artifact@v4
         with:
-          name: unii-${{ matrix.platform }}
-          path: unii-${{ matrix.platform }}.tar.gz
+          name: kazuki-${{ matrix.platform }}
+          path: kazuki-${{ matrix.platform }}.tar.gz
           if-no-files-found: error
 
   release:
@@ -96,7 +96,7 @@ jobs:
           [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           shopt -s nullglob
           assets=(artifacts/*/*.tar.gz)
-          expected=(unii-darwin-aarch64.tar.gz unii-darwin-x64-baseline.tar.gz unii-linux-aarch64.tar.gz unii-linux-x64-baseline.tar.gz)
+          expected=(kazuki-darwin-aarch64.tar.gz kazuki-darwin-x64-baseline.tar.gz kazuki-linux-aarch64.tar.gz kazuki-linux-x64-baseline.tar.gz)
           test ${#assets[@]} -eq ${#expected[@]}
           for name in "${expected[@]}"; do
             matches=(artifacts/*/"$name")

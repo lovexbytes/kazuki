@@ -2,9 +2,9 @@
 # Download a verified release when one exists, then install only its result.
 set -eu
 
-die() { echo "unii install: $*" >&2; exit 1; }
+die() { echo "kazuki install: $*" >&2; exit 1; }
 valid_tag() { printf '%s\n' "$1" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; }
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/unii.XXXXXX") || die "could not make temporary directory"
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/kazuki.XXXXXX") || die "could not make temporary directory"
 stage=
 trap 'rm -rf "$tmp"; [ -z "$stage" ] || rm -f "$stage"' EXIT HUP INT TERM
 
@@ -19,7 +19,7 @@ case $(uname -m) in
   *) die "unsupported CPU: $(uname -m)" ;;
 esac
 
-repo=https://github.com/lovexbytes/uniichat
+repo=https://github.com/lovexbytes/kazuki
 latest=$(curl -fsSL -o /dev/null -w '%{url_effective}' "$repo/releases/latest") || die "could not find the latest release"
 case "$latest" in
   "$repo/releases") release= ;;
@@ -32,7 +32,7 @@ case "$latest" in
 esac
 
 if [ -n "$release" ]; then
-  archive="unii-$platform-$arch.tar.gz"
+  archive="kazuki-$platform-$arch.tar.gz"
   base="$repo/releases/download/$release"
   sums="$tmp/SHA256SUMS"
   tarball="$tmp/$archive"
@@ -46,7 +46,7 @@ if [ -n "$release" ]; then
   extract="$tmp/extract"
   mkdir "$extract" || die "could not make extraction directory"
   tar -xzf "$tarball" -C "$extract" || die "could not extract $archive"
-  out="$extract/unii"
+  out="$extract/kazuki"
   [ -f "$out" ] && [ ! -L "$out" ] && [ -x "$out" ] || die "$archive was incomplete"
 else
   # Ponytail: source fallback lasts only until the first verified release.
@@ -66,23 +66,23 @@ else
   [ -x "$bun" ] || die "Bun archive was incomplete"
   src="$tmp/source"
   mkdir "$src" || die "could not make source directory"
-  curl -fLsS -o "$tmp/source.tar.gz" https://codeload.github.com/lovexbytes/uniichat/tar.gz/refs/heads/main || die "could not download source"
+  curl -fLsS -o "$tmp/source.tar.gz" https://codeload.github.com/lovexbytes/kazuki/tar.gz/refs/heads/main || die "could not download source"
   tar -xzf "$tmp/source.tar.gz" --strip-components=1 -C "$src" || die "could not extract source"
   [ -f "$src/Term.ts" ] && [ -f "$src/web/app.js" ] || die "source archive was incomplete"
-  out="$tmp/unii"
-  "$bun" build --compile "$src/Term.ts" --outfile "$out" || die "could not compile unii"
+  out="$tmp/kazuki"
+  "$bun" build --compile "$src/Term.ts" --outfile "$out" || die "could not compile kazuki"
   [ -f "$out" ] || die "compile produced no executable"
 fi
 
 bin="$HOME/.local/bin"
-target="$bin/unii"
+target="$bin/kazuki"
 [ ! -L "$target" ] || die "$target is a symlink"
 [ ! -e "$target" ] || [ -f "$target" ] || die "$target is not a regular file"
 mkdir -p "$bin" || die "could not create $bin"
-stage=$(mktemp "$bin/.unii.XXXXXX") || die "could not prepare installation"
+stage=$(mktemp "$bin/.kazuki.XXXXXX") || die "could not prepare installation"
 chmod 755 "$out" || die "could not prepare executable"
 mv "$out" "$stage" || die "could not stage executable"
 mv -f "$stage" "$target" || die "could not install $target"
 stage=
-echo "Installed unii at $target"
-case ":$PATH:" in *":$bin:"*) ;; *) echo "Add $bin to PATH to run unii." ;; esac
+echo "Installed kazuki at $target"
+case ":$PATH:" in *":$bin:"*) ;; *) echo "Add $bin to PATH to run kazuki." ;; esac

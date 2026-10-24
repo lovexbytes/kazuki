@@ -1,8 +1,8 @@
 // Config
 // ======
-// The server's settings. Its DIR ($UNII_DIR, default ~/.unii) holds
+// The server's settings. Its DIR ($KAZUKI_DIR, default ~/.kazuki) holds
 // config.json, the lock and users/<id>. Each key of config.json (README)
-// may be set as UNII_<KEY> instead; a path may start with "~/". The keys
+// may be set as KAZUKI_<KEY> instead; a path may start with "~/". The keys
 // are read from the environment and removed from it, so no program an
 // agent runs inherits them, and put back for the workers.
 
@@ -14,7 +14,7 @@ import { LABELS, VENDORS, Pick, type Offer } from "./Pick.ts";
 // Constants
 // =========
 
-export const DIR = config_path(process.env.UNII_DIR ?? "~/.unii");
+export const DIR = config_path(process.env.KAZUKI_DIR ?? "~/.kazuki");
 
 const PATH = DIR + "/config.json";
 const FILE: Record<string, string> = fs.existsSync(PATH) ? JSON.parse(fs.readFileSync(PATH, "utf8")) : {};
@@ -40,7 +40,7 @@ export const WORKERS    = Number(config_get("workers", "0"));
 export const CHATGPT    = config_path(config_get("chatgpt", DIR + "/chatgpt.json"));
 
 // the iOS app (ios/, Cloud.ts): its App ID, the team's then the bundle's
-// ("TEAM.com.example.uniichat"), whose app sign-in links open; and
+// ("TEAM.com.example.kazuki"), whose app sign-in links open; and
 // the id of the key its pushes are signed with (APNS_KEY holds the key)
 export const APPLE      = config_get("apple", "");
 export const APNS       = config_get("apns", "");
@@ -57,7 +57,7 @@ export const KEYS: Record<string, string> = Object.fromEntries(Object.entries(VA
 // ======
 
 export function config_get(key: string, def: string): string {
-  return process.env["UNII_" + key.toUpperCase()] ?? FILE[key] ?? def;
+  return process.env["KAZUKI_" + key.toUpperCase()] ?? FILE[key] ?? def;
 }
 
 function config_path(path: string): string {

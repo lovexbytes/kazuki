@@ -1,4 +1,4 @@
-// UniiChat (the site)
+// Kazuki (the site)
 // ===================
 // The page around View.ts's chat: the server's messages go to
 // View.view_hear, a click's `data-act` (Html.ts) to View.view_act, and
@@ -28,7 +28,7 @@ type Read = { sessions: Import.Session[]; moved: number };
 // =========
 
 // the iOS app's bridge (ios/), in its web view only
-const APP = (window as any).webkit?.messageHandlers?.unii ?? null;
+const APP = (window as any).webkit?.messageHandlers?.kazuki ?? null;
 
 // a page with a hover has a keyboard of its own; on a touch screen,
 // Enter types a new line (the arrow sends), and the page never focuses
@@ -41,12 +41,12 @@ const PAYING = "Waiting for your payment in the new tab…";
 
 // an import's payment, its tab back from checkout (?paid=tab), tells the
 // import's tab at once (a hidden tab's timers may wait a minute)
-const PAID = new BroadcastChannel("unii.paid");
+const PAID = new BroadcastChannel("kazuki.paid");
 
 // the intro's scenes: two lines, then the logo above the name
 const SCENES = `
   <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
-  <div class="scene"><i class="mark"></i><h1>UniiChat</h1></div>`;
+  <div class="scene"><i class="mark"></i><h1>Kazuki</h1></div>`;
 
 // the chat
 const v = View.view_new();
@@ -86,7 +86,7 @@ function $<T extends HTMLElement>(sel: string): T {
 // reload or a top-up's trip to Stripe keeps it); "welcomed", offered the
 // import; "risked", the risk accepted
 function kept(fact: string): string {
-  return "unii." + fact + "." + P.id;
+  return "kazuki." + fact + "." + P.id;
 }
 
 // Boot
@@ -272,7 +272,7 @@ async function mic(): Promise<void> {
   }
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
   if (stream === null) {
-    toast("UniiChat can't use the microphone.");
+    toast("Kazuki can't use the microphone.");
     return;
   }
   const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -928,10 +928,10 @@ function toast(text: string): void {
 
 function intro_play(): Promise<void> {
   const skip = new URLSearchParams(location.search).has("skip");
-  if (localStorage.getItem("unii.intro") !== null || skip) {
+  if (localStorage.getItem("kazuki.intro") !== null || skip) {
     return Promise.resolve();
   }
-  localStorage.setItem("unii.intro", "1");
+  localStorage.setItem("kazuki.intro", "1");
   const el = document.createElement("div");
   return new Promise((gone) => {
     function end(): void {

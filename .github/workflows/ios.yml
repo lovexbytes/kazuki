@@ -1,15 +1,14 @@
 # The iOS app (ios/), built on GitHub's macOS runners; run by hand
 # (Actions > ios > Run workflow).
 # `shots`: a simulator build, its screenshots kept as the artifact
-# `shots`. `testflight`: signed with the team's App Store Connect key
-# (repo secrets) and uploaded to TestFlight, numbered by the run.
+# `shots`. The iOS source is unshipped.
 name: ios
 on:
   workflow_dispatch:
     inputs:
       lane:
         type: choice
-        options: [shots, testflight]
+        options: [shots]
         default: shots
 jobs:
   ios:
@@ -29,11 +28,3 @@ jobs:
         with:
           name: shots
           path: ${{ runner.temp }}/shots
-      - if: inputs.lane == 'testflight'
-        run: ios/ios.sh testflight
-        env:
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY: ${{ secrets.ASC_KEY }}
-          BUILD: ${{ github.run_number }}

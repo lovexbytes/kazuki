@@ -1,20 +1,20 @@
 import { afterAll, expect, test } from "bun:test";
 import * as fs from "node:fs";
 
-process.env.UNII_DIR = fs.mkdtempSync("/tmp/cloud-test-");
+process.env.KAZUKI_DIR = fs.mkdtempSync("/tmp/cloud-test-");
 const { Cloud, LOCAL } = await import("./Cloud.ts");
 
 function cloud_new() {
-  fs.rmSync(process.env.UNII_DIR ?? "", { recursive: true, force: true });
-  fs.mkdirSync(process.env.UNII_DIR ?? "", { recursive: true });
+  fs.rmSync(process.env.KAZUKI_DIR ?? "", { recursive: true, force: true });
+  fs.mkdirSync(process.env.KAZUKI_DIR ?? "", { recursive: true });
   return Cloud.open(() => {});
 }
 
-afterAll(() => fs.rmSync(process.env.UNII_DIR ?? "", { recursive: true, force: true }));
+afterAll(() => fs.rmSync(process.env.KAZUKI_DIR ?? "", { recursive: true, force: true }));
 
 test("Cloud always resolves the stable local user", () => {
   const cloud = cloud_new();
-  const req = new Request("http://127.0.0.1/api/me", { headers: { authorization: "Bearer ignored", cookie: "unii=ignored" } });
+  const req = new Request("http://127.0.0.1/api/me", { headers: { authorization: "Bearer ignored", cookie: "kazuki=ignored" } });
   expect(Cloud.who(cloud, req)).toEqual(LOCAL);
   expect(Cloud.user(cloud, "local")).toEqual(LOCAL);
   expect(Cloud.user(cloud, "1")).toBeNull();

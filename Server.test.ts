@@ -24,10 +24,10 @@ async function unused_port(): Promise<number> {
 // `./Server.ts <port>` on a fresh dir, with `env`: its answer to `path`,
 // read whole, once it answers
 async function server_get(port: number, env: Record<string, string>, path: string, headers?: HeadersInit): Promise<Response> {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/unii-server-");
+  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-");
   const site = "http://127.0.0.1:" + port;
   const proc = Bun.spawn([process.execPath, import.meta.dir + "/Server.ts", String(port)], {
-    env    : { ...process.env, UNII_DIR: dir, UNII_SITE: site, ...env },
+    env    : { ...process.env, KAZUKI_DIR: dir, KAZUKI_SITE: site, ...env },
     stdout : "ignore",
     stderr : "inherit",
   });
@@ -54,13 +54,13 @@ test("Server.ts alone serves the page", async () => {
 
 test("the compiled terminal manages its local server separately from its TUI", async () => {
   const scratch = os.tmpdir() + "/";
-  const dir = fs.mkdtempSync(scratch + "unii-terminal-");
+  const dir = fs.mkdtempSync(scratch + "kazuki-terminal-");
   fs.mkdirSync(dir + "/home");
-  const bin = dir + "/unii";
+  const bin = dir + "/kazuki";
   const data = dir + "/data";
   const port = await unused_port();
   const site = "http://127.0.0.1:" + port;
-  const env = { ...process.env, UNII_DIR: data, UNII_HOME: dir + "/home", UNII_URL: "http://localhost:" + port, UNII_SITE: site, UNII_NO_TELEMETRY: "1" };
+  const env = { ...process.env, KAZUKI_DIR: data, KAZUKI_URL: "http://localhost:" + port, KAZUKI_SITE: site };
   let absent: Bun.Subprocess | undefined;
   let proc: Bun.Subprocess | undefined;
   let tui: Bun.Subprocess | undefined;
@@ -95,20 +95,20 @@ test("the compiled terminal manages its local server separately from its TUI", a
     expect(install.status).toBe(200);
     const script = await install.text();
     expect(script).toContain("releases/latest");
-    expect(script).not.toContain("uniichat.com/install.sh");
+    expect(script).not.toContain("example.invalid/install.sh");
     fs.mkdirSync(dir + "/fake");
     fs.writeFileSync(dir + "/fake/curl", "#!/bin/sh\nexit 7\n", { mode: 0o755 });
     update = Bun.spawn([bin, "update"], { cwd: dir, env: { ...env, PATH: dir + "/fake" }, stdout: "ignore", stderr: "pipe" });
     const update_err = await new Response(update.stderr).text();
     await update.exited;
     expect(update.exitCode).toBe(7);
-    expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/uniichat/main/install.sh");
+    expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh");
     tui = Bun.spawn([bin, "tui"], { cwd: dir, env, stdin: "pipe", stdout: "ignore", stderr: "pipe" });
     tui.stdin.write("/quit\n");
     await Promise.race([tui.exited, Bun.sleep(5000).then(() => { throw new Error("TUI did not exit"); })]);
     expect(tui.exitCode).toBe(0);
     expect((await fetch(site + "/api/me")).status).toBe(200);
-    v6 = Bun.spawn([bin, "server"], { cwd: dir, env: { ...env, UNII_URL: "http://[::1]:" + port }, stdout: "ignore", stderr: "pipe" });
+    v6 = Bun.spawn([bin, "server"], { cwd: dir, env: { ...env, KAZUKI_URL: "http://[::1]:" + port }, stdout: "ignore", stderr: "pipe" });
     await Promise.race([v6.exited, Bun.sleep(3000).then(() => { throw new Error("IPv6 alias server command did not return"); })]);
     expect(v6.exitCode).toBe(0);
     expect((await fetch(site + "/api/me")).status).toBe(200);
@@ -125,19 +125,19 @@ test("the compiled terminal manages its local server separately from its TUI", a
 });
 
 test("the installer accepts a verified release and preserves a target on checksum failure", () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/unii-install-");
+  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-install-");
   const fixture = dir + "/fixture";
   const home = dir + "/home";
   const fake = dir + "/fake";
   const platform = process.platform === "darwin" ? "darwin" : "linux";
   const arch = process.arch === "arm64" ? "aarch64" : "x64-baseline";
-  const asset = `unii-${platform}-${arch}.tar.gz`;
+  const asset = `kazuki-${platform}-${arch}.tar.gz`;
   const archive = fixture + "/" + asset;
   try {
     fs.mkdirSync(fixture);
     fs.mkdirSync(fake);
-    fs.writeFileSync(fixture + "/unii", "#!/bin/sh\necho fixture\n", { mode: 0o755 });
-    expect(Bun.spawnSync(["tar", "-czf", archive, "unii"], { cwd: fixture }).exitCode).toBe(0);
+    fs.writeFileSync(fixture + "/kazuki", "#!/bin/sh\necho fixture\n", { mode: 0o755 });
+    expect(Bun.spawnSync(["tar", "-czf", archive, "kazuki"], { cwd: fixture }).exitCode).toBe(0);
     const digest = Bun.spawnSync(["shasum", "-a", "256", archive]).stdout.toString().split(/\s/)[0];
     fs.writeFileSync(fixture + "/SHA256SUMS", `${digest}  ${asset}\n`);
     fs.writeFileSync(fake + "/curl", `#!/bin/sh
@@ -153,10 +153,10 @@ case "$url" in
   *) exit 7 ;;
 esac
 `, { mode: 0o755 });
-    const env = { ...process.env, HOME: home, TMPDIR: dir, PATH: fake + ":" + process.env.PATH, FIXTURE: fixture, ARCHIVE: archive, LATEST: "https://github.com/lovexbytes/uniichat/releases/tag/v1.0.138" };
+    const env = { ...process.env, HOME: home, TMPDIR: dir, PATH: fake + ":" + process.env.PATH, FIXTURE: fixture, ARCHIVE: archive, LATEST: "https://github.com/lovexbytes/kazuki/releases/tag/v1.0.138" };
     let run = Bun.spawnSync(["sh", import.meta.dir + "/install.sh"], { env, stdout: "ignore", stderr: "pipe" });
     expect(run.exitCode).toBe(0);
-    const target = home + "/.local/bin/unii";
+    const target = home + "/.local/bin/kazuki";
     expect(fs.readFileSync(target, "utf8")).toContain("fixture");
     fs.writeFileSync(target, "keep me\n", { mode: 0o755 });
     fs.writeFileSync(fixture + "/SHA256SUMS", `${"0".repeat(64)}  ${asset}\n`);
@@ -169,8 +169,8 @@ esac
 });
 
 test("with workers, Server.ts routes to them", async () => {
-  const res = await server_get(9471, { UNII_WORKERS: "2" }, "/");
-  expect(res.headers.get("x-unii-worker")).toMatch(/^127\.0\.0\.1:947[23]$/);
+  const res = await server_get(9471, { KAZUKI_WORKERS: "2" }, "/");
+  expect(res.headers.get("x-kazuki-worker")).toMatch(/^127\.0\.0\.1:947[23]$/);
   expect(await res.text()).toBe("");
 });
 
@@ -205,9 +205,9 @@ process.exit(0);
 `;
 
 test("a turn's wait names the model it runs on, not one picked since", async () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/unii-server-");
+  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-");
   fs.writeFileSync(dir + "/turn.ts", TURN);
-  const proc = Bun.spawn([process.execPath, dir + "/turn.ts"], { env: { ...process.env, UNII_DIR: dir }, stdout: "pipe", stderr: "inherit" });
+  const proc = Bun.spawn([process.execPath, dir + "/turn.ts"], { env: { ...process.env, KAZUKI_DIR: dir }, stdout: "pipe", stderr: "inherit" });
   const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
   expect(out.model).toMatch(/\w/);
   expect(out.to).not.toBe(out.model);

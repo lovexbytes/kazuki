@@ -1,6 +1,6 @@
 // Share
 // =====
-// UniiChat in the share sheet: a page, a text or images shared go to
+// Kazuki in the share sheet: a page, a text or images shared go to
 // the chat as one message, under a note typed above them: one post to
 // /api/act, the site's say act (its id made once, so a Send tapped again
 // is taken once; its images, sizes given, then its text), with the app's
@@ -47,7 +47,7 @@ struct Compose: View {
           Text(error).foregroundStyle(.red)
         }
       }
-      .navigationTitle("UniiChat")
+      .navigationTitle("Kazuki")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {

@@ -1,4 +1,4 @@
-// UniiChat for iOS
+// Kazuki for iOS
 // ================
 // The site (Site.swift) in a web view, and what only an app does there:
 //
@@ -9,7 +9,7 @@
 // - Export Memory's download goes to the share sheet; the site's prompt()
 //   (Delete account asks the name) is an alert.
 // - Credit is bought through the App Store, the only payment it allows in
-//   an app: the page asks the bridge (`unii`, web/src/main.ts) for
+//   an app: the page asks the bridge (`kazuki`, web/src/main.ts) for
 //   `credits.<dollars>`, StoreKit sells it for the account signed in
 //   (appAccountToken: its id), and its signed transaction goes to the
 //   server (/api/apple), which grants it once; it is finished only once
@@ -24,7 +24,7 @@ import UserNotifications
 import WebKit
 
 @main
-struct Unii: App {
+struct Kazuki: App {
 
   @UIApplicationDelegateAdaptor private var phone: Phone
 
@@ -79,7 +79,7 @@ final class Page: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageH
     conf.allowsInlineMediaPlayback = true
     web = WKWebView(frame: .zero, configuration: conf)
     super.init()
-    web.configuration.userContentController.add(self, name: "unii")
+    web.configuration.userContentController.add(self, name: "kazuki")
     web.navigationDelegate = self
     web.uiDelegate = self
     web.load(URLRequest(url: Site.url))

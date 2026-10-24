@@ -1,21 +1,20 @@
 #!/usr/bin/env bun
 // Term
 // ====
-// `unii`: a terminal view of the agent (Server.ts) and, while open, a
+// `kazuki`: a terminal view of the agent (Server.ts) and, while open, a
 // device its tools reach (DEVICE). It feeds a View the server's messages
 // and the person's acts, and prints what it says (Paint.ts, Screen.ts)
 // into the terminal's own scrollback. Every act of the site is a command
 // here (COMMANDS, /help). The agent's jobs run here (Machine.ts) until
-// done or halted; all they left running dies as this unii quits. From a
+// done or halted; all they left running dies as this kazuki quits. From a
 // pipe, each line is a message.
 //
-// One executable per platform (install.sh fetches it); once a day it
-// asks bend-lang.com's /check (update_check) and
-// notes a newer one. `unii serve` runs the server it carries. The server:
-// the url given, else $UNII_URL, else the local server at 127.0.0.1:8788.
-// `unii update` without a url uses this repository's installer.
+// One executable per platform (install.sh fetches it). `kazuki serve` runs the
+// server it carries. The server:
+// the url given, else $KAZUKI_URL, else the local server at 127.0.0.1:8788.
+// `kazuki update` without a url uses this repository's installer.
 //
-// Usage: USAGE (`unii help` prints it).
+// Usage: USAGE (`kazuki help` prints it).
 
 import * as child from "node:child_process";
 import * as fs from "node:fs";
@@ -32,7 +31,7 @@ import * as View from "./View.ts";
 // =====
 
 // the terminal: jobs running here; ended: input's; pending: commands at
-// work; last: UniiChat's message printed last (-1: none); wait: parts up
+// work; last: Kazuki's message printed last (-1: none); wait: parts up
 // to it not printed (term_settle); out: lines to print; wipe: first;
 // due: a paint; settle: the page's print at a new size; imgs: for the
 // next message; flow: how much of each message streaming is printed
@@ -62,7 +61,7 @@ type Cmd = [use: string, keys: string, text: string, run: (t: Term, arg: string)
 // Constants
 // =========
 
-// this unii's version: each release ships one, a new one for every
+// this kazuki's version: each release ships one, a new one for every
 // change to Term.ts or what it imports
 const VERSION = "0.0.1";
 
@@ -79,41 +78,28 @@ const SUB    = ARGS.includes("chatgpt");
 const WORDS  = ["help", "--help", "-h", "version", "update", "serve", "server", "tui", "web", "chatgpt", ...(SUB ? ["logout"] : [])];
 const WEB    = /^https?:\/\//;
 const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
-const HOME   = process.env.UNII_HOME || os.homedir() + "/.unii";
-const OURS   = "https://uniichat.com";
-const INSTALL = "https://raw.githubusercontent.com/lovexbytes/uniichat/main/install.sh";
+const INSTALL = "https://raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh";
 const REMOTE = ARGS.find((a) => WEB.test(a));
-const SERVER = (REMOTE ?? process.env.UNII_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
+const SERVER = (REMOTE ?? process.env.KAZUKI_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
 
-const USAGE = `Usage: unii [url]           the chat (url: $UNII_URL, else http://127.0.0.1:8788)
-       unii server          start its local server in the background
-       unii tui             open the local server in this terminal
-       unii web             start the local server and open it in a browser
-       unii update [url]    install the latest unii (curl | sh, shown first)
-       unii version         this unii's version
-       unii serve [port]    your own UniiChat server, at http://127.0.0.1:8788
-                            (another port: set UNII_SITE to its address too),
+const USAGE = `Usage: kazuki [url]           the chat (url: $KAZUKI_URL, else http://127.0.0.1:8788)
+       kazuki server          start its local server in the background
+       kazuki tui             open the local server in this terminal
+       kazuki web             start the local server and open it in a browser
+       kazuki update [url]    install the latest kazuki (curl | sh, shown first)
+       kazuki version         this kazuki's version
+       kazuki serve [port]    your own Kazuki server, at http://127.0.0.1:8788
+                            (another port: set KAZUKI_SITE to its address too),
                             on your ANTHROPIC_API_KEY and OPENAI_API_KEY;
-                            chat with it: unii http://127.0.0.1:8788
-       unii chatgpt         sign the server unii serve runs here in to a
+                            chat with it: kazuki http://127.0.0.1:8788
+       kazuki chatgpt         sign the server kazuki serve runs here in to a
                             ChatGPT plan (its openai-sub vendor), by a
                             code entered in any browser
-       unii chatgpt logout  sign it out
-       unii help            this
-UNII_WORK: where the agent works on this computer (default
-~/.unii/work). UNII_COMPUTER=1: it may use the screen. UNII_HOME: where
-it keeps telemetry state (default ~/.unii).
-Once a day, unii asks bend-lang.com for the latest version, sending only
-its version, OS and CPU type, and whether this computer ever ran its own
-server. UNII_NO_TELEMETRY=1 turns that off.
+       kazuki chatgpt logout  sign it out
+       kazuki help            this
+KAZUKI_WORK: where the agent works on this computer (default
+~/.kazuki/work). KAZUKI_COMPUTER=1: it may use the screen.
 In the chat, /help lists every command and key.`;
-
-// the daily version check: what it asks, its cache, and the self-host
-// flag: a file made once this computer serves or opens a server not OURS
-const CHECK   = "https://bend-lang.com/check?p=unii&v=" + VERSION + "&os=" + process.platform + "&arch=" + process.arch;
-const CHECKED = HOME + "/check.json";
-const SELF    = HOME + "/self";
-const DAY     = 86400000;
 
 // this device's name, as the agent sees it: on macOS its local host name
 // (Bonjour's, unique on its network), else the host's
@@ -122,10 +108,10 @@ const DEVICE = LOCAL || os.hostname();
 
 // where the agent's tools work on this device: in WORK/main (the agent)
 // and WORK/<name> (each subagent)
-const WORK = process.env.UNII_WORK || "~/.unii/work";
+const WORK = process.env.KAZUKI_WORK || "~/.kazuki/work";
 
 // whether the agent may use this device's screen, mouse and keyboard
-const COMPUTER = process.env.UNII_COMPUTER === "1";
+const COMPUTER = process.env.KAZUKI_COMPUTER === "1";
 
 // the margin left of each line
 const MARGIN = 2;
@@ -168,17 +154,17 @@ function term_groups(v: View.View): [group: string, cmds: Cmd[]][] {
   const topup: Cmd[] = v.bills ? [["/topup <usd>", "", "add Bend Credits, paid in the browser", term_topup]] : [];
   return [
     ["Chat", [
-      ["",                  "Enter",                   "send; on an empty input, interrupt UniiChat",    term_enter],
-      ["",                  "Esc",                     "interrupt UniiChat's turn; agents go on",        (t) => term_act(t, { $: "Send", text: "" })],
+      ["",                  "Enter",                   "send; on an empty input, interrupt Kazuki",    term_enter],
+      ["",                  "Esc",                     "interrupt Kazuki's turn; agents go on",        (t) => term_act(t, { $: "Send", text: "" })],
       ["",                  "Ctrl+C, Ctrl+D",          "clear; on an empty input, interrupt, quit",      term_clear],
-      ["/goal <message>",   "",                        "send a message as the goal: at each turn's end, UniiChat asks itself if it is met, and goes on till it is", (t, a) => term_act(t, { $: "Send", text: "/goal " + a })],
+      ["/goal <message>",   "",                        "send a message as the goal: at each turn's end, Kazuki asks itself if it is met, and goes on till it is", (t, a) => term_act(t, { $: "Send", text: "/goal " + a })],
       ["/halt",             "",                        "drop the goal; the turn running ends as it would", (t) => term_act(t, { $: "Send", text: "/halt" })],
       ["/image <path>",     "",                        "attach an image to the next message",            term_image],
       ["/open #id",         "",                        "open block #id, as it shows, and keep it open",  (t, a) => term_block(t, a, true)],
       ["/close #id",        "",                        "close block #id and keep it closed",             (t, a) => term_block(t, a, false)],
       ["/fold",             "Ctrl+F",                  "the chat in the fewest blocks; again: unfold (Ctrl+F eaten? type /fold)", term_fold],
       ["/import [...]",     "",                        "import your Claude and ChatGPT chats (alone: options, costs)", term_import],
-      ["/export",           "",                        "save memory and account as ./unii-memory.json",  term_export],
+      ["/export",           "",                        "save memory and account as ./kazuki-memory.json",  term_export],
       ["/tree",             "",                        "the whole memory, in the browser (its link prints too)", (t) => term_browse(t, "The memory tree", t.url + "/tree")],
       ["",                  "Ctrl+Z",                  "suspend; fg brings it back",                     (t) => Screen.screen_suspend(t.scr)],
       ["/quit",             "",                        "leave: the chat goes on without this terminal",  term_quit],
@@ -291,10 +277,7 @@ function term_hear(t: Term, msg: View.Server): void {
     return;
   }
   term_print(t, msg);
-  if (first) {
-    term_history(t);
-    update_check(t);
-  }
+  if (first) term_history(t);
   term_draw(t);
   if (msg.$ === "state") {
     term_idle(t);
@@ -368,7 +351,7 @@ function term_enter(t: Term): void {
     return;
   }
   if (!View.view_typing(t.v)) {
-    term_note(t, "Messages go to UniiChat: Tab or /tab goes back.");
+    term_note(t, "Messages go to Kazuki: Tab or /tab goes back.");
   } else if (term_act(t, { $: "Send", text, images: t.imgs }).length > 0) {
     t.imgs = [];
     return;
@@ -377,7 +360,7 @@ function term_enter(t: Term): void {
 }
 
 // Ctrl+C or Ctrl+D: clears the input; on an empty one, Ctrl+C interrupts
-// UniiChat's turn (never quits: that kills the jobs here), Ctrl+D quits
+// Kazuki's turn (never quits: that kills the jobs here), Ctrl+D quits
 function term_clear(t: Term, key: string): void {
   if (t.scr.ed.text !== "") {
     Screen.ed_take(t.scr.ed);
@@ -512,7 +495,7 @@ function term_fold(t: Term): void {
   }
 }
 
-// shows an agent's chat, by the start of its name, or UniiChat's; no
+// shows an agent's chat, by the start of its name, or Kazuki's; no
 // name lists the tabs
 function term_tab(t: Term, arg: string): void {
   const main = arg.toLowerCase() === View.MAIN.toLowerCase();
@@ -550,7 +533,7 @@ function term_pick(t: Term, move: Move, arg: string): void {
 
 async function term_export(t: Term): Promise<void> {
   const res  = await term_get(t, "/export", "export");
-  const file = process.cwd() + "/unii-memory.json";
+  const file = process.cwd() + "/kazuki-memory.json";
   if (res !== null) {
     await Bun.write(file, res);
     term_note(t, "Your data is in " + file + ".");
@@ -582,7 +565,7 @@ async function term_import(t: Term, arg: string): Promise<void> {
     return;
   }
   const sessions = read.flat().filter((s) => apps.length === 0 || apps.includes(s.app));
-  const done  = await term_get(t, "/api/imported", "read what Unii has");
+  const done  = await term_get(t, "/api/imported", "read what Kazuki has");
   if (done === null) {
     return;
   }
@@ -958,50 +941,7 @@ async function term_run(t: Term, id: string, job: Job): Promise<void> {
   term_send(t, { $: "out", job: id, out: size > most ? big : out });
 }
 
-// Update
-// ======
-
-// marks this computer as one that self-hosted (SELF), for good
-function self_mark(): void {
-  fs.writeFileSync(SELF, "");
-}
-
-// update_check is the whole telemetry: once a day, a GET of CHECK (plus
-// &self=1 once SELF exists; no account, no id), its answer {ver, notice}
-// cached in CHECKED (stamped before the request: one a day); a cached
-// ver newer than this one is a note. It never delays nor fails the chat
-async function update_check(t: Term): Promise<void> {
-  if (process.env.UNII_NO_TELEMETRY) {
-    return;
-  }
-  let last = { t: 0, ver: VERSION, notice: "" };
-  try {
-    last = { ...last, ...JSON.parse(fs.readFileSync(CHECKED, "utf8")) };
-  } catch {}
-  try {
-    if (Date.now() - last.t > DAY) {
-      last.t = Date.now();
-      fs.writeFileSync(CHECKED, JSON.stringify(last) + "\n");
-      const got = await (await fetch(CHECK + (fs.existsSync(SELF) ? "&self=1" : ""), { signal: AbortSignal.timeout(3000) })).json() as { ver?: unknown; notice?: unknown };
-      last.ver = typeof got.ver === "string" ? got.ver : VERSION;
-      last.notice = typeof got.notice === "string" ? got.notice : "";
-      fs.writeFileSync(CHECKED, JSON.stringify(last) + "\n");
-    }
-  } catch {}
-  if (update_newer(last.ver)) {
-    const notice = last.notice.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 200);
-    term_note(t, "unii " + last.ver + " is available: run unii update" + (notice === "" ? "" : ". " + notice));
-  }
-}
-
-// whether ver (major.minor.patch) is newer than this unii
-function update_newer(ver: string): boolean {
-  const a = ver.split(".").map(Number);
-  const b = VERSION.split(".").map(Number);
-  return a.length === 3 && a.every(Number.isInteger) && (a[0] - b[0] || a[1] - b[1] || a[2] - b[2]) > 0;
-}
-
-// runs the installer again: the one way unii changes. The command prints
+// runs the installer again: the one way kazuki changes. The command prints
 // first, so one can run it alone.
 function update_run(url: string): void {
   const script = url === "" ? INSTALL : url.replace(/\/$/, "") + "/install.sh";
@@ -1015,7 +955,7 @@ function update_run(url: string): void {
 }
 
 function cli_error(why: string): void {
-  console.error("unii: " + why);
+  console.error("kazuki: " + why);
   process.exitCode = 1;
 }
 
@@ -1049,7 +989,7 @@ async function local_start(url: string): Promise<boolean> {
     cli_error(url + " is occupied by another HTTP service.");
     return false;
   }
-  const set = process.env.UNII_DIR || os.homedir() + "/.unii";
+  const set = process.env.KAZUKI_DIR || os.homedir() + "/.kazuki";
   const dir = set.startsWith("~/") ? os.homedir() + set.slice(1) : set;
   const log = dir + "/server.log";
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -1058,7 +998,7 @@ async function local_start(url: string): Promise<boolean> {
   try {
     const source = process.argv[1] === import.meta.path && process.execPath === process.argv[0];
     const args = source ? [import.meta.path, "serve", String(port)] : ["serve", String(port)];
-    proc = child.spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out], env: { ...process.env, UNII_SITE: process.env.UNII_SITE ?? url } });
+    proc = child.spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out], env: { ...process.env, KAZUKI_SITE: process.env.KAZUKI_SITE ?? url } });
   } catch (err: any) {
     fs.closeSync(out);
     cli_error("could not start local server at " + url + ": " + (err?.message ?? err) + " (log: " + log + ")");
@@ -1068,7 +1008,7 @@ async function local_start(url: string): Promise<boolean> {
   proc.unref();
   for (let k = 0; k < 40; k++) {
     if (await local_live(url) === "ours") {
-      console.log("unii: local server started at " + url + " (pid " + proc.pid + ")");
+      console.log("kazuki: local server started at " + url + " (pid " + proc.pid + ")");
       return true;
     }
     await Bun.sleep(100);
@@ -1081,7 +1021,7 @@ async function local_start(url: string): Promise<boolean> {
 // a TUI never starts a server: a failed local connection must not queue acts
 async function local_tui(url: string): Promise<boolean> {
   if (local_url(url) !== null && await local_live(url) !== "ours") {
-    cli_error("local server is not running at " + url + "; run unii server.");
+    cli_error("local server is not running at " + url + "; run kazuki server.");
     return false;
   }
   return true;
@@ -1096,16 +1036,15 @@ if (HELP || ODD !== undefined) {
   }
   console.log(USAGE);
 } else if (ASKVER) {
-  console.log("unii " + VERSION);
+  console.log("kazuki " + VERSION);
 } else if (UPDATE) {
   update_run(REMOTE ?? "");
 } else if (SUB) {
   await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => cli_error(err.message));
 } else if (SERVE) {
-  self_mark();
   await (await import("./Server.ts")).serve(Number(PORT ?? 8788), null);
 } else if (START) {
-  if (await local_start(SERVER)) self_mark();
+  await local_start(SERVER);
 } else if (TUI) {
   if (await local_tui(SERVER)) {
     const t = term_new(SERVER);
@@ -1113,7 +1052,6 @@ if (HELP || ODD !== undefined) {
   }
 } else if (SITE) {
   if (await local_start(SERVER)) {
-    self_mark();
     console.log(SERVER);
     browse(SERVER);
   }
@@ -1124,9 +1062,6 @@ if (HELP || ODD !== undefined) {
   } else if (!await local_start(SERVER)) {
     // local_start has reported the error; do not open an offline terminal.
   } else {
-    if (SERVER !== OURS) {
-      self_mark();
-    }
     const t = term_new(SERVER);
     term_connect(t);
   }

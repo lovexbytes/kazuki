@@ -29,9 +29,9 @@ type Use = { read: number; write: number; input: number; n: number };
 const LOOK  = 20;
 const TTL   = 300e3;
 const FIRST = 1500;
-const DIR   = fs.mkdtempSync(os.tmpdir() + "/unii-cache-");
+const DIR   = fs.mkdtempSync(os.tmpdir() + "/kazuki-cache-");
 
-process.env.UNII_DIR = DIR;
+process.env.KAZUKI_DIR = DIR;
 
 // a process reads Config once (maybe for another test): the fake key goes
 // in it, not in the environment
