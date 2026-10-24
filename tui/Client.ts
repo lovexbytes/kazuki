@@ -16,7 +16,7 @@ import * as View from "../View.ts";
 // =====
 
 // what the UI shows for the client: a note (a toast), a sheet (a page
-// of markdown: /help, /account, an import's plan), a message refused
+// of markdown: /help, an import's plan), a message refused
 // (back in the input), a pick to make (a list), the end
 export type Hooks = {
   note  : (text: string) => void;
@@ -56,9 +56,6 @@ export type Client = {
 // how often the UI hears of changes at most (ms): a stream's pieces come
 // faster than a screen shows them
 const FRAME = 16;
-
-// a refusal for want of credit says how to add some
-const TOPUP = "Add credit with /topup <dollars> ($5 to $500).";
 
 // Client
 // ======
@@ -159,7 +156,7 @@ export function client_send(c: Client, msg: View.Client, sent?: View.Sent): void
   const said = sent === undefined ? "" : sent.text.trim();
   View.link_send(c.v, msg, (a) => {
     if (a.error !== undefined) {
-      c.hooks.note(client_refusal(a));
+      c.hooks.note(a.error);
     }
     if (a.error !== undefined && sent !== undefined) {
       c.hooks.back(sent);
@@ -182,11 +179,6 @@ export function client_say(c: Client, text: string): boolean {
 // the user's messages known, oldest first (the input's history)
 export function client_history(c: Client): string[] {
   return [...c.v.whole].sort((a, b) => a[0] - b[0]).flatMap(([, e]) => (e.kind === "user" ? [e.text] : []));
-}
-
-// a refusal's text; one for want of credit (402) says how to add some
-export function client_refusal(out: View.Answer): string {
-  return out.status === 402 ? out.error + " " + TOPUP : out.error ?? "";
 }
 
 // a GET of the server; failing, a note says it could not do `what`

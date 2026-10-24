@@ -28,7 +28,7 @@ test("Cloud creates only local tables and clears local push records", async () =
   cloud.db.query("insert into pushes values (?, ?, ?)").run("b".repeat(64), "old", "old");
   cloud.db.query("insert into acts values (?, ?, ?, ?)").run("local", "1", "{}", 0);
   cloud.db.query("insert into acts values (?, ?, ?, ?)").run("old", "1", "{}", 0);
-  expect(await Cloud.close(cloud, LOCAL, new Request("http://127.0.0.1/api/delete"))).toBeNull();
+  Cloud.close(cloud, LOCAL);
   expect(cloud.db.query("select user from pushes order by user").all()).toEqual([{ user: "old" }]);
   expect(cloud.db.query("select user from acts order by user").all()).toEqual([{ user: "old" }]);
 });
@@ -37,7 +37,7 @@ test("/api/me needs no authorization and login routes are absent", async () => {
   const cloud = cloud_new();
   const me = await Cloud.http(cloud, new Request("http://127.0.0.1/api/me"));
   expect(me?.status).toBe(200);
-  expect(await me?.json()).toMatchObject({ id: "local", name: "local" });
+  expect(await me?.json()).toEqual({ id: "local", name: "local" });
   expect(await Cloud.http(cloud, new Request("http://127.0.0.1/api/login", { method: "POST" }))).toBeNull();
   expect(await Cloud.http(cloud, new Request("http://127.0.0.1/auth"))).toBeNull();
 });

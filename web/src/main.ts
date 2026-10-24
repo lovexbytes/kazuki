@@ -9,8 +9,7 @@
 // streaming, touches no row.
 // The markup is index.html's: the header, the chat or the account page
 // (/account), and the footer as the terminal's. A tab is no device; a
-// every local browser opens the same chat. In the iOS app (ios/),
-// credit is bought through the App Store (APP).
+// every local browser opens the same chat.
 
 import * as Import from "../../Import.ts";
 import { theme_css } from "../../Theme.ts";
@@ -27,9 +26,6 @@ type Read = { sessions: Import.Session[]; moved: number };
 // Constants
 // =========
 
-// the iOS app's bridge (ios/), in its web view only
-const APP = (window as any).webkit?.messageHandlers?.kazuki ?? null;
-
 // a page with a hover has a keyboard of its own; on a touch screen,
 // Enter types a new line (the arrow sends), and the page never focuses
 // the box itself, which would pop the keyboard up
@@ -37,11 +33,6 @@ const DESK = matchMedia("(hover: hover)");
 
 // a folder without sessions
 const NONE   = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
-const PAYING = "Waiting for your payment in the new tab…";
-
-// an import's payment, its tab back from checkout (?paid=tab), tells the
-// import's tab at once (a hidden tab's timers may wait a minute)
-const PAID = new BroadcastChannel("kazuki.paid");
 
 // the intro's scenes: two lines, then the logo above the name
 const SCENES = `
@@ -75,7 +66,7 @@ const P = {
   found : new Map<string, Read>(),
   done  : {} as Import.Done,
   off   : new Set<string>(),
-  step  : "" as "" | "start" | "pay" | "send" | "run" | "seen" | "done",
+  step  : "" as "" | "start" | "send" | "run" | "seen" | "done",
 };
 
 function $<T extends HTMLElement>(sel: string): T {
@@ -83,7 +74,7 @@ function $<T extends HTMLElement>(sel: string): T {
 }
 
 // where this browser keeps local-chat facts: "draft", the box's text, for the tab (a
-// reload or a top-up's trip to Stripe keeps it); "welcomed", offered the
+// reload keeps it); "welcomed", offered the
 // import; "risked", the risk accepted
 function kept(fact: string): string {
   return "kazuki." + fact + "." + P.id;
@@ -97,7 +88,6 @@ async function boot(): Promise<void> {
   const q = new URLSearchParams(location.search);
   history.replaceState(null, "", location.pathname === "/account" ? "/account" : "/");
   if (q.has("deleted")) { solo("Your local chat was deleted.", `<a href="/">Start a new chat</a>`); return; }
-  if (q.get("paid") === "tab") { PAID.postMessage(true); close(); solo("Payment received.", "Close this tab."); return; }
   const me = await boot_me();
   P.id = me.id;
   chat();
@@ -106,8 +96,7 @@ async function boot(): Promise<void> {
   BOX.removeAttribute("inputmode"); BOX.removeAttribute("enterkeyhint"); BOX.removeAttribute("autocomplete");
   BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
   BOX.dispatchEvent(new Event("input"));
-  route(); v.bills = me.bills; v.credits = me.credits; connect();
-  if (q.has("paid")) toast("Payment received. Your credit shows up in a moment.");
+  route(); connect();
 }
 
 // the local account is always available; retry transient failures.
@@ -149,7 +138,6 @@ function chat(): void {
     attach([...(file.files ?? [])]);
     file.value = "";
   };
-  $("#wallet").insertAdjacentHTML("beforeend", Html.credit_html(APP !== null));
   onpopstate = route;
   importer();
   document.ondragover = (ev) => ev.preventDefault();
@@ -174,8 +162,8 @@ function submit(): void {
   BOX.dispatchEvent(new Event("input"));
 }
 
-// a message refused goes back in the box, unless another is in it; out
-// of credit (402), the wallet opens, saying so, else the why is a toast
+// a message refused goes back in the box, unless another is in it; the
+// why is a toast
 function back(sent: View.Sent, out: View.Answer): void {
   if (out.error === undefined) {
     return;
@@ -185,12 +173,7 @@ function back(sent: View.Sent, out: View.Answer): void {
     BOX.dispatchEvent(new Event("input"));
     pics(sent.images ?? []);
   }
-  if (out.status !== 402) {
-    toast(out.error);
-    return;
-  }
-  $("#wallet .title").textContent = out.error;
-  $("#wallet").showPopover();
+  toast(out.error);
 }
 
 // files to send with the next message
@@ -224,16 +207,16 @@ function act(a: View.Act): void {
   draw(a.$ === "Send");
 }
 
-// a click on a View.Act, a Copy button, a page (go) or credit to buy
-// (Html.ts), unless it ends a selection dragged in
+// a click on a View.Act, a Copy button or a page (go) (Html.ts), unless
+// it ends a selection dragged in
 // its element
 function click(ev: MouseEvent): void {
-  const el = (ev.target as HTMLElement).closest<HTMLElement>("[data-act], [data-copy], [data-go], [data-usd]");
+  const el = (ev.target as HTMLElement).closest<HTMLElement>("[data-act], [data-copy], [data-go]");
   const sel = getSelection();
   if (el === null || (sel !== null && !sel.isCollapsed && el.contains(sel.focusNode))) {
     return;
   }
-  const { act: a, copy: text, go: path, usd } = el.dataset;
+  const { act: a, copy: text, go: path } = el.dataset;
   const menu = el.closest("#menu") !== null;
   if (menu) {
     $("#menu").hidePopover();
@@ -244,9 +227,6 @@ function click(ev: MouseEvent): void {
   }
   if (a !== undefined) {
     act(JSON.parse(a));
-  }
-  if (usd !== undefined) {
-    warned(el, () => topup(Number(usd)));
   }
   if (text !== undefined) {
     navigator.clipboard.writeText(text).then(() => copied(el), () => toast("Could not copy."));
@@ -262,7 +242,7 @@ function copied(button: HTMLElement): void {
 // =====
 // The mic records (the browser's MediaRecorder: webm, or mp4 where only
 // that is made) until clicked again; the server writes the recording
-// out, paid as the calls, and its words join the box where the cursor
+// out, and its words join the box where the cursor
 // is, to edit and send.
 
 async function mic(): Promise<void> {
@@ -363,7 +343,7 @@ function connect(): void {
 async function lost(_up: boolean): Promise<boolean> { draw(true); return true; }
 
 // a pick changed shows what it is now (a click on a knob moves it). The
-// rows change with what they show: a state (credits, ~10/s importing)
+// rows change with what they show: a state (~10/s importing)
 // only by its agents, an agent's page saying whether it runs
 function hear(msg: View.Server): void {
   const was = View.view_pick(v);
@@ -385,9 +365,8 @@ function hear(msg: View.Server): void {
 // Import History: offered once to a new account on a computer, and in
 // the menu. A folder picked, or a site's export (a zip), is read for its
 // sessions' heads, each app's list folded (all picked; open it to
-// leave some out); then what it finds and costs, and Import (short of
-// credit, Add $N and import: checkout in a new tab, the import starting
-// once paid); then its progress, Pause or Resume. All follows from P and
+// leave some out); then what it finds, and Import; then its progress,
+// Pause or Resume. All follows from P and
 // a status. A picked file can't be read once it changes, so each is
 // copied as first read.
 
@@ -410,7 +389,7 @@ function importer(): void {
   $("#import .flow").onclick = import_flow;
   $("#import").ontoggle = (ev) => {
     if ((ev as ToggleEvent).newState === "closed") {
-      P.step = P.step === "pay" || P.step === "start" || P.step === "done" ? "" : P.step;
+      P.step = P.step === "start" || P.step === "done" ? "" : P.step;
     }
     import_draw("");
   };
@@ -450,52 +429,23 @@ function importer(): void {
     }
     zip.value = "";
   };
-  // short of credit, Import adds it first, in a new tab (this one keeps
-  // the folder), and imports once it is in
   form.onsubmit = (ev) => {
     ev.preventDefault();
-    warned(form, import_go);
+    warned(form, import_send);
   };
 }
 
-// Import: at once, or short of credit, after paying
-function import_go(): void {
-  const add = import_add(import_plan());
-  if (add === 0) {
-    return import_send();
-  }
-  import_buy(add);
-}
-
-// the progress's button: Pause, Resume, or, the import waiting for
-// credit, Add $N, paid as Import is
+// the progress's button: Pause or Resume
 function import_flow(): void {
   const run = v.importing;
-  if (run?.why === View.BROKE) {
-    return warned($("#import .flow"), () => import_buy(View.progress_need(run, v.credits)));
-  }
   View.link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.error && toast(out.error));
 }
 
-// credit for the import, in a new tab, awaited once checkout opened;
-// refused (past the most one payment takes, a test server, BendAI
-// down), the box is as before it, to press again
-async function import_buy(usd: number): Promise<void> {
-  P.step = "pay";
-  import_draw(PAYING);
-  if (await topup(usd)) {
-    return import_pay();
-  }
-  P.step = "";
-  import_draw("");
-}
-
-// before an account's first import or payment on this browser, a warning:
-// this is experimental software, money in may be lost, uploads may leak
-// (accepted, it holds past a reload or a payment's trip). It opens
-// inside the box that asked (so a click on it never light-dismisses that
-// box, which keeps its folder and opens checkout in a new tab), and its
-// "I accept the risk" runs then in its own click, so checkout's tab opens
+// before an account's first import on this browser, a warning: this is
+// experimental software, uploads may leak (accepted, it holds past a
+// reload). It opens inside the box that asked (so a click on it never
+// light-dismisses that box, which keeps its folder), and its "I accept
+// the risk" runs then in its own click
 function warned(from: HTMLElement, then: () => void): void {
   if (localStorage.getItem(kept("risked")) !== null) {
     return then();
@@ -533,7 +483,7 @@ function import_took(name: string, read: Read, status: string): void {
 }
 
 // a new account (its chat only its OPENING), on a computer: the box, once
-// on this browser (a payment's trip, or a reload, never asks again), after
+// on this browser (a reload never asks again), after
 // the intro
 async function import_welcome(): Promise<void> {
   await INTRO;
@@ -541,24 +491,6 @@ async function import_welcome(): Promise<void> {
   if (localStorage.getItem(key) === null && v.pick !== null && v.parts.length === View.OPENING && v.importing === null && DESK.matches) {
     localStorage.setItem(key, "1");
     import_open(true);
-  }
-}
-
-// while a payment is awaited: the balance, every few seconds and as the
-// payment's tab says it is paid (the server reads it only when asked),
-// until it covers the import, which then starts; an import waiting for
-// it goes on by itself
-async function import_pay(): Promise<void> {
-  while (P.step === "pay") {
-    await new Promise((ok) => {
-      setTimeout(ok, 3000);
-      PAID.onmessage = ok;
-    });
-    const me = await fetch("/api/me").then((res) => res.json()).catch(() => null);
-    v.credits = me?.credits ?? v.credits;
-    if (P.step === "pay" && v.importing === null && v.credits !== null && v.credits >= import_plan().guess) {
-      import_send();
-    }
   }
 }
 
@@ -581,11 +513,6 @@ function import_sent(out: View.Answer): void {
   $("#import").showPopover();
 }
 
-// the credit an import of plan adds first (Import.topup; 0: none)
-function import_add(plan: Import.Plan): number {
-  return plan.msgs > 0 && v.credits !== null ? Import.topup(plan.guess, v.credits) : 0;
-}
-
 // the import the box wants
 function import_plan(): Import.Plan {
   const form = new FormData($("#import form"));
@@ -602,15 +529,12 @@ function import_since(): string {
 
 // an import's progress, in the box and the header, once it is sent or
 // while one runs (from any tab: its step is then "seen", whatever the box
-// showed, but "pay" while it waits for the credit paid); at its end the
-// box says so, until closed. Whether it shows.
+// showed); at its end the box says so, until closed. Whether it shows.
 function import_bar(): boolean {
   const run = v.importing;
-  const broke = run?.why === View.BROKE;
-  const paying = broke && P.step === "pay";
-  P.step = run !== null && !paying ? "seen" : P.step === "seen" ? "done" : P.step;
+  P.step = run !== null ? "seen" : P.step === "seen" ? "done" : P.step;
   const done  = P.step === "done";
-  const going = paying || ["send", "run", "seen", "done"].includes(P.step);
+  const going = ["send", "run", "seen", "done"].includes(P.step);
   const part  = run === null ? Number(done) : run.done / Math.max(1, run.total);
   const why   = Boolean(run?.why);
   const said  = run !== null ? View.progress_show(v, run) : done ? Import.DONE : P.step === "send" ? "Sending…" : "Starting…";
@@ -622,17 +546,15 @@ function import_bar(): boolean {
   $<HTMLProgressElement>(".imping progress").value = part;
   $(".imping").hidden = run === null;
   $(".imping").classList.toggle("why", why);
-  $(".imping span").textContent = !why ? "Building memory" : run!.why === View.BROKE ? "Needs credit" : "Import paused";
+  $(".imping span").textContent = why ? "Import paused" : "Building memory";
   $(".imping").title = $("#import .pct").textContent = said;
   $("#import .prog .sub").hidden = why || done;
-  $("#import .flow").textContent = broke ? "Add $" + View.progress_need(run, v.credits) : why ? "Resume" : "Pause";
+  $("#import .flow").textContent = why ? "Resume" : "Pause";
   $<HTMLButtonElement>("#import .flow").hidden = run === null;
-  $<HTMLButtonElement>("#import .flow").disabled = paying;
-  markup($("#import .prog .topup"), broke ? [Html.fine_html(APP !== null)] : []);
   return going;
 }
 
-// the box as P says, with a status (reading, paying, or why not)
+// the box as P says, with a status (reading, or why not)
 function import_draw(status: string): void {
   if (import_bar()) {
     return;
@@ -641,11 +563,9 @@ function import_draw(status: string): void {
   const sessions = reads.flatMap((read) => read.sessions);
   const plan     = import_plan();
   const msgs     = plan.msgs;
-  const add      = import_add(plan);
   const left     = reads.reduce((n, read) => n + read.moved, 0);
   const moved    = left === 0 ? "" : " (" + left + (left === 1 ? " file" : " files") + " changed while read: choose the folder again to add them)";
-  const has      = add > 0 ? " · you have " + View.usd_show(v.credits!) : "";
-  const found    = sessions.length === 0 ? "" : plan.first === "" ? Import.OLD : Import.import_count(msgs, "new ") + (msgs > 0 ? " · about " + Import.guess_usd(plan.guess) + has : "");
+  const found    = sessions.length === 0 ? "" : plan.first === "" ? Import.OLD : Import.import_count(msgs, "new ") + (msgs > 0 ? " · about " + Import.guess_usd(plan.guess) : "");
   const day = (at: string | number) => new Date(at).getUTCDate() + " " + new Date(at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
   BACK.min = String(Math.floor(Date.parse(plan.first || new Date().toISOString()) / 864e5));
   BACK.max = String(Math.floor(Date.now() / 864e5));
@@ -665,11 +585,10 @@ function import_draw(status: string): void {
     src.querySelector(".pick summary")!.textContent = (on < shown.length ? on + " of " : shown.length > 1 ? "All " : "") + shown.length + (shown.length === 1 ? " session" : " sessions") + " picked · choose";
   }
   $("#import .guess").textContent = status;
-  markup($("#import form .topup"), add > 0 ? [Html.fine_html(APP !== null)] : []);
   const [go, dir] = [$<HTMLButtonElement>("#import .go"), $<HTMLButtonElement>(".pickdir")];
   go.hidden = msgs === 0;
-  go.textContent = add > 0 ? "Add $" + add + " and import" : "Import";
-  go.disabled = P.step === "pay" || status.startsWith("Reading");
+  go.textContent = "Import";
+  go.disabled = status.startsWith("Reading");
   dir.textContent = msgs > 0 ? "Add a folder" : "Choose folder";
   dir.classList.toggle("alt", msgs > 0);
   dir.disabled = go.disabled;
@@ -786,15 +705,11 @@ function bars(): void {
   for (const note of v.notes.splice(0)) {
     toast(note);
   }
-  const credits = View.view_credits(v);
   const on = View.view_typing(v);
   const stop = on && v.busy && BOX.value.trim() === "" && P.imgs.length === 0;
   const tabs = View.view_tabs(v);
   const send = $<HTMLButtonElement>(".send");
   $(".net").hidden = v.up;
-  $(".credits").hidden = credits === null;
-  $(".credits").textContent = credits;
-  document.body.classList.toggle("bills", v.bills);
   send.classList.toggle("stop", stop);
   send.disabled = !on;
   BOX.disabled = !on;
@@ -856,7 +771,7 @@ async function account(): Promise<void> {
     el.innerHTML = `<p class="sub">Could not read your account. Try again in a moment.</p>`;
     return;
   }
-  el.innerHTML = Html.account_html(a, APP !== null);
+  el.innerHTML = Html.account_html(a);
   const kill = $<HTMLFormElement>("#account .kill");
   const del  = $<HTMLButtonElement>("#account .del");
   const name = kill.querySelector("input")!;
@@ -889,28 +804,6 @@ async function account_delete(kill: HTMLFormElement): Promise<void> {
 
 // Notes
 // =====
-
-// in the app, the App Store's (ios/ buys, then posts the purchase); else
-// Stripe's checkout, in this page, or in a new tab while Import History
-// is open (a page left loses the folder picked); it comes back to the
-// page that bought (back: the chat, or the account page). Whether it
-// started (refused, the why is a toast)
-async function topup(usd: number): Promise<boolean> {
-  if (APP !== null) {
-    $("#wallet").hidePopover();
-    APP.postMessage({ buy: usd });
-    return true;
-  }
-  const tab = $("#import").matches(":popover-open") ? open("", "_blank") : null;
-  const out = await View.post("/api/topup", { usd, tab: tab !== null, back: location.pathname });
-  if (out.url) {
-    (tab ?? window).location.href = out.url;
-    return true;
-  }
-  tab?.close();
-  toast(out.error ?? "Could not start the payment.");
-  return false;
-}
 
 function toast(text: string): void {
   const el = $("#toast");

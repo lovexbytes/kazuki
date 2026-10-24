@@ -22,21 +22,17 @@
 // (`fail`: the model's answer failed, a refusal or a stop reason: its
 // input's doing) or not: `down`, the vendor's (a refusal of the request,
 // as when the API key's credit is gone, or busy past TRIES); `lost`,
-// ours (a stop, its payer's refusal or cut), saying why. A vendor's why
+// ours (a stop), saying why. A vendor's why
 // (`busy`, `down`) goes to the log; the user reads only that the AI
 // service is busy, as the call's end, each retry's thought and where a
 // call is cut (a vendor's errors speak of the server's account, not the
-// user's). A stop ends the call at once; a paid one's
-// request is read on to its end, out of sight, and billed whole (a
-// stream cut short is billed what it read: Agent.used), a free one's is
-// cut. A paid request is booked first (worst, Bill: AskAI.ts), then takes
-// its place in single flight (AskAI.wait).
+// user's). A stop ends the call at once. A request takes its place in
+// single flight (AskAI.wait).
 
-import { AskAI, type Grant, type Cost, type Ask, type Block, type Flight, type Try, type End, type Event, type Img, type Kind, type Say } from "./AskAI.ts";
+import { AskAI, type Ask, type Block, type Flight, type Try, type End, type Event, type Img, type Kind, type Say } from "./AskAI.ts";
 import { Anthropic } from "./Anthropic.ts";
 import { OpenAI } from "./OpenAI.ts";
 import { ChatGPT } from "./ChatGPT.ts";
-import { Price, type Usage } from "./Price.ts";
 import { live_push } from "./View.ts";
 import { Machine, type Spec } from "./Machine.ts";
 import * as config from "./Config.ts";
@@ -47,10 +43,6 @@ import * as config from "./Config.ts";
 export type Out = { text: string; fail: boolean; imgs?: Img[] };
 
 export type Tool = Spec;
-
-// what a request's stream read: the bytes of its output, and whether it
-// ended (its last event read, its usage all told)
-export type Read = { bytes: number; done: boolean };
 
 // a running call: the messages sent mid-run not taken yet
 type Run = {
@@ -101,10 +93,9 @@ export type Emit = (kind: Kind, text: string, fresh?: boolean) => void;
 
 // an API: its key's name in config.KEYS (or `auth`: a signed-in
 // account's token for each try, refused: the one a 401 refused, which it
-// refreshes; an error with `busy` set: none for now), a body's input
-// tokens as it counts them (null: not told), how its stream reads into a
-// step (S: what it read so far), and which error responses are refusals
-// (null: not one)
+// refreshes; an error with `busy` set: none for now), how its stream reads
+// into a step (S: what it read so far), and which error responses are
+// refusals (null: not one)
 export type Wire<S> = {
   key     : string;
   auth?   : (refused: string | undefined) => Promise<string>;
@@ -113,40 +104,28 @@ export type Wire<S> = {
   url     : string;
   headers : (key: string, ask: Ask) => Record<string, string>;
   body    : (ask: Ask, items: Item[], tools: Tool[], max: number) => unknown;
-  count   : (key: string, ask: Ask, body: unknown) => Promise<number | null>;
   start   : (ask: Ask) => S;
   read    : (st: S, ev: any, on: Emit) => boolean;
   begun   : (ev: any) => boolean;
   step    : (st: S, ask: Ask) => Step;
-  usage   : (st: S) => Usage;
 };
 
 // Constants
 // =========
 
-// a request's most output tokens: the models' own cap (less, if a paid
-// one's credit pays for less: Bill)
+// a request's most output tokens: the models' own cap
 const MAX   = 128000;
 export const TRIES = 8;
 
 // what a call the vendor never answered says
 const BUSY  = "the AI service is busy or unavailable right now";
 
-// the most tokens a model reads an image as (scaled to 1568 px at most),
-// and a web search's results are booked as (0.1k to 8k)
-const PIC    = 4096;
-const RESULT = 5000;
-
-// what a request on a free server is let write: all
-const FREE: Grant = { max: MAX, cut: null, end: () => {} };
-
 // the rooms held or waited on, by model, or model and import (Agent.step)
 const ROOMS = new Map<string, Room>();
 
 // the requests sent whose answers are not read to their end: a process
-// ends only once none is (Server.ts Main.leave), as a paid one goes on
-// after a stop and is billed only at its end (and a sign-in's token being
-// got: Agent.token)
+// ends only once none is (Server.ts Main.leave), and a sign-in's token
+// being got (Agent.token)
 export const READING = { n: 0 };
 
 // Agent
@@ -192,7 +171,7 @@ export namespace Agent {
     const parts = ask.blocks.filter((b) => b.text !== "");
     const items: Item[] = [{ $: "User", parts, imgs: ask.imgs ?? [] }];
     while (!signal.aborted) {
-      const step = await Agent.step(wire, run, key, (max) => wire.body(ask, items, tools, max), items);
+      const step = await Agent.step(wire, run, key, wire.body(ask, items, tools, MAX));
       for (const entry of step.entries) {
         on({ $: "Entry", ...entry });
       }
@@ -241,14 +220,11 @@ export namespace Agent {
     }
   }
 
-  // make: the request's body, writing `max` tokens at most. Asking again,
-  // it holds its room (Room): its model's, or its import's, which one
-  // request holds at a time while the rest wait on it, so each import
-  // has one request at a busy model however many it runs, and imports
-  // share its room alike
-  export async function step<S>(wire: Wire<S>, run: Run, key: string, make: (max: number) => unknown, items: Item[]): Promise<Step> {
-    const body = make(MAX);
-    const cost = Agent.worst(run.ask, JSON.stringify(body), items, () => wire.count(key, run.ask, body));
+  // body: the request's. Asking again, it holds its room (Room): its
+  // model's, or its import's, which one request holds at a time while the
+  // rest wait on it, so each import has one request at a busy model
+  // however many it runs, and imports share its room alike
+  export async function step<S>(wire: Wire<S>, run: Run, key: string, body: unknown): Promise<Step> {
     const signal = run.abort.signal;
     const model = run.ask.model;
     const own = run.ask.yields === undefined ? model : model + " " + run.ask.yields;
@@ -266,7 +242,7 @@ export namespace Agent {
         if (token === null) {
           return Agent.fail("stopped", seen);
         }
-        const sent = typeof token === "string" ? Agent.request(wire, run, token, make, cost, seen) : Promise.resolve({ res: null, step: token });
+        const sent = typeof token === "string" ? Agent.request(wire, run, token, body, seen) : Promise.resolve({ res: null, step: token });
         const got = await Promise.race([sent, stopped]);
         if (got === null) {
           return Agent.fail("stopped", seen);
@@ -372,44 +348,22 @@ export namespace Agent {
     }
   }
 
-  // a request's most input cost: each byte of its text a token, an image
-  // PIC tokens (exact: the tokens `count` tells, or those), all at the
-  // dearest input price (a cache write), and its most web searches, each
-  // RESULT tokens more; and an output token's, at a prompt that size (a
-  // long one may cost more)
-  export function worst(ask: Ask, json: string, items: Item[], count: () => Promise<number | null>): Cost {
-    const imgs = items.flatMap((item) => (item.$ === "User" ? item.imgs : item.$ === "Back" ? item.backs.flatMap((b) => b.out.imgs ?? []) : []));
-    const write = Buffer.byteLength(json) + imgs.reduce((n, img) => n + PIC - img.data.length, 0);
-    const web = Price.cost(ask.model, { ...Price.usage(ask.speed), write: ask.searches * RESULT, searches: ask.searches });
-    const at = (write: number, output: number) => Price.cost(ask.model, { ...Price.usage(ask.speed), write, output });
-    const cost = (write: number, exact: Cost["exact"]): Cost => ({ input: at(write, 0) + web, token: (at(write, 1e6) - at(write, 0)) / 1e6, exact });
-    return cost(write, async () => cost((await count()) ?? write, null));
-  }
-
-  // one request, sent once its payer let it through (Bill), then single
-  // flight (AskAI.wait); then, if paid, read to the end of its stream
-  // whether the call stops or not, and billed: its response, if any, and
-  // step
-  export async function request<S>(wire: Wire<S>, run: Run, key: string, make: (max: number) => unknown, cost: Cost, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
-    const grant = run.ask.bill ? await run.ask.bill(cost, MAX) : FREE;
-    if (typeof grant === "string") {
-      return { res: null, step: Agent.fail(grant, []) };
-    }
+  // one request, sent once it has its place in single flight
+  // (AskAI.wait): its response, if any, and step
+  export async function request<S>(wire: Wire<S>, run: Run, key: string, body: unknown, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
     const flight = await AskAI.wait(run.ask);
     if (run.abort.signal.aborted) {
       flight.end();
-      grant.end(null);
       return { res: null, step: Agent.fail("stopped", []) };
     }
     READING.n += 1;
-    return Agent.send(wire, run, key, make(grant.max), grant, flight, seen).finally(() => (READING.n -= 1));
+    return Agent.send(wire, run, key, body, flight, seen).finally(() => (READING.n -= 1));
   }
 
-  export async function send<S>(wire: Wire<S>, run: Run, key: string, body: unknown, grant: Grant, flight: Flight, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
+  export async function send<S>(wire: Wire<S>, run: Run, key: string, body: unknown, flight: Flight, seen: Entry[]): Promise<{ res: Response | null; step: Step }> {
     const idle = new AbortController();
     const timer = setTimeout(() => idle.abort(new Error("no word from the API in " + wire.idle / 1e3 + " s")), wire.idle);
     const st = wire.start(run.ask);
-    const read: Read = { bytes: 0, done: false };
     const json = JSON.stringify(body);
     let res: Response | null = null;
     let step: Step;
@@ -418,36 +372,20 @@ export namespace Agent {
         method  : "POST",
         headers : wire.headers(key, run.ask),
         body    : json,
-        signal  : run.ask.bill ? idle.signal : AbortSignal.any([run.abort.signal, idle.signal]),
+        signal  : AbortSignal.any([run.abort.signal, idle.signal]),
         timeout : false,
       } as RequestInit);
       const text = res.ok && res.body ? null : await res.text();
       const refusal = text === null ? null : wire.refusal?.(res, text) ?? null;
       const why = text === null ? "" : refusal?.why ?? "HTTP " + res.status + ": " + Agent.reason(text);
       const stop = refusal === null && Agent.passing(res) ? "busy" : "down";
-      step = why ? { ...Agent.fail(why, [], stop), refusal: refusal ?? undefined } : await Agent.stream(wire, run, res.body!, timer, seen, st, flight.begun, read);
+      step = why ? { ...Agent.fail(why, [], stop), refusal: refusal ?? undefined } : await Agent.stream(wire, run, res.body!, timer, seen, st, flight.begun);
     } catch (err: any) {
       step = Agent.fail(err.message, [], "busy");
     }
     clearTimeout(timer);
     flight.end();
-    const { vendor, model, effort, speed } = run.ask;
-    const use = res?.ok ? Agent.used(wire.usage(st), read, json) : null;
-    grant.end(use && { run: { vendor, model, effort, speed }, use });
-    const cut = use !== null && use.output >= grant.max ? grant.cut : null;
-    return { res, step: cut === null ? step : Agent.fail(cut, seen) };
-  }
-
-  // a request's usage: the API's, once its stream ended; else (cut short,
-  // its usage not all told) at least what it read, each byte a token as a
-  // booking counts (worst): the output streamed, and the request's text as
-  // written input if the API told no input at all (OpenAI tells it last)
-  export function used(use: Usage, read: Read, json: string): Usage {
-    if (read.done) {
-      return use;
-    }
-    const told = use.input + use.write + use.read > 0;
-    return { ...use, write: told ? use.write : Buffer.byteLength(json), output: Math.max(use.output, read.bytes) };
+    return { res, step };
   }
 
   // a failed request's why: the API's message (Anthropic's and OpenAI's
@@ -470,11 +408,10 @@ export namespace Agent {
   }
 
   // seen: what streamed, as told to the call (none once it stopped); st:
-  // what it read, its usage; begun: its response began (Flight)
-  export async function stream<S>(wire: Wire<S>, run: Run, body: ReadableStream<Uint8Array>, timer: Timer, seen: Entry[], st: S, begun: () => void, read: Read): Promise<Step> {
+  // what it read; begun: its response began (Flight)
+  export async function stream<S>(wire: Wire<S>, run: Run, body: ReadableStream<Uint8Array>, timer: Timer, seen: Entry[], st: S, begun: () => void): Promise<Step> {
     const ask = run.ask;
     const on: Emit = (kind, text, fresh) => {
-      read.bytes += Buffer.byteLength(text);
       if (!run.abort.signal.aborted) {
         live_push(seen, kind, text, fresh);
         run.on({ $: "Delta", kind, text, fresh });
@@ -487,7 +424,6 @@ export namespace Agent {
           begun();
         }
         if (wire.read(st, ev, on)) {
-          read.done = true;
           const step = wire.step(st, ask);
           return step.stop === "fail" || step.stop === "busy" ? Agent.fail(step.why, seen, step.stop) : step;
         }

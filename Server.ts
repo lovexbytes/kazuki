@@ -11,9 +11,8 @@
 //
 // One turn at a time. A message is logged as it arrives; the running call
 // takes it between tool calls if it goes whole beside its view, else the
-// next call does, on the chat's pick (Pick.ts). Its paid calls ask its
-// wallet (Billing.ts), and what the billing refuses stops; a chat at
-// rest settles what it owes; one nobody views is let go.
+// next call does, on the chat's pick (Pick.ts). One nobody views is let
+// go.
 //
 // Alone, this process serves the site. Workers (config.WORKERS, behind a
 // proxy: README) each serve the users shard() gives them, under this
@@ -33,16 +32,14 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import type { ServerWebSocket } from "bun";
 import { READING } from "./Agent.ts";
-import { AskAI, type Bill, type Grant, type Call, type End, type Event, type Kind, type Say, type Sink } from "./AskAI.ts";
-import type { Wallet } from "./Billing.ts";
+import { AskAI, type Call, type End, type Event, type Kind, type Say, type Sink } from "./AskAI.ts";
 import { clip_pages } from "./Clip.ts";
 import { Cloud, type Account, type User } from "./Cloud.ts";
 import { Disk } from "./Disk.ts";
 import * as Import from "./Import.ts";
 import { JOBS, Memory, type Given, type Msg as Log, type Share } from "./Memory.ts";
-import { OpenAI, TRANSCRIBER } from "./OpenAI.ts";
+import { OpenAI } from "./OpenAI.ts";
 import { Pick } from "./Pick.ts";
-import { Price } from "./Price.ts";
 import { MASTER, SEARCHES, Tools, type Agent, type Live, type Moved as Kit } from "./Tools.ts";
 import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Part, type Server as Out, type Wait } from "./View.ts";
 import * as config from "./Config.ts";
@@ -50,7 +47,6 @@ import hello_md from "./hello.md" with { type: "text" };
 import app_js from "./web/app.js" with { type: "file" };
 import index_html from "./web/index.html" with { type: "file" };
 import install_sh from "./install.sh" with { type: "file" };
-import legal_css from "./web/legal.css" with { type: "file" };
 import mark_svg from "./web/mark.svg" with { type: "file" };
 import experimental_jpg from "./web/experimental.jpg" with { type: "file" };
 import og_png from "./web/og.png" with { type: "file" };
@@ -77,10 +73,10 @@ type Eye = { parts: Part[]; from: number };
 // moves), the goal it asks of
 type Check<C> = { call: C; goal: string };
 
-// an import as kept: messages [a, b), those sent (not notes), USD spent;
-// as run: by level what each node costs (micro-USD, Import.import_guess)
-// and how many are not built; their cost; its time (Chat.time) in all
-type Kept  = { a: number; b: number; said: number; spent: number };
+// an import as kept: messages [a, b), those sent (not notes); as run: by
+// level what each node costs (micro-USD, Import.import_guess) and how many
+// are not built; their cost; its time (Chat.time) in all
+type Kept  = { a: number; b: number; said: number };
 type Batch = Kept & { micros: number[][]; open: number[]; left: number; all: number };
 
 // a chat: acts being done (Chat.apply); posts: requests and acts being
@@ -91,7 +87,7 @@ type Batch = Kept & { micros: number[][]; open: number[]; left: number; all: num
 // running (Chat.check); sent, wait: messages given and waiting; ending:
 // what to do once at rest as it ends (all: nothing runs) or moves (no
 // post runs); writes, held: the posts logging, one after another, and
-// the logging held meanwhile (null: none); wallet: what pays its calls
+// the logging held meanwhile (null: none)
 type Chat = {
   acct  : Account;
   mem   : Memory;
@@ -117,28 +113,23 @@ type Chat = {
   ending: { all: boolean; then: () => void } | null;
   writes: Promise<unknown>;
   held  : Array<() => void> | null;
-  wallet: Wallet;
 };
 
 // a chat as it moves to another process (Chat.move): its user (an id:
 // a chat moved is never new, so no hello needs their name, and they may
-// have signed out since), their credit as their billing last told it,
-// its turn (its call and goal check's by their refs, Main.away), the
-// tools' part, its summaries running
-type Moved = { user: string; credit: number | undefined; turn: Turn; tools: Kit; sums: Given[] };
+// have signed out since), its turn (its call and goal check's by their
+// refs, Main.away), the tools' part, its summaries running
+type Moved = { user: string; turn: Turn; tools: Kit; sums: Given[] };
 type Turn = { busy: boolean; call: string | null; model: string; check: Check<string> | null; sent: Msg[]; wait: Msg[]; asked: boolean; open: number; live: Live[]; calls: Record<string, string>; eye: Eye };
 
 // another process (the one this gives its chats to or takes them from,
 // or one a call is fed from or to), by a line of JSON a message
-// (Main.told): the replies to payments asked of it; the calls fed from it
-// here, by ref (Main.far), and the payments let through for them; end:
-// the line closed once all sent is out, then `then`
+// (Main.told): the calls fed from it here, by ref (Main.far); end: the
+// line closed once all sent is out, then `then`
 type Peer = {
   send   : (msg: object) => void;
   end    : (then: () => void) => void;
-  asks   : Map<string, (grant: Grant | string) => void>;
   feeds  : Map<string, Sink>;
-  grants : Map<string, Grant>;
 };
 
 // a call fed from here to the process its chat is in (Main.away): run
@@ -226,10 +217,6 @@ function local_request(req: Request): boolean {
   return ["127.0.0.1", "localhost", "::1"].includes(host) && (origin === null || origin === url.origin);
 }
 
-// what a recording is written out by, and its fewest bytes a second
-// (Opus's least, 6 kbps)
-const VOICE: Pick = { vendor: "openai-api", model: TRANSCRIBER, effort: "", speed: "slow" };
-const AUDIO      = 750;
 
 // the first message, ending in the installer every terminal starts from
 const HELLO      = hello_md.trim().replace("{install}", config.SITE + "/install.sh");
@@ -242,7 +229,6 @@ const WEB: Record<string, string> = {
   "/experimental.jpg": experimental_jpg,
   "/favicon.svg"    : mark_svg,
   "/install.sh"     : install_sh,
-  "/legal.css"      : legal_css,
   "/mark.svg"       : mark_svg,
   "/og.png"         : og_png,
   "/style.css"      : style_css,
@@ -265,10 +251,7 @@ export namespace Chat {
   export let cloud: Cloud;
   export const chats = new Map<string, Chat>();
 
-  // a chat's paid calls ask its wallet (Billing.ts), each sent only while
-  // its credit pays it (a balance not told yet is none): its summaries
-  // start once told. One
-  // moving here takes what ran (`moved`); none opens as this process
+  // One moving here takes what ran (`moved`); none opens as this process
   // gives its chats away (null). A chat is kept only once open whole, so
   // one that fails to (throws) is never left half open
   export function open(user: User, moved: Moved | null = null, peer: Peer | null = null): Chat | null {
@@ -288,18 +271,11 @@ export namespace Chat {
       pick   : () => chat.pick,
       halt   : () => chat.halt.signal,
     }, moved?.tools.key);
-    const wallet = cloud.billing.wallet({
-      user  : user.id,
-      mem,
-      batch : () => chat.batch,
-      told  : () => Chat.all(chat, Chat.state(chat)),
-      rest  : () => Chat.free(chat),
-    });
     const pick = Pick.load(mem.pick, config.OFFER, config.PICK);
     const chat: Chat = {
       acct, mem, tools, pick, socks: new Set(), acts: new Map(), busy: false, posts: 1, call: null, model: "", check: null, asked: false, open: 0, sent: [], wait: [],
       halt: new AbortController(), live: [], calls: {}, eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, ending: null,
-      writes: Promise.resolve(), held: null, wallet,
+      writes: Promise.resolve(), held: null,
     };
     // a saved pick not offered gave way: told once
     const saved = mem.pick === null ? null : Pick.label(mem.pick as Pick);
@@ -308,7 +284,6 @@ export namespace Chat {
       Memory.save(mem);
       Chat.note(chat, saved + " isn't offered here, so the chat now runs on " + Pick.label(pick) + ".");
     }
-    mem.pay = tools.pay = wallet.pay;
     if (mem.count === 0) {
       Memory.push(mem, [{ kind: "unii", text: HELLO, line: HELLO_LINE }, { kind: "unii", text: OPEN_PROMPT }]);
     }
@@ -322,7 +297,8 @@ export namespace Chat {
       Chat.arrive(chat, moved, peer!);
     }
     Chat.chats.set(user.id, chat);
-    cloud.billing.balance(user.id).then(async () => {
+    // a microtask on: the caller has the chat before its summaries start
+    Promise.resolve().then(async () => {
       Memory.pump(mem);
       Chat.progress(chat);
       await Chat.resume(chat, work);
@@ -341,9 +317,9 @@ export namespace Chat {
     return { ...Pick.ask(chat.pick), system, searches: 0, server: "" };
   }
 
-  // at rest (nothing runs): pays, and lets go of a chat nobody views;
-  // one ending or moving does that once at its rest (Chat.ending), and
-  // one ended or moved never (it pays where it is, or as it closes)
+  // at rest (nothing runs): lets go of a chat nobody views; one ending
+  // or moving does that once at its rest (Chat.ending), and one ended or
+  // moved never
   export function free(chat: Chat): void {
     const acct = chat.acct;
     const ending = chat.ending;
@@ -354,7 +330,6 @@ export namespace Chat {
     if (ending !== null || !Chat.idle(chat) || Chat.chats.get(acct.user) !== chat) {
       return;
     }
-    Chat.cloud.billing.settle(acct.user);
     if (chat.socks.size === 0) {
       Tools.close(chat.tools);
       Memory.stop(chat.mem);
@@ -362,10 +337,9 @@ export namespace Chat {
     }
   }
 
-  // no turn, post, agent, summary or paid request runs (one stopped is
-  // read on to its end, then billed: Billing.ts book)
+  // no turn, post, agent or summary runs
   export function idle(chat: Chat): boolean {
-    return !chat.busy && chat.posts === 0 && Tools.working(chat.tools).length === 0 && chat.mem.busy.size === 0 && chat.wallet.booked() === 0;
+    return !chat.busy && chat.posts === 0 && Tools.working(chat.tools).length === 0 && chat.mem.busy.size === 0;
   }
 
   // stops a chat for good; done at rest, its work logged where it was cut
@@ -462,21 +436,13 @@ export namespace Chat {
     } while (at < body.size);
   }
 
-  // a recording's words, logged as the act's answer, then billed (booked
-  // as its bytes at AUDIO a second)
+  // a recording's words, logged as the act's answer
   export async function voice(chat: Chat, id: string, type: string, body: Body): Promise<Answer> {
-    const most = Price.cost(VOICE.model, { ...Price.usage("slow"), seconds: body.size / AUDIO });
-    const pay = await chat.mem.pay?.("voice", id)?.({ input: most, token: 0, exact: null }, 0);
-    if (typeof pay === "string") {
-      return { error: pay };
-    }
     const got = await OpenAI.transcribe(new Blob([await Chat.read(body, 0, body.size)], { type })).catch((err: Error) => err);
     if (got instanceof Error) {
-      pay?.end(null);
       return { error: got.message };
     }
     Chat.mark(chat, id, { ans: { text: got.text } });
-    pay?.end({ run: VOICE, use: { ...Price.usage("slow"), seconds: got.seconds } });
     return { text: got.text };
   }
 
@@ -536,9 +502,6 @@ export namespace Chat {
       from = Chat.from(chat);
       const why = await Memory.settle(mem, from, halt.signal);
       if (why !== null) {
-        if (!halt.signal.aborted) {
-          Chat.failed(chat, why);
-        }
         return false;
       }
     }
@@ -550,9 +513,8 @@ export namespace Chat {
     const server = Tools.at(chat.tools, "main");
     chat.eye = Chat.eye(mem, from);
     chat.socks.forEach((sock) => Chat.show(chat, sock));
-    const bill = mem.pay?.("chat", String(msgs[0].id));
     const blocks = [...view, Tools.devices(chat.tools), Tools.at_work(chat.tools), { text: HEAD + text, mark: true }];
-    const ask = { ...Chat.share(chat), searches: SEARCHES, server, blocks, imgs, bill };
+    const ask = { ...Chat.share(chat), searches: SEARCHES, server, blocks, imgs };
     chat.model = chat.pick.model;
     chat.asked = true;
     chat.open = 0;
@@ -591,7 +553,7 @@ export namespace Chat {
       return Memory.line({ l: 0, i }, msg.kind + ": " + msg.text) + "\n";
     });
     const blocks = [...Memory.view(mem, at), { text: tail.join("") + GOAL_ASK + goal, mark: true }];
-    return { call: AskAI.ask({ ...Chat.share(chat), system: GOAL, blocks, bill: mem.pay?.("chat", "goal") }, () => {}), goal };
+    return { call: AskAI.ask({ ...Chat.share(chat), system: GOAL, blocks }, () => {}), goal };
   }
 
   // a goal check's answer, as the turn's call's is, read where the chat
@@ -707,8 +669,8 @@ export namespace Chat {
     Chat.all(chat, { $: "live", agent: agent?.name, live });
   }
 
-  // an agent's report, once it ends: a turn of its own, unless stopped or
-  // out of credit; none once its chat ended (the next start resumes it).
+  // an agent's report, once it ends: a turn of its own, unless stopped;
+  // none once its chat ended (the next start resumes it).
   // It is taken as a post is, so the chat never rests between logging it
   // and its turn
   export function report(chat: Chat, agent: Agent, text: string, stopped: boolean): void {
@@ -717,7 +679,7 @@ export namespace Chat {
     Chat.hold(chat, () => {
       chat.posts += 1;
       const msg = Chat.chats.get(chat.acct.user) !== chat ? null : Chat.push(chat, null, "work", text);
-      if (msg !== null && !stopped && Chat.cloud.billing.refuse(chat.acct.user, 0) === null) {
+      if (msg !== null && !stopped) {
         Chat.take(chat, msg);
       }
       chat.posts -= 1;
@@ -758,7 +720,7 @@ export namespace Chat {
 
   // an import (its body: messages as JSON lines), those new (fresh) logged
   // as one, summarized on the compactor; refused amid a turn or an
-  // import, or past the credits
+  // import
   export async function ingest(chat: Chat, id: string, body: Body): Promise<Answer> {
     if (chat.busy || chat.batch !== null) {
       return { error: (chat.busy ? "Kazuki is answering" : "An import is under way") + ": import again once it ends." };
@@ -771,15 +733,10 @@ export namespace Chat {
       said += msgs.filter((m) => m.kind !== "note").length;
     }
     const a = chat.mem.count;
-    const usd = Import.import_usd(a, sizes);
     if (sizes.length === 0) {
       return { error: "Nothing to import: no new messages found." };
     }
-    const refused = Chat.cloud.billing.refuse(chat.acct.user, usd);
-    if (refused !== null) {
-      return refused;
-    }
-    chat.mem.hold[1] = null;
+    chat.mem.paused = false;
     const tag = (m: Log, of: boolean): Log => ({ ...m, imported: true, ...(of ? { more: true } : { more: false, act: id }) });
     let held: Log[] = [];
     for await (const msgs of Chat.fresh(body, done)) {
@@ -788,7 +745,7 @@ export namespace Chat {
       Memory.push(chat.mem, all.map((m) => tag(m, true)));
     }
     Memory.push(chat.mem, held.map((m) => tag(m, false)));
-    chat.batch = Chat.batch(chat, { a, b: chat.mem.count, said, spent: 0 });
+    chat.batch = Chat.batch(chat, { a, b: chat.mem.count, said });
     chat.socks.forEach((sock) => Chat.show(chat, sock));
     Chat.progress(chat);
     return { going: chat.batch !== null };
@@ -796,10 +753,10 @@ export namespace Chat {
 
   // an import run: its estimate, of its messages' sizes as logged, timed
   // with none built, then its summaries built counted
-  export function batch(chat: Chat, { a, b, said, spent }: Kept): Batch {
+  export function batch(chat: Chat, { a, b, said }: Kept): Batch {
     const sizes = Array.from({ length: b - a }, (_, k) => Memory.message(chat.mem, a + k)?.size ?? 0);
     const micros = Import.import_guess(a, sizes);
-    const batch = { a, b, said, spent, micros, open: micros.map((level) => level.length), left: micros.flat().reduce((x, y) => x + y, 0), all: 0 };
+    const batch = { a, b, said, micros, open: micros.map((level) => level.length), left: micros.flat().reduce((x, y) => x + y, 0), all: 0 };
     batch.all = Chat.time(batch);
     micros.forEach((level, l) => level.forEach((_, j) => Memory.node(chat.mem, { l, i: Math.floor(a / 2 ** l) + j }) !== null && Chat.built(batch, l, j)));
     return batch;
@@ -825,8 +782,8 @@ export namespace Chat {
   // whole, then moved in place
   export function keep(batch: Batch, chat: Chat): void {
     const file = chat.mem.dir + BATCH;
-    const { a, b, said, spent } = batch;
-    fs.writeFileSync(file + ".new", JSON.stringify({ a, b, said, spent, why: chat.mem.hold[1] }));
+    const { a, b, said } = batch;
+    fs.writeFileSync(file + ".new", JSON.stringify({ a, b, said, why: chat.mem.paused ? "paused" : null }));
     fs.renameSync(file + ".new", file);
   }
 
@@ -837,7 +794,7 @@ export namespace Chat {
       return null;
     }
     const saved = JSON.parse(fs.readFileSync(file, "utf8"));
-    chat.mem.hold[1] = saved.why === "paused" ? "paused" : null;
+    chat.mem.paused = saved.why === "paused";
     return Chat.batch(chat, saved);
   }
 
@@ -934,14 +891,13 @@ export namespace Chat {
     Chat.change(chat);
   }
 
-  // an import paused, at once (Memory.pause), or resumed (short of credit,
-  // it waits for it)
+  // an import paused, at once (Memory.pause), or resumed
   export function go(chat: Chat, on: boolean): Answer {
     if (chat.batch === null) {
       return { error: "No import is running." };
     }
     if (on) {
-      chat.mem.hold[1] = null;
+      chat.mem.paused = false;
     } else {
       Memory.pause(chat.mem);
     }
@@ -982,7 +938,7 @@ export namespace Chat {
   // the chat moves to `peer`'s process, whose tools are at `url`, once no
   // post of it runs; no summary starts meanwhile, and those running go
   // along (Memory.give): waiting for them hung the chat (an import's run
-  // on), cutting them asked each again there, billed twice
+  // on), cutting them asked each again there
   export function give(chat: Chat, peer: Peer, url: string): void {
     Memory.halt(chat.mem);
     chat.ending = { all: false, then: () => Chat.move(chat, peer, url) };
@@ -1004,7 +960,7 @@ export namespace Chat {
     const sums = Memory.give(chat.mem, far);
     Chat.chats.delete(user);
     Memory.stop(chat.mem);
-    peer.send({ $: "chat", moved: { user, credit: Chat.cloud.billing.credit.get(user), turn, tools, sums } });
+    peer.send({ $: "chat", moved: { user, turn, tools, sums } });
     chat.socks.forEach((sock) => sock.close(MOVE));
     Main.done();
   }
@@ -1013,13 +969,13 @@ export namespace Chat {
   // each call running there by Main.far
   export function arrive(chat: Chat, moved: Moved, peer: Peer): void {
     const { call, check, ...turn } = moved.turn;
-    const far = (id: string, on: (ev: Event) => void, bill?: Bill) => Main.far(peer, id, chat.tools.key, on, bill);
+    const far = (id: string, on: (ev: Event) => void) => Main.far(peer, id, chat.tools.key, on);
     Object.assign(chat, turn);
     Tools.take(chat.tools, moved.tools, far);
-    Memory.take(chat.mem, moved.sums, (id, bill) => far(id, () => {}, bill));
+    Memory.take(chat.mem, moved.sums, (id) => far(id, () => {}));
     if (turn.busy) {
-      const run = call === null ? null : (chat.call = far(call, (ev) => Chat.on(chat, null, ev), chat.mem.pay?.("chat", String(turn.sent[0].id))));
-      const checking = check ? { call: far(check.call, () => {}, chat.mem.pay?.("chat", "goal")), goal: check.goal } : null;
+      const run = call === null ? null : (chat.call = far(call, (ev) => Chat.on(chat, null, ev)));
+      const checking = check ? { call: far(check.call, () => {}), goal: check.goal } : null;
       Chat.turn(chat, run ? Chat.ended(chat, run, chat.halt) : checking && Chat.checked(chat, checking, chat.halt));
     }
   }
@@ -1064,10 +1020,9 @@ export namespace Chat {
   export function state(chat: Chat): Out {
     const agents = Tools.working(chat.tools).map((a) => a.name);
     const batch = chat.batch;
-    const why = chat.mem.hold[1];
-    const importing = batch && { done: batch.all - Chat.time(batch), total: batch.all, spent: batch.spent, left: batch.left / 1e6, why, msgs: batch.b - batch.a, open: batch.open };
-    const billing = Chat.cloud.billing;
-    return { $: "state", busy: chat.busy, wait: Chat.waits(chat), agents, pick: chat.pick, ...config.OFFER, bills: billing.bills, credits: billing.credits(chat.acct.user), importing };
+    const why = chat.mem.paused ? "paused" : null;
+    const importing = batch && { done: batch.all - Chat.time(batch), total: batch.all, why, msgs: batch.b - batch.a, open: batch.open };
+    return { $: "state", busy: chat.busy, wait: Chat.waits(chat), agents, pick: chat.pick, ...config.OFFER, importing };
   }
 
   export function waits(chat: Chat): Wait {
@@ -1078,19 +1033,12 @@ export namespace Chat {
     return summing ? SUMMARIES : "";
   }
 
-  // the wallet told the change (Billing.ts changed): what it ends stops
-  // all work running, saying so; what runs is saved, unless the chat ended
+  // what runs is saved, unless the chat ended; the state goes to every view
   export function change(chat: Chat): void {
-    const stop = chat.wallet.changed();
     const work = Chat.running(chat);
     if (Chat.chats.get(chat.acct.user) === chat && String(work) !== String(chat.mem.work)) {
       chat.mem.work = work;
       Memory.save(chat.mem);
-    }
-    const turn = chat.busy && !chat.halt.signal.aborted;
-    const agents = [...chat.tools.agents.values()].some((a) => a.call !== null && !a.stop);
-    if ((turn || agents) && stop !== null) {
-      Chat.stop(chat, stop);
     }
     Chat.all(chat, Chat.state(chat));
     Chat.free(chat);
@@ -1197,7 +1145,7 @@ export namespace Chat {
   // an act changes the chat. One that would change it again if done again
   // (a post adds again; a stop ends what runs by then) is recorded: logged
   // (Chat.mark) before any effect off the log, or as the last page of
-  // what it logs; each costs credit or ends what credit started. The rest
+  // what it logs. The rest
   // set state (a pick: view.json; an import's hold: its file) or end a
   // job, so done again they change nothing, and only that state is kept,
   // written over; a stop with nothing to stop is one (so one a client
@@ -1240,17 +1188,6 @@ export namespace Chat {
       case "go": {
         return Chat.go(chat, msg.on === true || msg.on === "true");
       }
-      case "guess": {
-        // a read: an import priced here, not by a Kazuki older than PRICE
-        let sizes = "";
-        for await (const data of msg.req?.body ?? []) {
-          sizes += Buffer.from(data);
-          if (sizes.length > FRAME) {
-            return { error: "Too large.", status: 413 };
-          }
-        }
-        return { usd: Import.import_usd(chat.mem.count, sizes.split(",").map(Number)) };
-      }
       case "pick": {
         const pick = Pick.read(msg.to, config.OFFER);
         if (pick === null) {
@@ -1269,22 +1206,13 @@ export namespace Chat {
     return { error: "No act " + msg.$ + "." };
   }
 
-  // a post (msg.req) refused before a byte of its body is read, so a chat
-  // without credit stores none: under SPARE free, 507; refused by the
-  // billing, asked again after a balance read (a top-up lands there). Else
-  // its body goes to a file unlinked once open, then its act is done
+  // a post (msg.req) refused before a byte of its body is read: under
+  // SPARE free, 507. Else its body goes to a file unlinked once open,
+  // then its act is done
   export async function post(chat: Chat, id: string, msg: any): Promise<Answer> {
     const disk = fs.statfsSync(config.DIR);
     if (disk.bavail * disk.bsize < SPARE) {
       return { error: FULL, status: 507 };
-    }
-    const billing = Chat.cloud.billing;
-    if (billing.refuse(chat.acct.user, 0) !== null) {
-      await billing.balance(chat.acct.user);
-    }
-    const refused = billing.refuse(chat.acct.user, 0);
-    if (refused !== null) {
-      return refused;
     }
     const file = chat.mem.dir + "/up/" + crypto.randomUUID();
     fs.mkdirSync(chat.mem.dir + "/up", { recursive: true });
@@ -1460,20 +1388,13 @@ export namespace Main {
     const confirm = String((await req.json().catch(() => ({}))).confirm ?? "").trim().toLowerCase();
     if (confirm !== user.name.toLowerCase()) {
       const name = "type \"" + user.name + "\".";
-      const error = "Deleting the local chat erases Kazuki's memory for good" + cloud.billing.closes + ". To confirm, " + name;
+      const error = "Deleting the local chat erases Kazuki's memory for good. To confirm, " + name;
       return Response.json({ error }, { status: 400 });
     }
     await Main.here(user.id);
-    const owed = await cloud.billing.owing(user.id);
-    if (owed !== null) {
-      return Response.json({ error: owed }, { status: 409 });
-    }
     const chat = Chat.chats.get(user.id);
     await (chat === undefined ? Promise.resolve() : Chat.end(chat));
-    const why = await Cloud.close(cloud, user, req);
-    if (why !== null) {
-      return Response.json({ error: why }, { status: 409 });
-    }
+    Cloud.close(cloud, user);
     fs.rmSync(config.DIR + "/users/" + user.id, { recursive: true, force: true });
     return new Response(null, { status: 204 });
   }
@@ -1666,9 +1587,7 @@ export namespace Main {
       Chat.wake();
     }
     Tools.coming(Main.arrived());
-    Chat.cloud.billing.start(Main.index, (user) => Main.shard(user) === Main.index, Chat.chats);
     Main.forget(USERS);
-    process.on("message", Main.heard);
     process.on("disconnect", () => process.exit(0));
     process.on("unhandledRejection", Main.unowned);
     Main.server = Bun.serve<Sock["data"]>({
@@ -1760,8 +1679,8 @@ export namespace Main {
   // those coming once they come. A call goes on in the process that
   // started it, fed straight to its chat's process (Main.away, Main.far),
   // so one that passed calls on ends once their origins feed the next.
-  // A process ends once nothing is left to come, run, pass
-  // on or pay (Main.done).
+  // A process ends once nothing is left to come, run or pass
+  // on (Main.done).
 
   // the worker before this one, if one listens at `hand`
   export function dial(hand: string): Promise<Peer | null> {
@@ -1790,7 +1709,7 @@ export namespace Main {
   // (Main.event): one that fails (a chat moved here that won't open) is
   // logged, and the rest of the read (the chats moved after it) goes on
   export function peer(sock: net.Socket): Peer {
-    const peer: Peer = { send: (msg) => sock.write(JSON.stringify(msg) + "\n"), end: (then) => (sock.destroyed ? then() : sock.end(then)), asks: new Map(), feeds: new Map(), grants: new Map() };
+    const peer: Peer = { send: (msg) => sock.write(JSON.stringify(msg) + "\n"), end: (then) => (sock.destroyed ? then() : sock.end(then)), feeds: new Map() };
     let rest = "";
     Main.peers.add(peer);
     sock.setEncoding("utf8");
@@ -1851,9 +1770,6 @@ export namespace Main {
         const moved: Moved = msg.moved;
         Main.coming.get(moved.user)?.resolve();
         Main.coming.delete(moved.user);
-        if (moved.credit !== undefined) {
-          Chat.cloud.billing.credit.set(moved.user, moved.credit);
-        }
         const chat = Chat.open({ id: moved.user, name: "" }, moved, peer);
         if (chat !== null && Main.given) {
           Chat.give(chat, Main.next!, Main.onward);
@@ -1899,54 +1815,23 @@ export namespace Main {
         Main.aways.get(msg.call)?.call.stop();
         return;
       }
-      case "book": {
-        const bill = peer.feeds.get(msg.call)?.bill ?? (async () => "its call ended");
-        bill({ input: msg.input, token: msg.token, exact: null }, msg.cap).then((grant) => {
-          if (typeof grant !== "string") {
-            peer.grants.set(msg.req, grant);
-          }
-          peer.send(typeof grant === "string" ? { $: "grant", req: msg.req, why: grant } : { $: "grant", req: msg.req, max: grant.max, cut: grant.cut });
-        }).catch((err) => console.error("book " + msg.req + ": " + (err?.message ?? err)));
-        return;
-      }
-      case "grant": {
-        const end = (used: object | null) => peer.send({ $: "paid", req: msg.req, used });
-        peer.asks.get(msg.req)?.(msg.why ?? { max: msg.max, cut: msg.cut, end });
-        peer.asks.delete(msg.req);
-        Main.done();
-        return;
-      }
-      case "paid": {
-        peer.grants.get(msg.req)?.end(msg.used);
-        peer.grants.delete(msg.req);
-        Main.done();
-        return;
-      }
     }
   }
 
-  // a call moved with its chat to `peer`'s process: what it sends, pays
-  // and ends goes where the chat is, by its ref: this process's address
-  // and an id, or, fed here from further back, its own, passed on till
-  // its origin feeds the chat's process itself (gone); a request it books
-  // there goes with its input exact (Cost: a count can't go)
+  // a call moved with its chat to `peer`'s process: what it sends and
+  // ends goes where the chat is, by its ref: this process's address and
+  // an id, or, fed here from further back, its own, passed on till its
+  // origin feeds the chat's process itself (gone)
   export function away(peer: Peer, call: Call): string {
     const ref = Main.refs.get(call) ?? Main.addr + "#" + crypto.randomUUID();
     const away: Away = { call, link: peer };
-    const bill: Bill = async (cost, cap) => {
-      const { input, token } = cost.exact === null ? cost : await cost.exact();
-      const req = crypto.randomUUID();
-      const link = away.link;
-      link.send({ $: "book", call: ref, req, input, token, cap });
-      return new Promise((done) => link.asks.set(req, done));
-    };
     const end = (end: End) => {
       Main.aways.delete(ref);
       away.link.send({ $: "end", call: ref, end });
       Main.done();
     };
     Main.aways.set(ref, away);
-    call.move({ on: (ev) => away.link.send({ $: "ev", call: ref, ev }), bill, end });
+    call.move({ on: (ev) => away.link.send({ $: "ev", call: ref, ev }), end });
     return ref;
   }
 
@@ -1954,11 +1839,11 @@ export namespace Main {
   // `back` if it runs there, else by its origin, asked to (take; its MCP
   // requests for the chat `key` then come straight here: Tools.went), what that
   // sends held till `back` passed on all that reached it (gone)
-  export function far(back: Peer, ref: string, key: string, on: (ev: Event) => void, bill?: Bill): Call {
+  export function far(back: Peer, ref: string, key: string, on: (ev: Event) => void): Call {
     const at = ref.slice(0, Math.max(0, ref.lastIndexOf("#")));
     const origin = at === Main.before ? back : Main.link(at);
     const send = (say: Say) => origin.send({ $: "send", call: ref, say });
-    const [call, feed] = AskAI.tie(on, bill, send, () => origin.send({ $: "stop", call: ref }));
+    const [call, feed] = AskAI.tie(on, send, () => origin.send({ $: "stop", call: ref }));
     back.feeds.set(ref, feed);
     origin.feeds.set(ref, feed);
     if (origin !== back) {
@@ -1981,20 +1866,18 @@ export namespace Main {
     }
   }
 
-  // once it gave all its chats and nothing it runs, passes on or pays for
-  // them is left, this process ends, its last requests answered
-  // (Main.leave)
+  // once it gave all its chats and nothing it runs or passes on for them
+  // is left, this process ends, its last requests answered (Main.leave)
   export function done(): void {
-    const paying = [...Main.peers].some((peer) => peer.asks.size > 0 || peer.grants.size > 0);
-    if (Main.given && Chat.chats.size === 0 && Main.coming.size === 0 && Main.aways.size === 0 && !paying) {
+    if (Main.given && Chat.chats.size === 0 && Main.coming.size === 0 && Main.aways.size === 0) {
       Main.leave();
     }
   }
 
   // ends once no request is under way, to it or from it (a model's answer
-  // read on to be billed: Agent.READING), and all told to other processes
-  // is out (an exit drops what a socket still holds: a call's end, its
-  // payment; on macOS all past 8 KB); Bun's server.stop() promise would
+  // read on: Agent.READING), and all told to other processes is out (an
+  // exit drops what a socket still holds: a call's end; on macOS all past
+  // 8 KB); Bun's server.stop() promise would
   // say so of the first, but never resolves once a WebSocket was open
   // (Bun 1.3.14), so the counts are read again each LEAVE ms
   export function leave(): void {
@@ -2009,7 +1892,7 @@ export namespace Main {
   // one's with chats still given it, that process crashed, and this one
   // ends too (the next start resumes all). Else the calls fed over it end
   // (a call's origin crashed; one its relay still passes on ends as that
-  // says), and what it asked or let through for payment; the one before
+  // says); the one before
   // frees what waits on it, and this one ends as it was to (Main.leave)
   export function lost(peer: Peer): void {
     Main.peers.delete(peer);
@@ -2033,8 +1916,6 @@ export namespace Main {
       Main.gates.delete(ref);
       feed.end(AskAI.end(ENDED));
     }
-    peer.asks.forEach((ask) => ask(ENDED));
-    peer.grants.forEach((grant) => grant.end(null));
     Main.done();
   }
 

@@ -73,9 +73,7 @@ body { text-wrap: balance; }
 
 /* a guest's chat: only the log and the message box; a note alone (the
    terminal signed in) */
-body.guest :is(.net, .credits, .all, .menu, .attach, .mic, #pick, #tabs) { display: none !important; }
-/* what only a server that bills shows (main.ts: body.bills) */
-body:not(.bills) .bill { display: none !important; }
+body.guest :is(.net, .all, .menu, .attach, .mic, #pick, #tabs) { display: none !important; }
 body.solo main { width: min(420px, 100% - 48px); margin: 18vh auto; text-align: center; }
 body.solo h1 { margin: 0; font: 400 46px/1.05 var(--serif); letter-spacing: -.015em; }
 .sub { margin: 18px 0 0; color: var(--mid); font-size: 14.5px; }
@@ -90,7 +88,6 @@ header > .brand:hover { background: none; }
 /* the logo: its shape (mark.svg, the infinity cut out) filled with the
    ink, so it follows the theme */
 .mark { display: block; width: 26px; height: 26px; background: var(--ink); -webkit-mask: url(/mark.svg) center / contain no-repeat; }
-header .credits { font: 500 12.5px var(--mono); }
 header .net { font-size: 13px; color: var(--mid); }
 
 /* Footer: the rule with the pick (a click on a part moves it), the
@@ -143,7 +140,7 @@ body.account footer > :not(#toast) { display: none; }
 #tabs button:hover, #tabs .here { color: var(--ink); }
 #tabs .here { font-weight: 600; }
 
-/* Popovers (the browser's): the menu, the wallet, Import History */
+/* Popovers (the browser's): the menu, Import History */
 [popover] { inset: 60px 20px auto auto; margin: 0; width: 280px; padding: 10px 14px; border: 1px solid var(--hair); border-radius: 14px; color: var(--ink); background: var(--lift); box-shadow: var(--shadow); }
 [popover] p { margin: 8px 0 6px; font-size: 14px; }
 [popover] > button { display: block; width: 100%; padding: 8px 4px; text-align: left; font-size: 14.5px; border-radius: 10px; }
@@ -151,15 +148,12 @@ body.account footer > :not(#toast) { display: none; }
 #menu { width: 180px; padding: 6px; box-shadow: 0 8px 24px rgb(0 0 0 / .12); }
 .ai { margin: 6px 0 0; text-align: center; font: 12px var(--sans); color: var(--mid); }
 body:not(.guest) .ai { display: none; }
-/* the wallet (out of credit), Import History (also a new account's
-   first step) and the risk warning: centered over the page. A running
-   import's progress shows in Import History and, small, in the header */
-:is(#wallet, #import, #risk) { inset: 0; margin: auto; width: min(440px, 100vw - 40px); height: fit-content; max-height: 85vh; overflow: auto; padding: 14px 20px; }
-:is(#wallet, #import, #risk)::backdrop { background: var(--veil); }
-:is(#wallet, #import, #risk) .title { font-weight: 600; font-size: 16px; }
-#wallet { width: min(400px, 100vw - 40px); padding: 20px 22px; }
-#wallet .title { margin-top: 0; }
-#wallet .title { margin-bottom: 16px; }
+/* Import History (also a new account's first step) and the risk
+   warning: centered over the page. A running import's progress shows in
+   Import History and, small, in the header */
+:is(#import, #risk) { inset: 0; margin: auto; width: min(440px, 100vw - 40px); height: fit-content; max-height: 85vh; overflow: auto; padding: 14px 20px; }
+:is(#import, #risk)::backdrop { background: var(--veil); }
+:is(#import, #risk) .title { font-weight: 600; font-size: 16px; }
 #import { width: min(480px, 100vw - 40px); padding: 20px 22px; }
 #import .title { margin-top: 0; font-size: 17px; }
 #import .sub { margin-top: 4px; }
@@ -206,7 +200,7 @@ body:not(.guest) .ai { display: none; }
 #import .acts .pickdir.alt { background: var(--block); color: var(--ink); }
 #import .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #import .two button { min-height: 64px; padding: 10px 16px; font-size: 15px; white-space: normal; }
-:is(#import .acts, .usd) button { white-space: nowrap; }
+#import .acts button { white-space: nowrap; }
 #import button:disabled { opacity: 0.4; cursor: default; }
 /* a progress bar: the box's on the paper, track the block's gray; the
    header's on a gray button, named with its percent, track darker
@@ -325,8 +319,8 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 @media (pointer: coarse) {
   :is(header > button, #pick button, #tabs button) { position: relative; }
   :is(header > button, #pick button, #tabs button, .copy, .open.one > .fold)::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
-  :is(.ai, .fine, .foot) a { padding: 14px 0; }
-  :is(.chip, .usd button) { height: 44px; }
+  .ai a { padding: 14px 0; }
+  .chip { height: 44px; }
   [popover] > button { min-height: 44px; }
 }
 
@@ -361,24 +355,10 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 #account h2 { margin: 0 0 14px; font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--mid); }
 #account section > p { margin: 0 0 10px; }
 #account section > p:last-child { margin-bottom: 0; }
-#account .big { margin: 0 0 16px; font: 500 36px/1 var(--sans); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.usd { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; max-width: 420px; }
-.usd button { height: 40px; padding: 0 8px; border-radius: 10px; background: var(--block); font-weight: 600; }
-.usd button:hover { background: var(--hover); }
-.fine { margin: 12px 0 0; font-size: 12.5px; color: var(--mid); }
 .chip { flex: none; display: inline-grid; place-items: center; height: 36px; padding: 0 14px; border-radius: 9px; background: var(--block); font: 500 14px var(--sans); color: var(--ink); text-decoration: none; }
 .chip:hover { background: var(--hover); }
 .chip svg { width: 15px; height: 15px; }
 .chip.red { color: var(--red); }
-.wide { overflow-x: auto; }
-#account table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
-#account :is(th, td) { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--hair); text-align: left; white-space: nowrap; }
-#account th { font-size: 12.5px; font-weight: 500; color: var(--mid); }
-#account :is(th, td):not(:first-child) { text-align: right; }
-#account :is(th, td):last-child { padding-right: 0; }
-#account :is(.days, .buys) :is(th, td):nth-child(2) { text-align: left; }
-#account td:nth-child(2) { white-space: normal; }
-#account tr:last-child td { border-bottom: 0; }
 .item { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 0; }
 .item + .item { border-top: 1px solid var(--hair); }
 #account .item p { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
@@ -393,9 +373,6 @@ header > .imping { display: flex; flex-direction: column; justify-content: cente
 .kill .why { color: var(--red); }
 .kill .why:empty { display: none; }
 .kill .chip:disabled { opacity: .4; cursor: default; }
-#account .foot { margin: 24px 0 0; font-size: 13px; color: var(--mid); }
-#account .foot a { text-decoration: none; }
-#account .foot a:hover { text-decoration: underline; }
 
 /* The intro (main.ts): its two scenes share one grid cell; the first's
    lines rise .38 s apart, and it fades as the second's logo and name

@@ -3,7 +3,7 @@
 // The terminal's chat, one page: the transcript (Transcript.tsx), what
 // is at work (a status line: the turn, its wait, the agents, the jobs
 // run here, an import), the input (Prompt.tsx), and a footer (the tabs,
-// the pick, the link). Notes come as toasts; /help, /account and an
+// the pick, the link). Notes come as toasts; /help and an
 // import's plan as a sheet over the page; a pick as a list.
 
 import type { KeyEvent, ScrollBoxRenderable, Selection } from "@opentui/core";
@@ -345,14 +345,13 @@ function Status(): JSX.Element {
 // Footer
 // ======
 
-// the tabs on the left; the pick, the credit and the server on the right
+// the tabs on the left; the pick and the server on the right
 function Footer(props: { openPick: (move: "model" | "effort" | "speed") => void }): JSX.Element {
   const ctx   = useCtx();
   const c     = ctx.c;
   const p     = ctx.p;
   const tabs  = () => (c.rev(), View.view_tabs(c.v));
   const knobs = () => (c.rev(), View.view_pick(c.v));
-  const cred  = () => (c.rev(), View.view_credits(c.v));
   const host  = c.url.replace(/^https?:\/\//, "");
   return (
     <box flexDirection="row" paddingLeft={3} paddingRight={2} flexShrink={0} height={1} gap={2}>
@@ -376,9 +375,6 @@ function Footer(props: { openPick: (move: "model" | "effort" | "speed") => void 
           </text>
         )}
       </For>
-      <Show when={cred()}>
-        <text flexShrink={0} fg={p.muted}>{cred()}</text>
-      </Show>
       <text flexShrink={0} fg={p.faint}>{host}</text>
     </box>
   );

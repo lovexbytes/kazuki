@@ -4,7 +4,7 @@
 // fake auth.openai.com and ChatGPT backend (one local server) that takes
 // only the fields Codex sends and requires `instructions`: the body,
 // refreshes (refresh tokens rotate), the sign-in file, usage limits, the
-// sign-ins, logout, which vendor a pick bills, and a billing server.
+// sign-ins, logout.
 
 import { beforeEach, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
@@ -155,8 +155,6 @@ const { ChatGPT } = await import("./ChatGPT.ts");
 const { AskAI } = await import("./AskAI.ts");
 const { Pick } = await import("./Pick.ts");
 const { Machine } = await import("./Machine.ts");
-const { Billing } = await import("./Billing.ts");
-const { Cloud } = await import("./Cloud.ts");
 
 const FILE = DIR + "/chatgpt.json";
 
@@ -371,16 +369,4 @@ test("offered with openai-api, a model picked by name runs on the vendor it name
   const sub = { vendor: "openai-sub" as const, model: "gpt-6-luna", effort: "high", speed: "slow" };
   expect(Pick.move(sub, "model", offer, "gpt-6.1-sol")?.vendor).toBe("openai-sub");
   expect(Pick.move(sub, "model", offer, "openai-api:gpt-6.1-sol")?.vendor).toBe("openai-api");
-});
-
-test("a server that bills won't start offering openai-sub", () => {
-  const vendors = [...config.OFFER.vendors];
-  const open = spyOn(Billing, "open").mockImplementation(() => ({ bills: true }) as any);
-  try {
-    config.OFFER.vendors.splice(0, Infinity, "claude-api", "openai-sub");
-    expect(() => Cloud.open(() => {})).toThrow("can't offer openai-sub");
-  } finally {
-    open.mockRestore();
-    config.OFFER.vendors.splice(0, Infinity, ...vendors);
-  }
 });

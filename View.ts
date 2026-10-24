@@ -10,7 +10,6 @@
 // and comes again before a message in another 3-hour window.
 
 import type { Kind, Vendor } from "./AskAI.ts";
-import { topup } from "./Import.ts";
 import * as Call from "./Call.ts";
 import * as Md from "./Md.ts";
 import { LABELS, type Move, Pick } from "./Pick.ts";
@@ -34,13 +33,12 @@ export type Live = { kind: Kind; text: string };
 // log: null while it loads
 export type Page = { name: string; log: Entry[] | null; live: Live[] };
 
-// an import's time done and in all (micro-USD: Server.ts Chat.time), USD
-// spent and left, why paused, its messages, its nodes not built by level
-export const BROKE = "out of credit";
-export type Progress = { done: number; total: number; spent: number; left: number; why: string | null; msgs: number; open: number[] };
+// an import's time done and in all (Server.ts Chat.time), why paused, its
+// messages, its nodes not built by level
+export type Progress = { done: number; total: number; why: string | null; msgs: number; open: number[] };
 
-// an import's minutes a micro-USD of its time (the compactor, measured on
-// a real import: 990 s for 162,900)
+// an import's minutes a unit of its time (micro-USD on the compactor,
+// measured on a real import: 990 s for 162,900)
 const PACE = 1e-4;
 
 // A new local chat has a short hello and its opening prompt (Server.ts).
@@ -52,9 +50,7 @@ export const OPENING = 2;
 export const SUMMARIES = "summaries";
 export type Wait = string;
 
-// agents: those at work; vendors and models: those offered; bills:
-// whether the server bills (Billing.ts); credits: what the user may
-// spend (null: free, or not told)
+// agents: those at work; vendors and models: those offered
 export type State = {
   busy      : boolean;
   wait      : Wait;
@@ -62,8 +58,6 @@ export type State = {
   pick      : Pick | null;
   vendors   : Vendor[];
   models    : string[];
-  bills     : boolean;
-  credits   : number | null;
   importing : Progress | null;
 };
 
@@ -113,9 +107,9 @@ export type Server =
 export type Sent = { text: string; images?: Blob[] };
 
 // an act's answer: why refused (status: HTTP's), a recording's words, an
-// import's still running, its cost; a body, made anew for each post (what fetch
+// import's still running; a body, made anew for each post (what fetch
 // takes)
-export type Answer = { error?: string; status?: number; text?: string; going?: boolean; usd?: number };
+export type Answer = { error?: string; status?: number; text?: string; going?: boolean };
 export type Body   = () => any;
 
 // the acts a view sends (out: a job's output): changes, then reads; a
@@ -131,8 +125,7 @@ export type Client =
   | { $: "out"; job: string; out: object }
   | { $: "zoom"; part: Part }
   | { $: "root" }
-  | { $: "agent"; name: string }
-  | { $: "guess"; body: Body }; // an import's cost
+  | { $: "agent"; name: string };
 
 // an act not answered: with its id, the socket it went by, what its
 // answer does, what a message said (shown while offline: view_tail)
@@ -170,16 +163,8 @@ export type Tab = { name: string | null; here: boolean; text: string };
 // changes)
 export type Knob = { text: string; move: Move; hint: string };
 
-// a user's account, as /api/account gives it (Cloud.data): whether the
-// server bills; where it does, every purchase and every call paid,
-// newest first (cents; micro-USD)
-export type Topup   = { id: number; at: string; credits_cents: number; paid_cents: number; left_cents: number; status: string; source: string; receipt_url: string | null };
-export type Spend   = { at: number; kind: string; micros: number };
-export type Account = { name: string; bills: boolean; credits: number | null; topups?: Topup[]; calls?: Spend[] };
-
-// a day's use: its date (day_show), what its calls served, counted
-// ("3 replies, 9 summaries"), and their cost
-export type Day = { date: string; what: string; usd: number };
+// a user's account, as /api/account gives it (Cloud.data)
+export type Account = { name: string };
 
 // Constants
 // =========
@@ -237,22 +222,6 @@ export const IMAGES = "Images are png, jpeg, gif or webp.";
 const TOOL = "tool: ";
 const FOLD = "The whole chat, folded into the fewest blocks.";
 
-// a purchase's columns (what is left says its status unless paid; the
-// last, its receipt)
-export const TOPUP = ["#", "Date", "Credit", "Paid", "Left", ""];
-
-// what a call served (Billing.ts `calls` kind), as a person counts it: one,
-// many
-const SERVED: Record<string, string[]> = {
-  chat      : ["reply", "replies"],
-  compactor : ["summary", "summaries"],
-  import    : ["import summary", "import summaries"],
-  voice     : ["voice note", "voice notes"],
-  agent     : ["agent step", "agent steps"],
-  computer  : ["computer step", "computer steps"],
-  earlier   : ["earlier use", "earlier uses"],
-};
-
 // Constructors
 // ============
 
@@ -271,8 +240,6 @@ export function view_new(): View {
     pick      : null,
     vendors   : [],
     models    : LABELS,
-    bills     : false,
-    credits   : null,
     importing : null,
     parts     : [],
     turn      : Infinity,
@@ -491,22 +458,13 @@ export function view_stream(v: View): Live[] {
   return v.page === null ? v.live : v.page.live;
 }
 
-// an import's progress; where the server bills, its cost; short of
-// credit, what to add (progress_need)
+// an import's progress
 export function progress_show(v: State, p: Progress): string {
   const n = (k: number) => k.toLocaleString("en-US");
   const merges = p.open.reduce((x, y) => x + y, 0);
   const phase = p.open[0] > 0 ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs) : "Merging the top of the tree: " + merges + (merges === 1 ? " merge" : " merges") + " left · about " + Math.ceil((p.total - p.done) * PACE) + " min";
-  const why = p.why === null ? "" : p.why === BROKE ? " · waiting for credit: add $" + progress_need(p, v.credits) + " and it goes on by itself" : " · paused";
-  const usd = v.bills ? " · $" + p.spent.toFixed(2) + " spent, estimated $" + p.left.toFixed(2) + " left" : "";
-  return phase + usd + why;
-}
-
-// what an import waiting for credit asks to add: the estimate left and
-// half again, and at least a top-up's least, $5 (a request books its
-// whole output, so it can wait with the credit over that estimate)
-export function progress_need(p: Progress, credits: number | null): number {
-  return Math.max(5, topup(p.left, credits ?? 0));
+  const why = p.why === null ? "" : " · paused";
+  return phase + why;
 }
 
 // the chat, each agent at work, and the page shown while its agent is
@@ -554,10 +512,6 @@ export function view_pick(v: View): Knob[] {
 
 export function view_count(v: View): number {
   return v.parts.reduce((end, [id, n]) => Math.max(end, id + n), 0);
-}
-
-export function view_credits(v: View): string | null {
-  return v.credits === null ? null : usd_show(v.credits);
 }
 
 function view_learn(v: View, pack: Pack): void {
@@ -790,60 +744,6 @@ function live_set(live: Live[], now: Live[]): void {
 function sum_call(n: number, text: string): Call.Call | null {
   const call = n === 1 && text.startsWith(TOOL) ? Call.call_parse(text.slice(TOOL.length)) : null;
   return call === null || call.name === "" ? null : call;
-}
-
-// Account
-// =======
-
-// the name and balance, the purchases, the use by day
-export function account_md(a: Account): string {
-  const row  = (cells: string[]) => "| " + cells.join(" | ") + " |";
-  const head = "**" + a.name + "**" + (a.credits === null ? "" : ", balance " + usd_show(a.credits));
-  const tops = (a.topups ?? []).length === 0 ? [] : ["", row(TOPUP), "|---|---|---|---|---|---|", ...a.topups!.map((t) => row(topup_cells(t)))];
-  const days = account_days(a).map((d) => row([d.date, d.what, cost_show(d.usd)]));
-  const uses = days.length === 0 ? [] : ["", row(["Day", "Use", "Cost"]), "|---|---|---|", ...days];
-  return [head, ...tops, ...uses].join("\n");
-}
-
-// a purchase, as TOPUP's cells (inline markdown)
-export function topup_cells(t: Topup): string[] {
-  const usd  = (cents: number) => usd_show(cents / 100);
-  const paid = t.source === "apple" ? "App Store" : usd(t.paid_cents);
-  const left = usd(t.left_cents) + (t.status === "paid" ? "" : " · " + t.status);
-  const bill = t.receipt_url ? "[Receipt](" + t.receipt_url + ")" : "";
-  return ["#" + t.id, day_show(new Date(t.at)), usd(t.credits_cents), paid, left, bill];
-}
-
-// the calls paid, a row a day, newest first
-export function account_days(a: Account): Day[] {
-  const days = new Map<string, { counts: Map<string[], number>; micros: number }>();
-  for (const s of a.calls ?? []) {
-    const date = day_show(new Date(s.at));
-    const day  = days.get(date) ?? { counts: new Map(), micros: 0 };
-    const name = SERVED[s.kind] ?? SERVED.earlier;
-    day.counts.set(name, (day.counts.get(name) ?? 0) + 1);
-    day.micros += s.micros;
-    days.set(date, day);
-  }
-  return [...days].map(([date, day]) => {
-    const what = [...day.counts].map(([name, n]) => n + " " + name[n === 1 ? 0 : 1]);
-    return { date, what: what.join(", "), usd: day.micros / 1e6 };
-  });
-}
-
-// a day as people read it, "Oct 6" (the year added when not this one)
-export function day_show(d: Date): string {
-  const year = d.getFullYear() === new Date().getFullYear() ? undefined : "numeric";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year });
-}
-
-// a cost in cents, or under one
-export function cost_show(usd: number): string {
-  return usd > 0 && usd < 0.005 ? "<$0.01" : usd_show(usd);
-}
-
-export function usd_show(usd: number): string {
-  return (usd < 0 ? "-$" : "$") + Math.abs(usd).toFixed(2);
 }
 
 // Image

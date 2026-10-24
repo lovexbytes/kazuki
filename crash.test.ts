@@ -1,9 +1,8 @@
-// Crash and billing test
-// ======================
+// Crash test
+// ==========
 // `bun test crash.test.ts`. A worker outlives a failure no one owned
 // (Main.unowned logs it); an agent whose run throws still reports, as a
-// failed reply; a request cut short is billed the output it streamed,
-// each byte a token, and its text as input when the API told none.
+// failed reply.
 
 import { expect, test } from "bun:test";
 import * as fs from "node:fs";
@@ -13,7 +12,6 @@ process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-crash-");
 
 const { Agent } = await import("./Agent.ts");
 const { Tools } = await import("./Tools.ts");
-const { Price } = await import("./Price.ts");
 
 test("a worker outlives a failure no one owned", async () => {
   const code = `
@@ -46,14 +44,4 @@ test("an agent whose run throws still reports", async () => {
   await Tools.run(tools, agent, call);
   expect(agent.call).toBeNull();
   expect(told).toContain("failed: boom");
-});
-
-test("a request cut short is billed what it streamed", () => {
-  const api = { ...Price.usage("slow"), input: 10, write: 20, read: 30, output: 1 };
-  expect(Agent.used(api, { bytes: 500, done: true }, "{}")).toEqual(api);
-  expect(Agent.used(api, { bytes: 500, done: false }, "{}")).toEqual({ ...api, output: 500 });
-  expect(Agent.used({ ...api, output: 900 }, { bytes: 500, done: false }, "{}").output).toBe(900);
-  const none = Price.usage("slow");
-  const json = JSON.stringify({ input: "héllo" });
-  expect(Agent.used(none, { bytes: 7, done: false }, json)).toEqual({ ...none, write: Buffer.byteLength(json), output: 7 });
 });

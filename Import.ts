@@ -13,8 +13,7 @@
 //
 // The estimate is the run's plan (import_guess): each node whose source
 // is over NODE takes a call, priced as measured on the compactor (PRICE).
-// It is shown, never a cap: only the credit stops an import (Billing.ts
-// book).
+// It is shown, never a cap: the import runs on the user's own API keys.
 
 import type { Kind } from "./AskAI.ts";
 import { clip_pages, stream_lines } from "./Clip.ts";
@@ -47,9 +46,8 @@ export type Done = Record<string, string>;
 export type Want = { off: string[]; since: string; tools: boolean };
 
 // an import: the sessions as wanted but for off, those picked, their
-// messages, the first new message's day ("": none), their sizes, its
-// cost in USD
-export type Plan = { sessions: Session[]; picked: Session[]; msgs: number; first: string; sizes: number[]; guess: number };
+// messages, the first new message's day ("": none), its cost in USD
+export type Plan = { sessions: Session[]; picked: Session[]; msgs: number; first: string; guess: number };
 
 // a node as the estimate sees it: its source's bytes, and the summaries
 // under it (0: its source is messages as they are)
@@ -169,7 +167,7 @@ export function import_plan(sessions: Session[], want: Want, done: Done, count: 
   const picked = shown.filter((s) => !want.off.includes(import_id(s)));
   const first  = all.map((s) => s.heads[0].date).sort()[0] ?? "";
   const sizes  = picked.flatMap((s) => [import_size(import_note(s)), ...s.heads.map((m) => m.size)]);
-  return { sessions: shown, picked, msgs: sizes.length - picked.length, first: first.slice(0, 10), sizes, guess: import_usd(count, sizes) };
+  return { sessions: shown, picked, msgs: sizes.length - picked.length, first: first.slice(0, 10), guess: import_usd(count, sizes) };
 }
 
 // whether a message of a session imported up to `last` (none: never) is
@@ -276,13 +274,6 @@ export function import_size(m: { kind: Kind; text: string }): number {
 // "1 message", "2,048 new messages" (what: "new ")
 export function import_count(n: number, what: string): string {
   return n.toLocaleString("en-US") + " " + what + (n === 1 ? "message" : "messages");
-}
-
-// the credit to add so the balance holds the estimate and half again
-// (room for the chat), up to the next $5 (0: none)
-export function topup(guess: number, credits: number): number {
-  const need = guess * 1.5 - credits;
-  return need > 0 ? Math.ceil(need / 5) * 5 : 0;
 }
 
 // "$3.10"

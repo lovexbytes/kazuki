@@ -1,7 +1,7 @@
 // Server test
 // ===========
-// `bun test Server.test.ts`. `./Server.ts <port>` alone serves the site
-// (its prices only if it bills); with workers set, it is their
+// `bun test Server.test.ts`. `./Server.ts <port>` alone serves the site;
+// with workers set, it is their
 // supervisor, which only routes (a proxy in front sends each request to
 // the worker it names).
 
@@ -181,7 +181,7 @@ test("with workers, Server.ts routes to them", async () => {
 // The local server opens its fixed user without a session and rejects hosts
 // or origins which could expose that unauthenticated chat.
 test("the local user needs no session and hostile origins are refused", async () => {
-  expect(await (await server_get(9481, {}, "/api/me")).json()).toMatchObject({ id: "local", name: "local", bills: false });
+  expect(await (await server_get(9481, {}, "/api/me")).json()).toEqual({ id: "local", name: "local" });
   expect((await server_get(9484, {}, "/api/me", { host: "example.test" })).status).toBe(403);
   expect((await server_get(9485, {}, "/api/me", { origin: "http://evil.test" })).status).toBe(403);
   expect((await server_get(9482, {}, "/pricing")).status).toBe(404);
@@ -197,7 +197,7 @@ const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")})
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
 Chat.cloud = Cloud.open(() => {});
 const chat = Chat.open({ id: "u1", name: "a@b.c" });
-AskAI.ask = (ask, on) => AskAI.tie(on, ask.bill, () => {}, () => {})[0];
+AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
 Chat.take(chat, Chat.push(chat, null, "user", "hi"));
 await Bun.sleep(10);
 const model = chat.pick.model;
