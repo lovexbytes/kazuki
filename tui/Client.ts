@@ -9,7 +9,7 @@
 
 import * as child from "node:child_process";
 import * as os from "node:os";
-import { createSignal, type Accessor } from "solid-js";
+import { batch, createSignal, type Accessor } from "solid-js";
 import { Machine, type Job } from "../Machine.ts";
 import * as View from "../View.ts";
 
@@ -28,6 +28,8 @@ export type Hooks = {
 };
 
 // v: the View; rev: changes at each change to it (a frame at most);
+// log: only at a change to the chat's rows, not to what streams (a long
+// chat's rows are not made again at each piece of a stream);
 // jobs: the agent's jobs running here; imgs: for the next message;
 // since: when the turn running started (ms; 0: none); pending: commands
 // at work (a pipe waits for them)
@@ -39,7 +41,8 @@ export type Client = {
   screen : boolean;
   jobs   : Map<string, AbortController>;
   rev    : Accessor<number>;
-  bump   : () => void;
+  log    : Accessor<number>;
+  bump   : (rows?: boolean) => void;
   imgs   : Accessor<Blob[]>;
   setImgs: (imgs: Blob[]) => void;
   since  : number;
@@ -63,8 +66,10 @@ const TOPUP = "Add credit with /topup <dollars> ($5 to $500).";
 
 export function client_new(url: string, device: string, work: string, screen: boolean): Client {
   const [rev, setRev]     = createSignal(0);
+  const [log, setLog]     = createSignal(0);
   const [imgs, setImgs]   = createSignal<Blob[]>([]);
-  let due = false;
+  let due  = false;
+  let rows = false;
   const c: Client = {
     v      : View.view_new(),
     url,
@@ -73,12 +78,20 @@ export function client_new(url: string, device: string, work: string, screen: bo
     screen,
     jobs   : new Map(),
     rev,
-    bump   : () => {
+    log,
+    bump   : (changed = true) => {
+      rows = rows || changed;
       if (!due) {
         due = true;
         setTimeout(() => {
-          due = false;
-          setRev((n) => n + 1);
+          batch(() => {
+            setRev((n) => n + 1);
+            if (rows) {
+              setLog((n) => n + 1);
+            }
+          });
+          due  = false;
+          rows = false;
         }, FRAME);
       }
     },
@@ -123,7 +136,7 @@ function client_hear(c: Client, msg: View.Server): void {
   }
   client_notes(c);
   c.heard.forEach((f) => f(msg));
-  c.bump();
+  c.bump(msg.$ !== "delta" && msg.$ !== "live");
 }
 
 // the view's notes, to the UI

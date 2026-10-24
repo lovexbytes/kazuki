@@ -87,8 +87,9 @@ export function App(props: { c: Client; p: Palette; quit: () => void }): JSX.Ele
   c.hooks.pick  = (move) => setPicker({ move });
   c.hooks.quit  = props.quit;
 
-  // the chat's items, then what streams
-  const items = createMemo<Item[]>(() => (c.rev(), items_of(View.view_body(c.v), (id, n) => c.v.open.get(id + "+" + n) === true)));
+  // the chat's items (made again only as its rows change), then what
+  // streams
+  const items = createMemo<Item[]>(() => (c.log(), items_of(View.view_body(c.v), (id, n) => c.v.open.get(id + "+" + n) === true)));
   const live  = createMemo<Item[]>(() => (c.rev(), items_live(View.view_stream(c.v))));
   const unsent = createMemo(() => (c.rev(), c.v.page === null && !c.v.up ? c.v.out.map((x) => x.said).filter((s) => s !== "") : []));
 
@@ -248,7 +249,8 @@ export function App(props: { c: Client; p: Palette; quit: () => void }): JSX.Ele
           </box>
         </scrollbox>
         <Status />
-        <box paddingLeft={1} paddingRight={1} flexShrink={0}>
+        {/* over the status line: the input's command list shows above it */}
+        <box paddingLeft={1} paddingRight={1} flexShrink={0} zIndex={5}>
           <Prompt api={(api) => (prompt = api)} onSent={() => scroll?.scrollTo(scroll.scrollHeight)} />
         </box>
         <Footer openPick={(move) => setPicker({ move })} />
