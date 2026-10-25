@@ -38,9 +38,10 @@ const TUI    = ARGS.includes("tui");
 const SITE   = ARGS.includes("web");
 const PORT   = SERVE ? ARGS.find((a) => /^\d+$/.test(a)) : undefined;
 const SUB    = ARGS.includes("chatgpt");
+const AUTH   = ARGS[0] === "auth";
 const WORDS  = ["help", "--help", "-h", "version", "update", "serve", "server", "tui", "web", "chatgpt", ...(SUB ? ["logout"] : [])];
 const WEB    = /^https?:\/\//;
-const ODD    = ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
+const ODD    = AUTH ? undefined : ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const INSTALL = "https://raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh";
 const REMOTE = ARGS.find((a) => WEB.test(a));
 const SERVER = (REMOTE ?? process.env.KAZUKI_URL ?? "http://127.0.0.1:8788").replace(/\/$/, "").replace(/^http:\/\/(?:localhost|\[::1\])(?=[:/]|$)/, "http://127.0.0.1");
@@ -53,12 +54,14 @@ const USAGE = `Usage: kazuki [url]           the chat (url: $KAZUKI_URL, else ht
        kazuki version         this kazuki's version
        kazuki serve [port]    your own Kazuki server, at http://127.0.0.1:8788
                             (another port: set KAZUKI_SITE to its address too),
-                            on your ANTHROPIC_API_KEY and OPENAI_API_KEY;
+                            on the providers connected (kazuki auth);
                             chat with it: kazuki http://127.0.0.1:8788
-       kazuki chatgpt         sign the server kazuki serve runs here in to a
-                            ChatGPT plan (its openai-sub vendor), by a
-                            code entered in any browser
-       kazuki chatgpt logout  sign it out
+       kazuki auth            the providers, and which are connected
+       kazuki auth <id>       how to connect one
+       kazuki auth openai login   sign in with a ChatGPT plan, by a code
+                            entered in any browser (logout: sign out)
+       kazuki auth <id> use key|oauth  which method the provider runs on
+       kazuki chatgpt [logout]  kazuki auth openai login [logout]
        kazuki help            this
 KAZUKI_WORK: where the agent works on this computer (default
 ~/.kazuki/work). KAZUKI_COMPUTER=1: it may use the screen.
@@ -134,6 +137,22 @@ async function local_start(url: string): Promise<boolean> {
     cli_error(url + " is occupied by another HTTP service.");
     return false;
   }
+  // a server with no provider connected, or picks it can't run, won't
+  // start: said here, not in its log
+  const { NONE, Plugin } = await import("./Plugin.ts");
+  if (!Plugin.ready()) {
+    console.error(NONE);
+    process.exitCode = 1;
+    return false;
+  }
+  const { Providers } = await import("./Provider.ts");
+  const config = await import("./Config.ts");
+  try {
+    config.config_picks(Providers.offer(), Providers.catalog());
+  } catch (err: any) {
+    cli_error(err.message);
+    return false;
+  }
   const set = process.env.KAZUKI_DIR || os.homedir() + "/.kazuki";
   const dir = set.startsWith("~/") ? os.homedir() + set.slice(1) : set;
   const log = dir + "/server.log";
@@ -184,6 +203,8 @@ if (HELP || ODD !== undefined) {
   console.log("kazuki " + VERSION);
 } else if (UPDATE) {
   update_run(REMOTE ?? "");
+} else if (AUTH) {
+  await (await import("./Plugin.ts")).Plugin.auth(ARGS).catch((err) => cli_error(err.message));
 } else if (SUB) {
   await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => cli_error(err.message));
 } else if (SERVE) {

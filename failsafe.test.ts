@@ -4,7 +4,7 @@
 // Memory, AskAI and Agent loop against a fake Anthropic out of credit
 // (HTTP 400, "credit balance is too low"), then back: none is clipped, and
 // the tree completes once credit is back; the one summary the model
-// refuses is clipped (its input's doing); a turn in the outage says BUSY.
+// refuses is clipped (its input's doing); a turn in the outage says why.
 // A request leads single flight only as it is sent. A rate limit's retries say BUSY too, the vendor's
 // words logged once; imports share it alike. Timers run 1000 times fast.
 
@@ -18,14 +18,20 @@ process.env.KAZUKI_DIR = DIR;
 
 // a process reads Config once (maybe for another test)
 const config = await import("./Config.ts");
-config.KEYS.anthropic = "test";
+config.SECRETS.set("ANTHROPIC_API_KEY", "test");
+
+// the providers, and the picks from them
+const { Plugin } = await import("./Plugin.ts");
+const { Providers } = await import("./Provider.ts");
+Plugin.load();
+config.config_picks(Providers.offer(), Providers.catalog());
 
 const { Agent } = await import("./Agent.ts");
 const { AskAI } = await import("./AskAI.ts");
 const { Memory } = await import("./Memory.ts");
 const { MASTER } = await import("./Tools.ts");
 
-const SHARE = { vendor: "claude-api" as const, model: "claude-opus-5-5", effort: "medium", speed: "slow", system: MASTER, searches: 1, server: "" };
+const SHARE = { vendor: "anthropic", model: "claude-opus-5-5", effort: "medium", speed: "slow", system: MASTER, searches: 1, server: "" };
 
 const BROKE = "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.";
 const LIMIT = "This request would exceed your organization's rate limit of 80,000 output tokens per minute.";
@@ -127,7 +133,7 @@ test("an outage delays summaries, never clips them; a refusal clips", () => fast
   expect(logged.some((line) => line.includes(BROKE.slice(0, 40)))).toBe(true);
 
   const turn = await AskAI.ask({ ...SHARE, blocks: [{ text: "hi", mark: true }] }, () => {}).done;
-  expect(turn).toMatchObject({ ok: false, stop: "down", text: BUSY });
+  expect(turn).toMatchObject({ ok: false, stop: "down", text: "HTTP 400: " + BROKE });
 
   broke = false;
   await completes(mem);

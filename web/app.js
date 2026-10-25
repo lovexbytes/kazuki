@@ -733,55 +733,51 @@ function row_cells(line) {
 }
 
 // Pick.ts
-var OPUS = { label: "opus-5.5", id: "claude-opus-5-5", speeds: ["slow", "fast"] };
-var SONNET = { label: "sonnet-5.5", id: "claude-sonnet-5-5", speeds: ["slow"] };
-var HAIKU = { label: "haiku-5.5", id: "claude-haiku-5-5", speeds: ["slow"] };
-var OPENAI = [
-  { label: "gpt-6-luna", id: "gpt-6-luna", speeds: ["slow", "fast"] },
-  { label: "gpt-6.1-sol", id: "gpt-6.1-sol", speeds: ["slow", "fast"] },
-  { label: "gpt-6-astra", id: "gpt-6-astra", speeds: ["slow", "fast", "ultrafast"] }
-];
-var PLAN = OPENAI.map((m) => ({ ...m, speeds: m.speeds.filter((s) => s !== "ultrafast") }));
-var MODELS = {
-  "claude-api": [OPUS, SONNET, HAIKU],
-  "openai-api": OPENAI,
-  "openai-sub": PLAN
-};
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 var SPEEDS = ["slow", "fast", "ultrafast"];
-var LABELS = [...new Set(Object.values(MODELS).flat().map((m) => m.label))];
 var Pick;
 ((Pick2) => {
-  function model(vendor, label) {
-    return MODELS[vendor].find((m) => m.label === label);
+  function model(offer, vendor, label) {
+    return offer.find((p) => p.id === vendor)?.models.find((m) => m.label === label);
   }
   Pick2.model = model;
   function on(pick, vendor, model) {
-    const below = SPEEDS.slice(0, SPEEDS.indexOf(pick.speed) + 1);
-    const speed = below.filter((s) => model.speeds.includes(s)).pop() ?? "slow";
-    return { ...pick, vendor, model: model.label, speed };
+    const effort = Pick.near(EFFORTS, model.efforts, pick.effort ?? "medium");
+    const speed = Pick.near(SPEEDS, model.speeds, pick.speed ?? "slow");
+    return { vendor, model: model.label, effort, speed };
   }
   Pick2.on = on;
-  function models(vendors, labels) {
-    return vendors.flatMap((v) => MODELS[v].filter((m) => labels.includes(m.label)).map((m) => [v, m]));
+  function near(all, has, want) {
+    if (has === undefined) {
+      return;
+    }
+    return all.slice(0, all.indexOf(want) + 1).filter((x) => has.includes(x)).pop() ?? has[0];
+  }
+  Pick2.near = near;
+  function cheapest(models) {
+    const out = (m) => m.rate?.output ?? Infinity;
+    return models.reduce((a, b) => out(b) < out(a) ? b : a);
+  }
+  Pick2.cheapest = cheapest;
+  function models(offer) {
+    return offer.flatMap((p) => p.models.map((m) => [p.id, m]));
   }
   Pick2.models = models;
-  function options(pick, move, { vendors, models }) {
-    const speeds = Pick.model(pick.vendor, pick.model)?.speeds ?? [];
-    const all = (vs) => Pick.models(vs, models).map(([v, m]) => [m.label, Pick.on(pick, v, m)]);
+  function options(pick, move, offer) {
+    const model = Pick.model(offer, pick.vendor, pick.model);
     switch (move) {
       case "next":
       case "prev":
       case "model": {
-        return all(vendors);
+        return Pick.models(offer).map(([v, m]) => [m.label, Pick.on(pick, v, m)]);
       }
       case "up":
       case "down":
       case "effort": {
-        return EFFORTS.map((effort) => [effort, { ...pick, effort }]);
+        return (model?.efforts ?? []).map((effort) => [effort, { ...pick, effort }]);
       }
       case "speed": {
-        return speeds.map((speed) => [speed, { ...pick, speed }]);
+        return (model?.speeds ?? []).map((speed) => [speed, { ...pick, speed }]);
       }
     }
   }
@@ -801,25 +797,21 @@ var Pick;
     return hit === undefined ? null : hit[1];
   }
   Pick2.move = move;
-  function twin(vendor, label, vendors) {
-    return vendors.some((v) => v !== vendor && Pick.model(v, label) !== undefined);
+  function twin(vendor, label, offer) {
+    return offer.some((p) => p.id !== vendor && p.models.some((m) => m.label === label));
   }
   Pick2.twin = twin;
   function label(pick) {
-    return [pick.vendor, pick.model, pick.effort, pick.speed].join(":");
+    return [pick.vendor, pick.model, pick.effort, pick.speed].filter((x) => x !== undefined).join(":");
   }
   Pick2.label = label;
-  function ask(pick) {
-    const model = Pick.model(pick.vendor, pick.model);
-    return { ...pick, model: model?.id ?? pick.model };
-  }
-  Pick2.ask = ask;
   function read(x, offer) {
-    const model = offer.vendors.includes(x.vendor) && offer.models.includes(x.model) ? Pick.model(x.vendor, x.model) : undefined;
-    if (model === undefined || !EFFORTS.includes(x.effort) || !model.speeds.includes(x.speed)) {
+    const model = Pick.model(offer, x?.vendor, x?.model);
+    const known = (all, v) => v === undefined || all.includes(v);
+    if (model === undefined || !known(EFFORTS, x.effort) || !known(SPEEDS, x.speed)) {
       return null;
     }
-    return { vendor: x.vendor, model: x.model, effort: x.effort, speed: x.speed };
+    return Pick.on({ vendor: x.vendor, model: x.model, effort: x.effort, speed: x.speed }, x.vendor, model);
   }
   Pick2.read = read;
   function load(saved, offer, def) {
@@ -829,21 +821,9 @@ var Pick;
 })(Pick ||= {});
 
 // Price.ts
-var RATES = {
-  "claude-opus-5-5": { input: 4, write: 5, read: 0.2, output: 20 },
-  "claude-sonnet-5-5": { input: 2, write: 2.5, read: 0.1, output: 10 },
-  "claude-haiku-5-5": { input: 0.1, write: 0.125, read: 0.01, output: 0.5 },
-  "gpt-6-astra": { input: 10, write: 12.5, read: 1, output: 50 },
-  "gpt-6.1-sol": { input: 2, write: 2, read: 0.1, output: 10 },
-  "gpt-6-luna": { input: 0.1, write: 0.1, read: 0.01, output: 0.5 }
-};
 var SPEEDS2 = { slow: 1, fast: 2, ultrafast: 6 };
 var Price;
 ((Price) => {
-  function rate(model) {
-    return RATES[model];
-  }
-  Price.rate = rate;
   function times(speed) {
     return SPEEDS2[speed] ?? 1;
   }
@@ -856,7 +836,7 @@ var OPENING = 2;
 var SUMMARIES = "summaries";
 var MAIN = "Kazuki";
 var TURN = "Kazuki's turn";
-var WIRE = 2;
+var WIRE = 3;
 var PING = 1e4;
 var RETRY = 1000;
 var TICK = "+";
@@ -879,8 +859,7 @@ function view_new() {
     wait: "",
     agents: [],
     pick: null,
-    vendors: [],
-    models: LABELS,
+    providers: [],
     importing: null,
     parts: [],
     turn: Infinity,
@@ -1008,13 +987,14 @@ function view_act(v, act) {
       if (from === null) {
         return [];
       }
-      const to = Pick.move(from, act.move, v, act.to);
-      if (act.move === "speed" && Pick.options(from, "speed", v).length === 1) {
-        v.notes.push(from.model + " has no fast.");
+      const to = Pick.move(from, act.move, v.providers, act.to);
+      const part = act.move === "up" || act.move === "down" ? "effort" : act.move;
+      if ((part === "effort" || part === "speed") && Pick.options(from, part, v.providers).length <= 1) {
+        v.notes.push(from.model + " does not support " + (part === "speed" ? "speed." : "effort."));
         return [];
       }
       if (to === null) {
-        const parts = Pick.options(from, act.move, v).map(([part]) => part);
+        const parts = Pick.options(from, act.move, v.providers).map(([part]) => part);
         v.notes.push("No " + [act.move, act.to].join(" ").trim() + "; one of: " + [...new Set(parts)].join(", ") + ".");
         return [];
       }
@@ -1107,13 +1087,13 @@ function view_pick(v) {
     return [];
   }
   const { model, effort, speed } = v.pick;
-  const rate = Price.rate(Pick.ask(v.pick).model);
+  const rate = Pick.model(v.providers, v.pick.vendor, model)?.rate;
   const price = rate === undefined ? "" : ": $" + rate.input + "/M tokens in, $" + rate.output + "/M out";
-  const whose = Pick.twin(v.pick.vendor, model, v.vendors) ? ", " + v.pick.vendor : "";
+  const whose = Pick.twin(v.pick.vendor, model, v.providers) ? ", " + v.pick.vendor : "";
   return [
     { text: model, move: "model", hint: model + whose + price },
-    { text: effort, move: "effort", hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" },
-    { text: speed, move: "speed", hint: speed + ": ×" + Price.times(speed) + " the price" }
+    ...effort === undefined ? [] : [{ text: effort, move: "effort", hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" }],
+    ...speed === undefined ? [] : [{ text: speed, move: "speed", hint: speed + ": ×" + Price.times(speed) + " the price" }]
   ];
 }
 function view_count(v) {

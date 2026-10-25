@@ -1,38 +1,34 @@
 // Agent
 // =====
-// claude-api, openai-api and openai-sub in Kazuki's own loop; a Wire
-// (Anthropic.ts, OpenAI.ts, ChatGPT.ts) shapes requests and reads
-// streams. Each step sends every
-// item and streams one output; tool calls run in order, a message sent
-// mid-run follows the next results, and the call ends at a step with no
-// tools and nothing sent. A request goes again, TRIES times at most,
-// after its retry-after or a doubling wait, for a passing reason (`busy`:
-// no connection, a retry status, a stream error, cut short or silent for
-// the wire's `idle`), dropping what it streamed. A request that yields
-// (an import's summary, AskAI.ts) sends nothing while one that doesn't
-// (a turn's, a chat's summary, which a turn waits on) waits on its busy
-// model: the room a busy vendor has goes to the chats first, and many
-// imports never starve every chat of the summaries its next turn needs.
-// An import asks a busy model again by one request at a time, the rest
+// Every provider (Provider.ts) in Kazuki's own loop; its Wire
+// (Anthropic.ts, OpenAI.ts, ChatGPT.ts, a plugin's) shapes requests and
+// reads streams. Each step sends every item and streams one output;
+// tool calls run in order, a message sent mid-run follows the next
+// results, and the call ends at a step with no tools and nothing sent.
+// A request goes again, TRIES times at most, after its retry-after or a
+// doubling wait, for a passing reason (`busy`: no connection, a retry
+// status, a stream error, cut short or silent for the wire's `idle`),
+// dropping what it streamed. A request that yields (an import's
+// summary, AskAI.ts) sends nothing while one that doesn't (a turn's, a
+// chat's summary, which a turn waits on) waits on its busy model: the
+// room a busy vendor has goes to the chats first, and many imports
+// never starve every chat of the summaries its next turn needs. An
+// import asks a busy model again by one request at a time, the rest
 // waiting on it, so imports share what room is left alike, however many
-// requests each runs.
-// A busy model is logged as its first request asks again and as its
-// last is done, never each try (a storm logged ~600 lines a second).
-// A call ends answered
-// (`fail`: the model's answer failed, a refusal or a stop reason: its
-// input's doing) or not: `down`, the vendor's (a refusal of the request,
-// as when the API key's credit is gone, or busy past TRIES); `lost`,
-// ours (a stop), saying why. A vendor's why
-// (`busy`, `down`) goes to the log; the user reads only that the AI
-// service is busy, as the call's end, each retry's thought and where a
-// call is cut (a vendor's errors speak of the server's account, not the
-// user's). A stop ends the call at once. A request takes its place in
-// single flight (AskAI.wait).
+// requests each runs. A busy model is logged as its first request asks
+// again and as its last is done, never each try (a storm logged ~600
+// lines a second). A call ends answered (`fail`: the model's answer
+// failed, a refusal or a stop reason: its input's doing) or not:
+// `down`, the vendor's (a refusal of the request, as when the API key's
+// credit is gone, or busy past TRIES); `lost`, ours (a stop), saying
+// why. A vendor's why (`busy`, `down`) goes to the log, and a call that
+// ends `down` says it too (the server's account is the user's: Kazuki
+// is local); each retry's thought and where a call is cut say only that
+// the AI service is busy. A stop ends the call at once. A
+// request takes its place in single flight (AskAI.wait).
 
 import { AskAI, type Ask, type Block, type Flight, type Try, type End, type Event, type Img, type Kind, type Say } from "./AskAI.ts";
-import { Anthropic } from "./Anthropic.ts";
-import { OpenAI } from "./OpenAI.ts";
-import { ChatGPT } from "./ChatGPT.ts";
+import { Providers, type Provider } from "./Provider.ts";
 import { live_push } from "./View.ts";
 import { Machine, type Spec } from "./Machine.ts";
 import * as config from "./Config.ts";
@@ -91,13 +87,12 @@ export type Refusal = { why: string; say: string; until?: number };
 
 export type Emit = (kind: Kind, text: string, fresh?: boolean) => void;
 
-// an API: its key's name in config.KEYS (or `auth`: a signed-in
-// account's token for each try, refused: the one a 401 refused, which it
-// refreshes; an error with `busy` set: none for now), how its stream reads
+// an API: `auth`, a signed-in account's token for each try (refused: the
+// one a 401 refused, which it refreshes; an error with `busy` set: none
+// for now), else its provider's key (Provider.ts); how its stream reads
 // into a step (S: what it read so far), and which error responses are
 // refusals (null: not one)
 export type Wire<S> = {
-  key     : string;
   auth?   : (refused: string | undefined) => Promise<string>;
   refusal?: (res: Response, body: string) => Refusal | null;
   idle    : number;
@@ -143,13 +138,7 @@ export namespace Agent {
     };
     const done = (async () => {
       try {
-        if (ask.vendor === "claude-api") {
-          await Agent.loop(Anthropic.wire, run);
-        } else if (ask.vendor === "openai-sub") {
-          await Agent.loop(ChatGPT.wire, run);
-        } else {
-          await Agent.loop(OpenAI.wire, run);
-        }
+        await Agent.loop(Providers.get(ask.vendor), run);
       } catch (err: any) {
         end.text ||= err.message;
       }
@@ -160,13 +149,14 @@ export namespace Agent {
     return { send, stop, done };
   }
 
-  export async function loop<S>(wire: Wire<S>, run: Run): Promise<void> {
+  export async function loop(p: Provider, run: Run): Promise<void> {
     const { ask, on, end } = run;
+    const { wire, used } = Providers.route(p);
     const signal = run.abort.signal;
-    const key = wire.auth ? "" : config.KEYS[wire.key];
-    if (!key && !wire.auth) {
-      throw new Error("no API key: set " + wire.key.toUpperCase() + "_API_KEY");
+    if (used === undefined) {
+      throw new Error(p.name + " isn't connected: run `kazuki auth " + p.id + "`");
     }
+    const key = used.type === "key" ? config.secret(used.envs[0]) : "";
     const tools = await Agent.server(run);
     const parts = ask.blocks.filter((b) => b.text !== "");
     const items: Item[] = [{ $: "User", parts, imgs: ask.imgs ?? [] }];
@@ -176,7 +166,7 @@ export namespace Agent {
         on({ $: "Entry", ...entry });
       }
       if (step.stop === "down" || step.stop === "lost" || step.stop === "fail") {
-        end.text ||= step.stop === "down" ? step.refusal?.say ?? BUSY : step.why;
+        end.text ||= step.stop === "down" ? step.refusal?.say ?? step.why : step.why;
         end.stop = step.stop;
         end.until = step.refusal?.until;
         return;
@@ -377,7 +367,8 @@ export namespace Agent {
       } as RequestInit);
       const text = res.ok && res.body ? null : await res.text();
       const refusal = text === null ? null : wire.refusal?.(res, text) ?? null;
-      const why = text === null ? "" : refusal?.why ?? "HTTP " + res.status + ": " + Agent.reason(text);
+      const auth = res.status === 401 || res.status === 403 ? "Provider authentication failed (" + run.ask.vendor + "): " : "HTTP " + res.status + ": ";
+      const why = text === null ? "" : refusal?.why ?? auth + Agent.reason(text);
       const stop = refusal === null && Agent.passing(res) ? "busy" : "down";
       step = why ? { ...Agent.fail(why, [], stop), refusal: refusal ?? undefined } : await Agent.stream(wire, run, res.body!, timer, seen, st, flight.begun);
     } catch (err: any) {

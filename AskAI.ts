@@ -28,6 +28,7 @@ import { Agent } from "./Agent.ts";
 import { stream_lines } from "./Clip.ts";
 import { Machine } from "./Machine.ts";
 import type { Pick } from "./Pick.ts";
+import { Providers } from "./Provider.ts";
 
 // Types
 // =====
@@ -37,7 +38,8 @@ import type { Pick } from "./Pick.ts";
 // result, a note from before the chat (imported)
 export type Kind = "user" | "work" | "mind" | "unii" | "tool" | "echo" | "note";
 
-export type Vendor = "claude-api" | "openai-api" | "openai-sub";
+// a provider's id (Provider.ts)
+export type Vendor = string;
 
 // an image: its mime type, its bytes in base64
 export type Img = { type: string; data: string };
@@ -113,13 +115,6 @@ const AGAIN = 60e3;
 // plan's limits last a week at most)
 const WEEK = 7 * 86400e3;
 
-// how long a vendor keeps a cache entry unused, in ms (openai-sub's
-// backend tells none: the shorter guess)
-export const TTL: Record<Vendor, number> = {
-  "claude-api" : 300e3,
-  "openai-api" : 1800e3,
-  "openai-sub" : 300e3,
-};
 
 // the prefixes cached, by key (AskAI.keys)
 const CACHE = new Map<string, Cached>();
@@ -200,7 +195,7 @@ export namespace AskAI {
   // the call's prefix; then leads, unless its whole prefix is cached
   export async function wait(ask: Ask): Promise<Flight> {
     const keys = AskAI.keys(ask);
-    const ttl = TTL[ask.vendor];
+    const ttl = Providers.route(Providers.get(ask.vendor)).ttl;
     for (;;) {
       const now = Date.now();
       const live = (key: string) => CACHE.get(key)?.ready || (CACHE.get(key)?.until ?? 0) > now;

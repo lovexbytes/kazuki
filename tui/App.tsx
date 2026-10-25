@@ -30,8 +30,10 @@ type Picker = { move: "model" | "effort" | "speed" };
 // Constants
 // =========
 
-// how long a toast shows (ms), and how many at once
+// how long a toast shows at least (ms), more for each character of a
+// long one (time to read it), and how many at once
 const TOAST = 5000;
+const READ  = 70;
 const TOASTS = 3;
 
 // the pick's moves by Shift and an arrow
@@ -75,7 +77,7 @@ export function App(props: { c: Client; p: Palette; quit: () => void }): JSX.Ele
   c.hooks.note = (text) => {
     const id = ++toastId;
     setToasts((ts) => [...ts, { id, text }].slice(-TOASTS));
-    setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), TOAST);
+    setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), Math.max(TOAST, text.length * READ));
   };
   c.hooks.sheet = (title, md) => setSheet({ title, md });
   c.hooks.back  = (sent) => {

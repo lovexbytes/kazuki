@@ -64,7 +64,7 @@ export namespace Cloud {
   }
 
   export function push(cloud: Cloud, user: string, text: string): void {
-    if (!config.APNS || !config.KEYS.apns) return;
+    if (!config.APNS || !config.secret("APNS_KEY")) return;
     const phones = cloud.db.query("select token from pushes where user = ?").all(user) as { token: string }[];
     const body = JSON.stringify({ aps: { alert: { body: text.replace(/\s+/g, " ").slice(0, 200) }, sound: "default" } });
     for (const { token } of phones) {
@@ -87,7 +87,7 @@ export namespace Cloud {
     if (Date.now() - PUSH.at > PUSH_AGE) {
       const b64 = (obj: object) => Buffer.from(JSON.stringify(obj)).toString("base64url");
       const head = b64({ alg: "ES256", kid: config.APNS }) + "." + b64({ iss: config.APPLE.split(".")[0], iat: Math.floor(Date.now() / 1000) });
-      const key = crypto.createPrivateKey({ key: Buffer.from(config.KEYS.apns.replace(/-----[^-]+-----|\s/g, ""), "base64"), format: "der", type: "pkcs8" });
+      const key = crypto.createPrivateKey({ key: Buffer.from(config.secret("APNS_KEY").replace(/-----[^-]+-----|\s/g, ""), "base64"), format: "der", type: "pkcs8" });
       PUSH.jwt = head + "." + crypto.sign("sha256", Buffer.from(head), { key, dsaEncoding: "ieee-p1363" }).toString("base64url");
       PUSH.at = Date.now();
     }

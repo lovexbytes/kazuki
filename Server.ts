@@ -40,6 +40,9 @@ import * as Import from "./Import.ts";
 import { JOBS, Memory, type Given, type Msg as Log, type Share } from "./Memory.ts";
 import { OpenAI } from "./OpenAI.ts";
 import { Pick } from "./Pick.ts";
+import { NONE, Plugin } from "./Plugin.ts";
+import { Providers } from "./Provider.ts";
+import { ModelsDev } from "./ModelsDev.ts";
 import { MASTER, SEARCHES, Tools, type Agent, type Live, type Moved as Kit } from "./Tools.ts";
 import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Part, type Server as Out, type Wait } from "./View.ts";
 import * as config from "./Config.ts";
@@ -149,6 +152,8 @@ type Limit = { rate: number; most: number; keys: Map<string, { n: number; at: nu
 // =========
 
 const LOCK       = config.DIR + "/lock";
+// how long the supervisor waits to start again a worker whose start failed
+const RETRY      = 5e3;
 // where worker k's successor reaches it, HAND + k (Main.listen); how
 // often one that gave its chats looks whether its last requests ended
 const HAND       = config.DIR + "/hand";
@@ -240,6 +245,7 @@ const WEB: Record<string, string> = {
 // compactor call summarizes the three (with an email of up to 254 bytes,
 // a node of at most 512 bytes) and a new account owes nothing.
 const HELLO_LINE = "kazuki: hello: Kazuki, one persistent local chat with a memory tree.";
+
 const OPEN_PROMPT = "What should we start with?";
 
 // Chat
@@ -271,7 +277,7 @@ export namespace Chat {
       pick   : () => chat.pick,
       halt   : () => chat.halt.signal,
     }, moved?.tools.key);
-    const pick = Pick.load(mem.pick, config.OFFER, config.PICK);
+    const pick = Pick.load(mem.pick, Providers.offer(), config.PICK);
     const chat: Chat = {
       acct, mem, tools, pick, socks: new Set(), acts: new Map(), busy: false, posts: 1, call: null, model: "", check: null, asked: false, open: 0, sent: [], wait: [],
       halt: new AbortController(), live: [], calls: {}, eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, ending: null,
@@ -314,7 +320,7 @@ export namespace Chat {
   // own (web search brings code execution), sent its whole input again
   export function share(chat: Chat): Share {
     const system = Tools.system(MASTER);
-    return { ...Pick.ask(chat.pick), system, searches: 0, server: "" };
+    return { ...Providers.ask(chat.pick), system, searches: 0, server: "" };
   }
 
   // at rest (nothing runs): lets go of a chat nobody views; one ending
@@ -1022,7 +1028,7 @@ export namespace Chat {
     const batch = chat.batch;
     const why = chat.mem.paused ? "paused" : null;
     const importing = batch && { done: batch.all - Chat.time(batch), total: batch.all, why, msgs: batch.b - batch.a, open: batch.open };
-    return { $: "state", busy: chat.busy, wait: Chat.waits(chat), agents, pick: chat.pick, ...config.OFFER, importing };
+    return { $: "state", busy: chat.busy, wait: Chat.waits(chat), agents, pick: chat.pick, providers: Providers.offer(), importing };
   }
 
   export function waits(chat: Chat): Wait {
@@ -1189,7 +1195,7 @@ export namespace Chat {
         return Chat.go(chat, msg.on === true || msg.on === "true");
       }
       case "pick": {
-        const pick = Pick.read(msg.to, config.OFFER);
+        const pick = Pick.read(msg.to, Providers.offer());
         if (pick === null) {
           return { error: "No pick " + JSON.stringify(msg.to) + "." };
         }
@@ -1614,6 +1620,8 @@ export namespace Main {
               ws.close(MOVE);
             } else {
               Chat.join(chat, ws);
+              // what the config set but lost, each time a view opens
+              config.LOST.forEach((text) => Chat.send(ws, { $: "note", text }));
             }
           }, () => ws.close(1011));
         },
@@ -1965,7 +1973,8 @@ export namespace Main {
       all.add(proc);
       proc.exited.then((code) => {
         all.delete(proc);
-        Main.died(k, code, workers[k], proc, () => start(k));
+        // again, unless slot k runs one now (a deploy's, ready meanwhile)
+        Main.died(k, code, workers[k], proc, () => Main.runs(workers[k]) || start(k));
       });
     };
     Array.from({ length: config.WORKERS }, (_, k) => start(k));
@@ -1996,20 +2005,31 @@ export namespace Main {
     console.log("kazuki: " + config.SITE + ", " + config.WORKERS + " workers on 127.0.0.1:" + (port + 1) + "-" + (port + config.WORKERS) + ", routes on " + port);
   }
 
+  // whether a worker process runs
+  export function runs(proc: Bun.Subprocess | undefined): boolean {
+    return proc !== undefined && proc.exitCode === null && proc.signalCode === null;
+  }
+
   // a worker ended (`now`: worker k's, the last that started): as the
-  // server ends, nothing; one after a deploy (another is now) too; worker
-  // k's again; one that never started (none is), the server ends
+  // server ends, nothing; one after a deploy (another is now, and runs)
+  // too; worker k's again; one started in place of a dead one, again
+  // after a pause (it fails until what stopped it is fixed: a provider
+  // connected); one that never started (none is), the server ends
   export function died(k: number, code: number | null, now: Bun.Subprocess | undefined, proc: Bun.Subprocess, again: () => void): void {
     if (code !== 0) {
       console.error("kazuki: worker " + k + " ended (" + code + ")");
     }
-    if (Main.leaving || (now !== undefined && now !== proc)) {
+    if (Main.leaving || (now !== proc && Main.runs(now))) {
       return;
     }
     if (now === undefined) {
       process.exit(1);
     }
-    again();
+    if (now === proc) {
+      again();
+    } else {
+      setTimeout(() => Main.leaving || again(), RETRY);
+    }
   }
 
 }
@@ -2017,12 +2037,24 @@ export namespace Main {
 // run: the command that starts this server again, to start a worker
 // (null: the server is one process: no workers, or `kazuki serve`)
 export async function serve(port: number, run: string[] | null): Promise<void> {
+  // the plugins first: they name the providers, the picks offered and the
+  // secrets to hide
+  if (!Plugin.ready()) {
+    console.error(NONE);
+    process.exitCode = 1;
+    return;
+  }
+  config.config_picks(Providers.offer(), Providers.catalog());
+  config.LOST.forEach((text) => console.error("kazuki: config: " + text));
+  config.config_hide(Providers.envs());
   const worker = process.env.KAZUKI_WORKER;
   Main.count = run === null ? 1 : config.WORKERS;
   Main.index = Number(worker ?? 0);
   if (worker === undefined) {
     await Main.lock();
   }
+  // one fetch for the machine: the lock's holder's
+  ModelsDev.watch(worker === undefined);
   if (worker === undefined && run !== null) {
     Main.supervise(port, run);
   } else {

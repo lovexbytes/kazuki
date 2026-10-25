@@ -1,6 +1,6 @@
 // ChatGPT test
 // ============
-// `bun test ChatGPT.test.ts`. The openai-sub vendor's seams, against a
+// `bun test ChatGPT.test.ts`. The ChatGPT sign-in's seams, against a
 // fake auth.openai.com and ChatGPT backend (one local server) that takes
 // only the fields Codex sends and requires `instructions`: the body,
 // refreshes (refresh tokens rotate), the sign-in file, usage limits, the
@@ -148,13 +148,18 @@ const server = Bun.serve({
 process.env.KAZUKI_DIR = DIR;
 process.env.KAZUKI_CHATGPT_ISSUER = "http://127.0.0.1:" + server.port;
 process.env.KAZUKI_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex";
-process.env.KAZUKI_VENDORS = "claude-api,openai-sub";
 
 const config = await import("./Config.ts");
 const { ChatGPT } = await import("./ChatGPT.ts");
 const { AskAI } = await import("./AskAI.ts");
-const { Pick } = await import("./Pick.ts");
 const { Machine } = await import("./Machine.ts");
+const { Plugin } = await import("./Plugin.ts");
+const { OpenAI } = await import("./OpenAI.ts");
+const { Providers } = await import("./Provider.ts");
+Plugin.load();
+
+// openai's key comes before its sign-in: none here, so calls run on it
+config.SECRETS.set("OPENAI_API_KEY", "");
 
 const FILE = DIR + "/chatgpt.json";
 
@@ -169,11 +174,11 @@ function file(): any {
 }
 
 function call(speed = "slow", text = "Say pong.", patient = false, on = (_: any) => {}) {
-  const ask = { vendor: "openai-sub" as const, model: "gpt-6-luna", effort: "low", speed, system: "Be brief.", blocks: [{ text, mark: true }], searches: 0, server: "", patient };
+  const ask = { vendor: "openai", model: "gpt-6-luna", effort: "low", speed, system: "Be brief.", blocks: [{ text, mark: true }], searches: 0, server: "", patient };
   return AskAI.ask(ask, on);
 }
 
-// a turn on openai-sub: its end
+// a turn on chatgpt: its end
 function turn(speed = "slow", text = "Say pong.") {
   return call(speed, text).done;
 }
@@ -189,7 +194,7 @@ beforeEach(() => {
 // =====
 
 test("the body is Codex's: the system prompt as instructions, its fields only", () => {
-  const ask = { vendor: "openai-sub" as const, model: "gpt-6-astra", effort: "high", speed: "fast", system: "S", blocks: [{ text: "a", mark: true }, { text: "b", mark: true }], searches: 2, server: "" };
+  const ask = { vendor: "openai", model: "gpt-6-astra", effort: "high", speed: "fast", system: "S", blocks: [{ text: "a", mark: true }, { text: "b", mark: true }], searches: 2, server: "" };
   const items: any[] = [{ $: "User", parts: ask.blocks, imgs: [] }];
   const body: any = JSON.parse(JSON.stringify(ChatGPT.body(ask, items, [], 1000)));
   expect(Object.keys(body).filter((k) => !CODEX.includes(k))).toEqual([]);
@@ -283,7 +288,7 @@ test("a call stopped while yielding doesn't start a token refresh", async () => 
   const model = "gpt-6-luna";
   sign_in(access(1, now() + 10));
   Agent.hold(model, model, "test: the model is busy");
-  const c = AskAI.ask({ vendor: "openai-sub", model, effort: "low", speed: "slow", system: "Be brief.", blocks: [{ text: "Summarize.", mark: true }], searches: 0, server: "", yields: "stopped-import" }, () => {});
+  const c = AskAI.ask({ vendor: "openai", model, effort: "low", speed: "slow", system: "Be brief.", blocks: [{ text: "Summarize.", mark: true }], searches: 0, server: "", yields: "stopped-import" }, () => {});
   try {
     for (let i = 0; i < 100 && Agent.room(model).wait.length === 0; i++) {
       await Bun.sleep(10);
@@ -357,16 +362,26 @@ test("device sign-in: polled till entered, past the issuer's 5xx, and saved", as
   expect(auth.tokens.access_token).toBe(file().tokens.access_token);
 });
 
-test("logout revokes the refresh token and deletes the file", async () => {
+test("logout revokes the refresh token and deletes the file; openai doesn't move to the key", async () => {
   sign_in(access(1), "refresh-7");
-  await ChatGPT.logout();
+  Providers.choose("openai", "oauth", true);
+  config.SECRETS.set("OPENAI_API_KEY", "test");
+  expect(await ChatGPT.logout()).toContain("kazuki auth openai use key");
   expect(fake.revoked[0].token).toBe("refresh-7");
   expect(fs.existsSync(FILE)).toBe(false);
+  expect(Providers.connected(Providers.get("openai"))).toBe(false);
+  Providers.choose("openai", "oauth", false);
+  config.SECRETS.set("OPENAI_API_KEY", "");
 });
 
-test("offered with openai-api, a model picked by name runs on the vendor it names", () => {
-  const offer = { vendors: ["openai-api" as const, "openai-sub" as const], models: ["gpt-6-luna", "gpt-6.1-sol"] };
-  const sub = { vendor: "openai-sub" as const, model: "gpt-6-luna", effort: "high", speed: "slow" };
-  expect(Pick.move(sub, "model", offer, "gpt-6.1-sol")?.vendor).toBe("openai-sub");
-  expect(Pick.move(sub, "model", offer, "openai-api:gpt-6.1-sol")?.vendor).toBe("openai-api");
+test("signed in and with no key, openai runs on ChatGPT, with no ultrafast nor prices; a key comes first", () => {
+  const openai = Providers.get("openai");
+  sign_in(access(1));
+  expect(Providers.route(openai).wire).toBe(ChatGPT.wire);
+  const astra = Providers.offer().find((p) => p.id === "openai")?.models.find((m) => m.label === "gpt-6-astra");
+  expect(astra?.speeds).toEqual(["slow", "fast"]);
+  expect(astra?.rate).toBeUndefined();
+  config.SECRETS.set("OPENAI_API_KEY", "test");
+  expect(Providers.route(openai).wire).toBe(OpenAI.wire);
+  config.SECRETS.set("OPENAI_API_KEY", "");
 });

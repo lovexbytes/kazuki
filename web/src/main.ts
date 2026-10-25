@@ -699,7 +699,7 @@ function paint(): void {
 }
 
 // the header's and the footer's parts that change, and the notes, a
-// server's or an act's ("/help is no command", "haiku-5.5 has no fast"),
+// server's or an act's ("/help is no command", "haiku-5.5 does not support speed"),
 // as toasts
 function bars(): void {
   for (const note of v.notes.splice(0)) {

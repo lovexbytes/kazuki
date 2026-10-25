@@ -1,18 +1,20 @@
 // Anthropic
 // =========
-// The wire of claude-api (Agent.ts): the Messages API, streamed, with
-// adaptive thinking summarized and fast as `speed`. Outputs go back
-// whole, items of one role joined. A marked block gets cache_control, a
-// marked end the top-level one too (which Anthropic counts apart: a
-// request takes four in all), and so does the system prompt: what every
-// call shares (tools, system) stays cached whatever its view does, so a
-// view written anew writes only itself. A stream builds blocks from
-// pieces; tool_use and end_turn end a step, pause_turn asks again, an
-// error event is busy. It pings while the model thinks, so 5 silent
-// minutes mean it is dead.
+// The anthropic provider (Provider.ts) and its wire (Agent.ts): the
+// Messages API, streamed, with adaptive thinking summarized and fast as
+// `speed`. Outputs go back whole, items of one role joined. A marked
+// block gets cache_control, a marked end the top-level one too (which
+// Anthropic counts apart: a request takes four in all), and so does the
+// system prompt: what every call shares (tools, system) stays cached
+// whatever its view does, so a view written anew writes only itself. A
+// stream builds blocks from pieces; tool_use and end_turn end a step,
+// pause_turn asks again, an error event is busy. It pings while the
+// model thinks, so 5 silent minutes mean it is dead.
 
 import type { Ask, Img } from "./AskAI.ts";
 import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./Agent.ts";
+import { EFFORTS } from "./Pick.ts";
+import type { Provider } from "./Provider.ts";
 
 // Types
 // =====
@@ -285,7 +287,6 @@ export namespace Anthropic {
   }
 
   export const wire: Wire<State> = {
-    key     : "anthropic",
     idle    : 300e3,
     url     : "https://api.anthropic.com/v1/messages",
     headers : Anthropic.headers,
@@ -294,6 +295,19 @@ export namespace Anthropic {
     read    : Anthropic.read,
     begun   : (ev) => ev.type === "message_start",
     step    : Anthropic.step,
+  };
+
+  export const provider: Provider = {
+    id     : "anthropic",
+    name   : "Anthropic",
+    ttl    : 300e3,
+    models : [
+      { label: "opus-5.5",   id: "claude-opus-5-5",   name: "Claude Opus 5.5",   efforts: EFFORTS, speeds: ["slow", "fast"] },
+      { label: "sonnet-5.5", id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", efforts: EFFORTS },
+      { label: "haiku-5.5",  id: "claude-haiku-5-5",  name: "Claude Haiku 5.5",  efforts: EFFORTS },
+    ],
+    auth   : [{ type: "key", envs: ["ANTHROPIC_API_KEY"] }],
+    wire   : Anthropic.wire,
   };
 
 }

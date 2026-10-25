@@ -9,10 +9,10 @@
 // agent's page is its log, kept live. The AI notice (AI) opens the chat
 // and comes again before a message in another 3-hour window.
 
-import type { Kind, Vendor } from "./AskAI.ts";
+import type { Kind } from "./AskAI.ts";
 import * as Call from "./Call.ts";
 import * as Md from "./Md.ts";
-import { LABELS, type Move, Pick } from "./Pick.ts";
+import { type Move, type Offer, Pick } from "./Pick.ts";
 import { Price } from "./Price.ts";
 import { GLYPH, WHO } from "./Theme.ts";
 
@@ -50,14 +50,13 @@ export const OPENING = 2;
 export const SUMMARIES = "summaries";
 export type Wait = string;
 
-// agents: those at work; vendors and models: those offered
+// agents: those at work; providers: those offered (Provider.ts)
 export type State = {
   busy      : boolean;
   wait      : Wait;
   agents    : string[];
   pick      : Pick | null;
-  vendors   : Vendor[];
-  models    : string[];
+  providers : Offer;
   importing : Progress | null;
 };
 
@@ -176,7 +175,7 @@ export const TURN = "Kazuki's turn";
 
 // the messages' version, in a view's query; one more for each change an
 // older view would misread
-export const WIRE = 2;
+export const WIRE = 3;
 
 // the Link's: the most a live socket hears nothing (ms); the wait to open
 // another; the server's tick; a terminal's close as it quits; the
@@ -238,8 +237,7 @@ export function view_new(): View {
     wait      : "",
     agents    : [],
     pick      : null,
-    vendors   : [],
-    models    : LABELS,
+    providers : [],
     importing : null,
     parts     : [],
     turn      : Infinity,
@@ -375,13 +373,14 @@ export function view_act(v: View, act: Act): Client[] {
       if (from === null) {
         return [];
       }
-      const to = Pick.move(from, act.move, v, act.to);
-      if (act.move === "speed" && Pick.options(from, "speed", v).length === 1) {
-        v.notes.push(from.model + " has no fast.");
+      const to = Pick.move(from, act.move, v.providers, act.to);
+      const part = act.move === "up" || act.move === "down" ? "effort" : act.move;
+      if ((part === "effort" || part === "speed") && Pick.options(from, part, v.providers).length <= 1) {
+        v.notes.push(from.model + " does not support " + (part === "speed" ? "speed." : "effort."));
         return [];
       }
       if (to === null) {
-        const parts = Pick.options(from, act.move, v).map(([part]) => part);
+        const parts = Pick.options(from, act.move, v.providers).map(([part]) => part);
         v.notes.push("No " + [act.move, act.to].join(" ").trim() + "; one of: " + [...new Set(parts)].join(", ") + ".");
         return [];
       }
@@ -499,14 +498,14 @@ export function view_pick(v: View): Knob[] {
     return [];
   }
   const { model, effort, speed } = v.pick;
-  const rate  = Price.rate(Pick.ask(v.pick).model);
+  const rate  = Pick.model(v.providers, v.pick.vendor, model)?.rate;
   const price = rate === undefined ? "" : ": $" + rate.input + "/M tokens in, $" + rate.output + "/M out";
   // a model two vendors offer: its vendor in the hint, not in its name
-  const whose = Pick.twin(v.pick.vendor, model, v.vendors) ? ", " + v.pick.vendor : "";
+  const whose = Pick.twin(v.pick.vendor, model, v.providers) ? ", " + v.pick.vendor : "";
   return [
     { text: model, move: "model", hint: model + whose + price },
-    { text: effort, move: "effort", hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" },
-    { text: speed, move: "speed", hint: speed + ": ×" + Price.times(speed) + " the price" },
+    ...(effort === undefined ? [] : [{ text: effort, move: "effort" as const, hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" }]),
+    ...(speed === undefined ? [] : [{ text: speed, move: "speed" as const, hint: speed + ": ×" + Price.times(speed) + " the price" }]),
   ];
 }
 

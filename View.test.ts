@@ -18,3 +18,15 @@ test("a turn's wait names its model", () => {
   View.view_hear(v, { $: "state", ...v, wait: "" });
   expect(tail(v)).toEqual([]);
 });
+
+// a model with no effort or speed shows no knob for it, and a move to
+// one is told, not sent
+test("a model with no effort has no effort knob, and a move to it is a note", () => {
+  const v = View.view_new();
+  const rate = { input: 1, write: 0, read: 0, output: 2 };
+  View.view_hear(v, { $: "state", ...v, providers: [{ id: "c", name: "C", models: [{ label: "plain", id: "p", name: "P", rate }] }], pick: { vendor: "c", model: "plain" } });
+  expect(View.view_pick(v).map((k) => k.move)).toEqual(["model"]);
+  expect(View.view_act(v, { $: "Move", move: "up" })).toEqual([]);
+  expect(View.view_act(v, { $: "Move", move: "speed" })).toEqual([]);
+  expect(v.notes).toEqual(["plain does not support effort.", "plain does not support speed."]);
+});

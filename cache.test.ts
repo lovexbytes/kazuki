@@ -36,13 +36,19 @@ process.env.KAZUKI_DIR = DIR;
 // a process reads Config once (maybe for another test): the fake key goes
 // in it, not in the environment
 const config = await import("./Config.ts");
-config.KEYS.anthropic = "test";
+config.SECRETS.set("ANTHROPIC_API_KEY", "test");
+
+// the providers, and the picks from them
+const { Plugin } = await import("./Plugin.ts");
+const { Providers } = await import("./Provider.ts");
+Plugin.load();
+config.config_picks(Providers.offer(), Providers.catalog());
 
 const { AskAI } = await import("./AskAI.ts");
 const { Memory } = await import("./Memory.ts");
 const { MASTER } = await import("./Tools.ts");
 
-const PICK = { vendor: "claude-api" as const, model: "claude-opus-5-5", effort: "medium", speed: "slow" };
+const PICK = { vendor: "anthropic", model: "claude-opus-5-5", effort: "medium", speed: "slow" };
 const SHARE = { ...PICK, system: MASTER, searches: 0, server: "" };
 
 // Clock
