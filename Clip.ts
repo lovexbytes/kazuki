@@ -75,7 +75,7 @@ export function clip_page(str: string, at: number): string {
 // a byte stream's lines, those of each read whole (one cut short waits
 // for the next read; the stream's last comes last, "" if it ends one)
 export async function* stream_lines(stream: ReadableStream<Uint8Array>): AsyncGenerator<string[]> {
-  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
+  const reader = stream.pipeThrough(new TextDecoderStream() as TransformStream<Uint8Array, string>).getReader();
   let rest = "";
   for (let got = await reader.read(); !got.done; got = await reader.read()) {
     const nl = got.value.lastIndexOf("\n");

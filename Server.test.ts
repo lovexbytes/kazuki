@@ -65,11 +65,11 @@ test("the compiled terminal manages its local server separately from its TUI", a
   const port = await unused_port();
   const site = "http://127.0.0.1:" + port;
   const env = { ...process.env, KAZUKI_DIR: data, KAZUKI_URL: "http://localhost:" + port, KAZUKI_SITE: site };
-  let absent: Bun.Subprocess | undefined;
-  let proc: Bun.Subprocess | undefined;
-  let tui: Bun.Subprocess | undefined;
+  let absent: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined;
+  let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
+  let tui: Bun.Subprocess<"pipe", "ignore", "pipe"> | undefined;
   let v6: Bun.Subprocess | undefined;
-  let update: Bun.Subprocess | undefined;
+  let update: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined;
   let pid: number | undefined;
   try {
     const build = Bun.spawnSync([process.execPath, import.meta.dir + "/build.ts", "--outfile", bin], { cwd: import.meta.dir });

@@ -48,7 +48,7 @@ import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE
 import * as config from "./Config.ts";
 import hello_md from "./hello.md" with { type: "text" };
 import app_js from "./web/app.js" with { type: "file" };
-import index_html from "./web/index.html" with { type: "file" };
+import index_page from "./web/index.html" with { type: "file" };
 import install_sh from "./install.sh" with { type: "file" };
 import mark_svg from "./web/mark.svg" with { type: "file" };
 import experimental_jpg from "./web/experimental.jpg" with { type: "file" };
@@ -226,6 +226,9 @@ function local_request(req: Request): boolean {
 // the first message, ending in the installer every terminal starts from
 const HELLO      = hello_md.trim().replace("{install}", config.SITE + "/install.sh");
 
+// with type "file", the page's path: Bun's types say an HTMLBundle
+const index_html = index_page as unknown as string;
+
 // the site's files, by path (a new one is imported above)
 const WEB: Record<string, string> = {
   "/"               : index_html,
@@ -382,7 +385,7 @@ export namespace Chat {
   }
 
   // up to n bytes of a body, from byte `at`
-  export async function read(body: Body, at: number, n: number): Promise<Buffer> {
+  export async function read(body: Body, at: number, n: number): Promise<Buffer<ArrayBuffer>> {
     const buf = Buffer.alloc(n);
     const got = await body.fh.read(buf, 0, n, at);
     return buf.subarray(0, got.bytesRead);
@@ -1406,18 +1409,22 @@ export namespace Main {
   }
 
   // a long answer, sent as made, a PIECE at a time, the event loop
-  // running between
-  export async function* stream(lines: Iterable<string>): AsyncGenerator<string> {
-    let piece = "";
-    for (const line of lines) {
-      piece += line;
-      if (piece.length >= PIECE) {
-        yield piece;
-        piece = "";
-        await new Promise((ok) => setImmediate(ok));
+  // running between (Bun sends an async generator as a body; the DOM's
+  // types know none)
+  export function stream(lines: Iterable<string>): BodyInit {
+    async function* pieces(): AsyncGenerator<string> {
+      let piece = "";
+      for (const line of lines) {
+        piece += line;
+        if (piece.length >= PIECE) {
+          yield piece;
+          piece = "";
+          await new Promise((ok) => setImmediate(ok));
+        }
       }
+      yield piece;
     }
-    yield piece;
+    return pieces() as unknown as BodyInit;
   }
 
   // a page or post of the user's chat (/api/act: an act with a body, its

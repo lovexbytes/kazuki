@@ -29,7 +29,7 @@ test("a ZIP64 export imports", async () => {
 });
 
 // little-endian fields, each its width in bytes and its value
-function bytes(fields: Array<[number, number]>): Uint8Array {
+function bytes(fields: Array<[number, number]>): Uint8Array<ArrayBuffer> {
   const out = new DataView(new ArrayBuffer(fields.reduce((n, [w]) => n + w, 0)));
   let at = 0;
   for (const [w, x] of fields) {
@@ -46,7 +46,7 @@ function bytes(fields: Array<[number, number]>): Uint8Array {
 }
 
 // a ZIP64 of one file, stored
-function zip64(name: string, data: Uint8Array): Blob {
+function zip64(name: string, data: Uint8Array<ArrayBuffer>): Blob {
   const path = new TextEncoder().encode(name);
   const [crc, max] = [Bun.hash.crc32(data), 0xffffffff];
   const local = bytes([[4, 0x04034b50], [2, 45], [2, 0], [2, 0], [2, 0], [2, 0], [4, crc], [4, max], [4, max], [2, path.length], [2, 20]]);
