@@ -51,7 +51,7 @@ import { AskAI, type Ask, type Block, type Call, type Img, type Kind, type Say, 
 import { clip_page, clip_pages } from "./Clip.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
-import { Pick } from "./Pick.ts";
+import { Providers } from "./Provider.ts";
 import * as names from "./Names.ts";
 import { image_kind } from "./View.ts";
 
@@ -777,7 +777,7 @@ export namespace Memory {
 
   // a call of node (l,i)'s summary, on the compactor
   export function ask(mem: Memory, l: number, i: number, text: string, blocks: Block[]): Call {
-    return AskAI.ask({ ...mem.share(), ...Pick.ask(config.COMPACTOR), blocks, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
+    return AskAI.ask({ ...mem.share(), ...Providers.ask(config.COMPACTOR), blocks, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
   }
 
   // a summary's try: its call's end, the call held in `calls` till then

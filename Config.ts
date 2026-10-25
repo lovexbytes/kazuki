@@ -2,14 +2,18 @@
 // ======
 // The server's settings. Its DIR ($KAZUKI_DIR, default ~/.kazuki) holds
 // config.json, the lock and users/<id>. Each key of config.json (README)
-// may be set as KAZUKI_<KEY> instead; a path may start with "~/". The keys
-// are read from the environment and removed from it, so no program an
-// agent runs inherits them, and put back for the workers.
+// may be set as KAZUKI_<KEY> instead; a path may start with "~/". The
+// picks are read once the plugins are loaded (config_picks): one not set
+// is the first connected model (the compactor: that provider's cheapest); one naming no model a provider has is an
+// error; one whose provider isn't connected gives way to the first
+// connected model, and every view is told (LOST). The secrets (API keys,
+// APNS_KEY) are read from the environment then too (config_hide) and
+// removed from it, so no program an agent runs inherits them, and put
+// back for the workers.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import type { Vendor } from "./AskAI.ts";
-import { LABELS, VENDORS, Pick, type Offer } from "./Pick.ts";
+import { EFFORTS, Pick, SPEEDS, type Model, type Offer } from "./Pick.ts";
 
 // Constants
 // =========
@@ -20,24 +24,20 @@ const PATH = DIR + "/config.json";
 const FILE: Record<string, string> = fs.existsSync(PATH) ? JSON.parse(fs.readFileSync(PATH, "utf8")) : {};
 
 export const SITE    = config_get("site", "http://127.0.0.1:8788").replace(/\/$/, "");
-export const OFFER: Offer = {
-  vendors : config_vendors(config_get("vendors", "claude-api")),
-  models  : config_get("models", LABELS.join()).split(",").map((m) => m.trim()),
-};
+
+// the models offered, by label (null: all)
+export const MODELS     = config_get("models", "") ? config_get("models", "").split(",").map((m) => m.trim()) : null;
 
 export const WORK       = config_path(config_get("work", DIR + "/work"));
 export const RULES      = config_path(config_get("rules", ""));
 export const AFTER      = config_get("after", "");
-export const PICK       = config_run("pick", config_get("pick", "claude-api:sonnet-5.5:medium:slow"));
-
-// what every compaction runs on, a chat's and an import's alike, whatever
-// the chat's pick
-export const COMPACTOR  = config_run("compactor", config_get("compactor", "claude-api:haiku-5.5:high:slow"));
-export const AGENTS     = config_get("agents", "") ? config_run("agents", config_get("agents", "")) : null;
 export const WORKERS    = Number(config_get("workers", "0"));
 
-// openai-sub's ChatGPT sign-in (ChatGPT.ts)
+// the openai provider's ChatGPT sign-in (ChatGPT.ts)
 export const CHATGPT    = config_path(config_get("chatgpt", DIR + "/chatgpt.json"));
+
+// each provider's chosen auth method, by its type (Provider.ts)
+export const AUTH       = DIR + "/auth.json";
 
 // the iOS app (ios/, Cloud.ts): its App ID, the team's then the bundle's
 // ("TEAM.com.example.kazuki"), whose app sign-in links open; and
@@ -45,13 +45,19 @@ export const CHATGPT    = config_path(config_get("chatgpt", DIR + "/chatgpt.json
 export const APPLE      = config_get("apple", "");
 export const APNS       = config_get("apns", "");
 
-// the keys, by name, and the variable each is read from
-const VARS: Record<string, string> = {
-  anthropic       : "ANTHROPIC_API_KEY",
-  openai          : "OPENAI_API_KEY",
-  apns            : "APNS_KEY",
-};
-export const KEYS: Record<string, string> = Object.fromEntries(Object.entries(VARS).map(([name, v]) => [name, config_key(v)]));
+// what a chat runs on until it picks another; what every compaction runs
+// on, a chat's and an import's alike, whatever the chat's pick; what
+// agents run on (null: the chat's pick). Set by config_picks
+export let PICK      : Pick;
+export let COMPACTOR : Pick;
+export let AGENTS    : Pick | null = null;
+
+// what the config set that isn't connected, and what runs in its place,
+// told to every view that opens (Server.ts)
+export let LOST: string[] = [];
+
+// the secrets read from the environment, by variable (config_hide)
+export const SECRETS = new Map<string, string>();
 
 // Config
 // ======
@@ -64,33 +70,68 @@ function config_path(path: string): string {
   return path.startsWith("~/") ? os.homedir() + path.slice(1) : path;
 }
 
-function config_run(key: string, text: string): Pick {
-  const [vendor, model, effort, speed] = text.split(":");
-  const pick = Pick.read({ vendor, model, effort, speed }, OFFER);
-  if (pick === null) {
-    throw new Error("config: " + key + " is no vendor:model:effort:speed offered here: " + text);
+// the picks, from the offer (the connected providers) and the catalog
+// (every provider): one naming no model of the catalog throws
+export function config_picks(offer: Offer, catalog: Offer): void {
+  const models = Pick.models(offer);
+  if (models.length === 0 && MODELS !== null) {
+    throw new Error("Model not found: " + MODELS.join(", ") + ". Check your config (models) model names: no connected provider has them.");
   }
-  return pick;
+  if (models.length === 0) {
+    throw new Error("config: no provider is connected");
+  }
+  const vendor = models[0][0];
+  const cheapest = Pick.cheapest(models.filter(([v]) => v === vendor).map(([, m]) => m));
+  const on = (model: Model, effort: string): Pick => Pick.on({ vendor, model: model.label, effort }, vendor, model);
+  const pick      = config_pick("pick", offer, catalog);
+  const compactor = config_pick("compactor", offer, catalog);
+  PICK      = pick ?? on(models[0][1], "medium");
+  COMPACTOR = compactor ?? on(cheapest, "high");
+  AGENTS    = config_pick("agents", offer, catalog);
+  LOST      = [];
+  const lost = (key: string, got: Pick | null, runs: string) => {
+    if (config_get(key, "") !== "" && got === null) {
+      LOST.push(key + " " + config_get(key, "") + " isn't connected, so " + runs + ".");
+    }
+  };
+  lost("pick", pick, "new chats run on " + Pick.label(PICK));
+  lost("compactor", compactor, "summaries run on " + Pick.label(COMPACTOR));
+  lost("agents", AGENTS, "agents run on the chat's pick");
 }
 
-function config_vendors(text: string): Vendor[] {
-  const list = text.split(",").map((v) => v.trim()) as Vendor[];
-  const bad = list.find((v) => !VENDORS.includes(v));
-  if (bad !== undefined) {
-    throw new Error("config: vendors can't offer " + bad);
+// a pick set as vendor:model[:effort][:speed], if offered (null: none
+// set, or not connected); an effort or speed its model lacks steps down
+// (Pick.on)
+function config_pick(key: string, offer: Offer, catalog: Offer): Pick | null {
+  const text = config_get(key, "");
+  const [vendor, model, ...rest] = text.split(":");
+  const x = { vendor, model, effort: rest.find((r) => EFFORTS.includes(r)), speed: rest.find((r) => SPEEDS.includes(r)) };
+  const odd = rest.some((r) => !EFFORTS.includes(r) && !SPEEDS.includes(r));
+  if (text !== "" && odd) {
+    throw new Error("config: " + key + " is no provider:model[:effort][:speed]: " + text);
   }
-  return list;
+  if (text !== "" && Pick.read(x, catalog) === null) {
+    const hidden = MODELS !== null && !MODELS.includes(model) ? ", or add it to config models" : "";
+    throw new Error("Model not found: " + vendor + ":" + model + ". Check your config (" + key + ") provider:model names" + hidden + ".");
+  }
+  return Pick.read(x, offer);
 }
 
-function config_key(name: string): string {
-  const key = (process.env[name] ?? "").trim();
-  delete process.env[name];
-  return key;
+// a secret: read once hidden, else from the environment
+export function secret(name: string): string {
+  return SECRETS.get(name) ?? (process.env[name] ?? "").trim();
+}
+
+// reads these secrets and APNS_KEY, and removes them from the environment
+export function config_hide(names: string[]): void {
+  for (const name of [...names, "APNS_KEY"]) {
+    SECRETS.set(name, secret(name));
+    delete process.env[name];
+  }
 }
 
 // the environment a worker of this server starts with: this one, with
-// the keys back
+// the secrets back
 export function config_env(): Record<string, string | undefined> {
-  const keys = Object.entries(VARS).map(([name, v]) => [v, KEYS[name]]);
-  return { ...process.env, ...Object.fromEntries(keys) };
+  return { ...process.env, ...Object.fromEntries([...SECRETS].filter(([, v]) => v !== "")) };
 }

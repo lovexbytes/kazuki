@@ -10,6 +10,10 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 
+// a server starts only with a provider connected (Plugin.ts): a fake key
+process.env.ANTHROPIC_API_KEY ||= "test";
+process.env.KAZUKI_MODELS_FETCH = "off";
+
 async function unused_port(): Promise<number> {
   return await new Promise((done, fail) => {
     const listener = net.createServer();
@@ -195,6 +199,11 @@ const TURN = `
 const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")});
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
+const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
+const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
+const { Providers } = await import(${JSON.stringify(import.meta.dir + "/Provider.ts")});
+Plugin.load();
+config.config_picks(Providers.offer(), Providers.catalog());
 Chat.cloud = Cloud.open(() => {});
 const chat = Chat.open({ id: "u1", name: "a@b.c" });
 AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
@@ -251,3 +260,22 @@ test("an import's pause survives its chat opening again", async () => {
   const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
   expect(out).toEqual({ held: "paused", old: null, went: null, kept: "paused" });
 });
+
+test("a worker that dies starts again; one that fails in its place, after a pause", async () => {
+  process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-died-");
+  const { Main } = await import("./Server.ts");
+  delete process.env.KAZUKI_DIR;
+  const proc = (exitCode: number | null) => ({ exitCode, signalCode: null }) as Bun.Subprocess;
+  const starts = { n: 0 };
+  const again = () => starts.n++;
+  const dead = proc(1);
+  Main.died(0, 1, dead, dead, again);
+  expect(starts.n).toBe(1);
+  Main.died(0, 1, dead, proc(1), again);
+  expect(starts.n).toBe(1);
+  await Bun.sleep(5100);
+  expect(starts.n).toBe(2);
+  Main.died(0, 1, proc(null), proc(1), again);
+  await Bun.sleep(5100);
+  expect(starts.n).toBe(2);
+}, 15e3);

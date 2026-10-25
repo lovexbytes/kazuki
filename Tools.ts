@@ -32,6 +32,7 @@ import { COMPUTER, INT, STR, TOOLS, spec, type Job, type Spec } from "./Machine.
 import { Memory } from "./Memory.ts";
 import PROMPT from "./prompt.txt" with { type: "text" };
 import { EFFORTS, Pick } from "./Pick.ts";
+import { Providers } from "./Provider.ts";
 import type { Live } from "./View.ts";
 
 export type { Live };
@@ -574,13 +575,15 @@ export namespace Tools {
   export function ask(tools: Tools, agent: Agent): Ask {
     const log = { text: Memory.agent_show(tools.mem, agent.name), mark: true };
     const server = Tools.at(tools, agent.name);
-    const run = Pick.ask(config.AGENTS ?? tools.hooks.pick());
+    const pick = config.AGENTS ?? tools.hooks.pick();
+    const run = Providers.ask(pick);
     const role = agent.role;
     switch (role.$) {
       case "sub": {
         const system = Tools.system(SUB);
         const blocks = [...agent.view, Tools.devices(tools), log];
-        const effort = role.effort ?? run.effort;
+        // its effort, as its model has it
+        const effort = Pick.read({ ...pick, effort: role.effort ?? pick.effort }, Providers.offer())?.effort ?? run.effort;
         return { ...run, effort, system, blocks, searches: SEARCHES, server };
       }
       case "hands": {

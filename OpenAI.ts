@@ -1,15 +1,18 @@
 // OpenAI
 // ======
-// The wire of openai-api (Agent.ts): the Responses API, streamed, store
-// off. Reasoning keeps all turns (else a message sent mid-run drops it
-// and misses the cache); the speed is a service tier ("priority" is
-// fast). A marked block is an explicit breakpoint; the end is cached
-// implicitly only if marked. A server_error is busy; failed, incomplete
-// or refused fails. Silent while it reasons, it is dead after 20 min.
-// Voice: TRANSCRIBER writes a recording out, and says its seconds.
+// The openai provider (Provider.ts) and its wire (Agent.ts): the
+// Responses API, streamed, store off. Reasoning keeps all turns (else a
+// message sent mid-run drops it and misses the cache); the speed is a
+// service tier ("priority" is fast). A marked block is an explicit
+// breakpoint; the end is cached implicitly only if marked. A
+// server_error is busy; failed, incomplete or refused fails. Silent
+// while it reasons, it is dead after 20 min. Voice: TRANSCRIBER writes
+// a recording out, and says its seconds.
 
 import type { Ask, Img } from "./AskAI.ts";
 import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./Agent.ts";
+import { EFFORTS, type Model } from "./Pick.ts";
+import { Providers, type Provider } from "./Provider.ts";
 import * as config from "./Config.ts";
 
 // Types
@@ -27,13 +30,20 @@ const MARK = { mode: "explicit" };
 
 export const TRANSCRIBER = "gpt-transcribe";
 
+// the models, which a ChatGPT sign-in (ChatGPT.ts) runs too
+export const MODELS: Model[] = [
+  { label: "gpt-6-luna",  id: "gpt-6-luna",  name: "GPT-6 Luna",  efforts: EFFORTS, speeds: ["slow", "fast"] },
+  { label: "gpt-6.1-sol", id: "gpt-6.1-sol", name: "GPT-6.1 Sol", efforts: EFFORTS, speeds: ["slow", "fast"] },
+  { label: "gpt-6-astra", id: "gpt-6-astra", name: "GPT-6 Astra", efforts: EFFORTS, speeds: ["slow", "fast", "ultrafast"] },
+];
+
 // OpenAI
 // ======
 
 export namespace OpenAI {
 
   export function body(ask: Ask, items: Item[], tools: Tool[], max: number): unknown {
-    const tier = TIERS[ask.speed];
+    const tier = TIERS[ask.speed ?? "slow"];
     if (!tier) {
       throw new Error("OpenAI has no speed " + ask.speed);
     }
@@ -142,7 +152,7 @@ export namespace OpenAI {
     const calls = out.filter((o) => o.type === "function_call");
     const uses: Use[] = calls.map((o) => ({ id: o.call_id, name: o.name, input: Agent.parse(o.arguments) }));
     const ran = OpenAI.tier(res);
-    const note = ran !== ask.speed ? "ran at " + ran + " speed" : "";
+    const note = ran !== (ask.speed ?? "slow") ? "ran at " + ran + " speed" : "";
     const refusals = out.flatMap((o) => (o.type === "message" ? o.content : [])).filter((c: any) => c.type === "refusal");
     const step: Step = { out, uses, entries: out.flatMap(OpenAI.entries), stop: "done", why: "", note };
     if (res.status === "failed") {
@@ -186,13 +196,17 @@ export namespace OpenAI {
 
   // a recording's words and seconds
   export async function transcribe(audio: Blob): Promise<{ text: string; seconds: number }> {
-    if (!config.KEYS.openai) {
-      throw new Error("Voice needs an OpenAI key");
+    // the method chosen bills: a ChatGPT sign-in has no transcription, and
+    // no key is used behind it
+    const used = Providers.route(Providers.get("openai")).used;
+    if (used?.type !== "key") {
+      throw new Error("Voice needs openai on OPENAI_API_KEY: `kazuki auth openai use key`.");
     }
+    const key = config.secret(used.envs[0]);
     const form = new FormData();
     form.append("model", TRANSCRIBER);
     form.append("file", audio, "voice." + audio.type.split(/[/;]/)[1]);
-    const init = { method: "POST", headers: { authorization: "Bearer " + config.KEYS.openai }, body: form };
+    const init = { method: "POST", headers: { authorization: "Bearer " + key }, body: form };
     const res = await fetch("https://api.openai.com/v1/audio/transcriptions", init);
     const out = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -202,7 +216,6 @@ export namespace OpenAI {
   }
 
   export const wire: Wire<State> = {
-    key     : "openai",
     idle    : 1200e3,
     url     : "https://api.openai.com/v1/responses",
     headers : (key) => ({ authorization: "Bearer " + key, "content-type": "application/json" }),
@@ -211,6 +224,15 @@ export namespace OpenAI {
     read    : OpenAI.read,
     begun   : (ev) => ev.type === "response.output_item.added",
     step    : OpenAI.step,
+  };
+
+  export const provider: Provider = {
+    id     : "openai",
+    name   : "OpenAI",
+    ttl    : 1800e3,
+    models : MODELS,
+    auth   : [{ type: "key", envs: ["OPENAI_API_KEY"] }],
+    wire   : OpenAI.wire,
   };
 
 }

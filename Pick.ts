@@ -1,20 +1,25 @@
 // Pick
 // ====
-// What a chat's calls run on, kept in its log: a vendor (claude-api,
-// openai-api, openai-sub: a ChatGPT plan), a model of its, an effort
-// and a speed; label vendor:model:effort:speed. A chat that saved none
+// What a chat's calls run on, kept in its log: a vendor (a provider's
+// id: Provider.ts), a model of its, and its effort and speed if the
+// model has them (one without has none to pick); label
+// vendor:model[:effort][:speed]. What may be picked is the offer: the
+// connected providers' catalogs, which the server sends (no table here,
+// so a plugin's provider is picked like any). A chat that saved none
 // takes the config's (`def`). A move steps one part along the picks
 // that differ in it (`options`), wrapping (up and down stop at the
-// ends): next, prev and model every vendor's models, effort, speed (a
-// model lacking one takes its fastest below), up and down the efforts,
-// never the speed; given a value (`to`), to the pick whose part it is.
-// A model two vendors offer (openai-api's and openai-sub's) is two
-// picks of the same label, shown alike (its vendor in the hint: `twin`):
-// a move by value takes the pick's own vendor's, or the one named
+// ends): next, prev and model every vendor's models, effort, speed,
+// up and down the efforts, never the speed; given a value (`to`), to the
+// pick whose part it is. A pick on a model lacking its effort or speed
+// takes the model's nearest below, else its lowest (`on`).
+// A model two providers offer (two plugins with one label) is two picks
+// of the same label, shown alike (its vendor in the hint: `twin`): a move
+// by value takes the pick's own vendor's, or the one named
 // "vendor:model". A saved pick the server doesn't offer gives way to
 // def, never to a pick like it.
 
 import type { Vendor } from "./AskAI.ts";
+import type { Rate } from "./Price.ts";
 
 // Types
 // =====
@@ -23,86 +28,84 @@ import type { Vendor } from "./AskAI.ts";
 export type Pick = {
   vendor : Vendor;
   model  : string;
-  effort : string;
-  speed  : string;
+  effort?: string;
+  speed? : string;
 };
 
 // a key's change to the pick
 export type Move = "next" | "prev" | "model" | "up" | "down" | "effort" | "speed";
 
-// a model: as shown, as the vendor names it, its speeds
-export type Model = { label: string; id: string; speeds: string[] };
+// a model: its label (in a pick), its id (as the vendor names it), its
+// name (as a person reads it), its efforts and speeds (none: no choice)
+// and list prices
+export type Model = { label: string; id: string; name: string; efforts?: string[]; speeds?: string[]; rate?: Rate };
 
-// what a server offers: vendors, and models by label
-export type Offer = { vendors: Vendor[]; models: string[] };
+// a provider as a client sees it: no code, only what may be picked
+export type Catalog = { id: Vendor; name: string; models: Model[] };
+
+// what a server offers: its connected providers' catalogs
+export type Offer = Catalog[];
 
 // Constants
 // =========
 
-export const VENDORS: Vendor[] = ["claude-api", "openai-api", "openai-sub"];
-
-const OPUS  : Model = { label: "opus-5.5",   id: "claude-opus-5-5",   speeds: ["slow", "fast"] };
-const SONNET: Model = { label: "sonnet-5.5", id: "claude-sonnet-5-5", speeds: ["slow"] };
-const HAIKU : Model = { label: "haiku-5.5",  id: "claude-haiku-5-5",  speeds: ["slow"] };
-const OPENAI: Model[] = [
-  { label: "gpt-6-luna",  id: "gpt-6-luna",  speeds: ["slow", "fast"] },
-  { label: "gpt-6.1-sol", id: "gpt-6.1-sol", speeds: ["slow", "fast"] },
-  { label: "gpt-6-astra", id: "gpt-6-astra", speeds: ["slow", "fast", "ultrafast"] },
-];
-
-// a ChatGPT plan's (ChatGPT.ts): fast is its priority tier, no ultrafast
-const PLAN: Model[] = OPENAI.map((m) => ({ ...m, speeds: m.speeds.filter((s) => s !== "ultrafast") }));
-
-// each vendor's models, at the speeds it runs them
-const MODELS: Record<Vendor, Model[]> = {
-  "claude-api": [OPUS, SONNET, HAIKU],
-  "openai-api": OPENAI,
-  "openai-sub": PLAN,
-};
-
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
-const SPEEDS = ["slow", "fast", "ultrafast"];
-
-export const LABELS = [...new Set(Object.values(MODELS).flat().map((m) => m.label))];
+export const SPEEDS = ["slow", "fast", "ultrafast"];
 
 // Pick
 // ====
 
 export namespace Pick {
 
-  export function model(vendor: Vendor, label: string): Model | undefined {
-    return MODELS[vendor].find((m) => m.label === label);
+  export function model(offer: Offer, vendor: Vendor, label: string): Model | undefined {
+    return offer.find((p) => p.id === vendor)?.models.find((m) => m.label === label);
   }
 
+  // the pick on this model, its effort and speed the model's
   export function on(pick: Pick, vendor: Vendor, model: Model): Pick {
-    const below = SPEEDS.slice(0, SPEEDS.indexOf(pick.speed) + 1);
-    const speed = below.filter((s) => model.speeds.includes(s)).pop() ?? "slow";
-    return { ...pick, vendor, model: model.label, speed };
+    const effort = Pick.near(EFFORTS, model.efforts, pick.effort ?? "medium");
+    const speed  = Pick.near(SPEEDS, model.speeds, pick.speed ?? "slow");
+    return { vendor, model: model.label, effort, speed };
   }
 
-  // the models offered (by label) of these vendors, each with its vendor
-  export function models(vendors: Vendor[], labels: string[]): Array<[Vendor, Model]> {
-    return vendors.flatMap((v) => MODELS[v].filter((m) => labels.includes(m.label)).map((m): [Vendor, Model] => [v, m]));
+  // of a model's values (none: none), the one wanted or the nearest below
+  // it in `all`, else its lowest
+  export function near(all: string[], has: string[] | undefined, want: string): string | undefined {
+    if (has === undefined) {
+      return undefined;
+    }
+    return all.slice(0, all.indexOf(want) + 1).filter((x) => has.includes(x)).pop() ?? has[0];
+  }
+
+  // the one of the lowest output price (unpriced: the dearest); a tie,
+  // the first
+  export function cheapest(models: Model[]): Model {
+    const out = (m: Model) => m.rate?.output ?? Infinity;
+    return models.reduce((a, b) => (out(b) < out(a) ? b : a));
+  }
+
+  // the models offered, each with its vendor
+  export function models(offer: Offer): Array<[Vendor, Model]> {
+    return offer.flatMap((p) => p.models.map((m): [Vendor, Model] => [p.id, m]));
   }
 
   // each with the part the move steps
-  export function options(pick: Pick, move: Move, { vendors, models }: Offer): Array<[string, Pick]> {
-    const speeds = Pick.model(pick.vendor, pick.model)?.speeds ?? [];
-    const all = (vs: Vendor[]) => Pick.models(vs, models).map(([v, m]): [string, Pick] => [m.label, Pick.on(pick, v, m)]);
+  export function options(pick: Pick, move: Move, offer: Offer): Array<[string, Pick]> {
+    const model = Pick.model(offer, pick.vendor, pick.model);
     switch (move) {
       case "next":
       case "prev":
       case "model": {
-        return all(vendors);
+        return Pick.models(offer).map(([v, m]): [string, Pick] => [m.label, Pick.on(pick, v, m)]);
       }
       case "up":
       case "down":
       case "effort": {
-        return EFFORTS.map((effort) => [effort, { ...pick, effort }]);
+        return (model?.efforts ?? []).map((effort) => [effort, { ...pick, effort }]);
       }
       case "speed": {
-        return speeds.map((speed) => [speed, { ...pick, speed }]);
+        return (model?.speeds ?? []).map((speed) => [speed, { ...pick, speed }]);
       }
     }
   }
@@ -123,31 +126,26 @@ export namespace Pick {
   }
 
   // whether another vendor offered has a model of this label
-  export function twin(vendor: Vendor, label: string, vendors: Vendor[]): boolean {
-    return vendors.some((v) => v !== vendor && Pick.model(v, label) !== undefined);
+  export function twin(vendor: Vendor, label: string, offer: Offer): boolean {
+    return offer.some((p) => p.id !== vendor && p.models.some((m) => m.label === label));
   }
 
   export function label(pick: Pick): string {
-    return [pick.vendor, pick.model, pick.effort, pick.speed].join(":");
+    return [pick.vendor, pick.model, pick.effort, pick.speed].filter((x) => x !== undefined).join(":");
   }
 
-  // as a call takes it: the model by its id
-  export function ask(pick: Pick): Pick {
-    const model = Pick.model(pick.vendor, pick.model);
-    return { ...pick, model: model?.id ?? pick.model };
-  }
-
-  // as the chat runs it; null: none
+  // as the chat runs it, on its model (`on`); null: none
   export function read(x: any, offer: Offer): Pick | null {
-    const model = offer.vendors.includes(x.vendor) && offer.models.includes(x.model) ? Pick.model(x.vendor, x.model) : undefined;
-    if (model === undefined || !EFFORTS.includes(x.effort) || !model.speeds.includes(x.speed)) {
+    const model = Pick.model(offer, x?.vendor, x?.model);
+    const known = (all: string[], v: unknown) => v === undefined || all.includes(v as string);
+    if (model === undefined || !known(EFFORTS, x.effort) || !known(SPEEDS, x.speed)) {
       return null;
     }
-    return { vendor: x.vendor, model: x.model, effort: x.effort, speed: x.speed };
+    return Pick.on({ vendor: x.vendor, model: x.model, effort: x.effort, speed: x.speed }, x.vendor, model);
   }
 
   // the pick saved (the chat's log keeps it: Memory.ts) if offered, else
-  // def (Config checks it is offered)
+  // def (Config makes it an offered one)
   export function load(saved: object | null, offer: Offer, def: Pick): Pick {
     return Pick.read(saved ?? def, offer) ?? def;
   }

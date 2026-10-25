@@ -66,7 +66,8 @@ the TUI exits; use `/quit` or empty Ctrl+D to leave the TUI. Its output is in
 `KAZUKI_URL=http://127.0.0.1:9000` (and `KAZUKI_SITE` if it is not already
 set) for another local port; `localhost` and `[::1]` aliases resolve to its
 IPv4 loopback listener. `./kazuki http://example.test` is client-only.
-ChatGPT provider sign-in is separate: run `./kazuki chatgpt`.
+Kazuki starts only with a provider connected: `./kazuki auth` lists them and
+connects one.
 
 To run the source server for a browser instead:
 
@@ -116,13 +117,15 @@ key may also be set as `KAZUKI_<KEY>`:
 
 - `site`: the server's local origin (default `http://127.0.0.1:8788`). Another
   port: `KAZUKI_SITE=http://127.0.0.1:9000 bun Server.ts 9000`.
-- `vendors`: what the server offers, comma-separated: `claude-api` (default),
-  `openai-api`, `openai-sub` (a ChatGPT plan, below).
-- `models`: the models offered, by label (`Pick.ts`; default all).
+- `models`: the models offered, by label, comma-separated (default all).
 - `pick`: what a chat runs on until it picks another,
-  `vendor:model:effort:speed` (default `claude-api:sonnet-5.5:medium:slow`).
-- `compactor`: what writes the summaries (default
-  `claude-api:haiku-5.5:high:slow`).
+  `provider:model[:effort][:speed]`, the effort and speed only for a
+  model that has them (default: the first connected model; set
+  but not connected: that too, and every view that opens is told so, as
+  for `compactor` and `agents`).
+- `compactor`: what writes the summaries (default: the cheapest model of
+  the first connected provider, by models.dev's output price; for
+  Anthropic, Haiku).
 - `agents`: what subagents run on (default: the chat's pick).
 - `work`: the agents' working directories on each device (default
   `~/.kazuki/work`).
@@ -134,23 +137,35 @@ key may also be set as `KAZUKI_<KEY>`:
 - `apple`, `apns`: the iOS app's App ID and push key ID (`ios/`).
 - `chatgpt`: where the ChatGPT sign-in is kept (default
   `~/.kazuki/chatgpt.json`).
+- `models_fetch`: `off` stops the fetch of the models' prices from
+  models.dev every 5 minutes (`ModelsDev.ts`); the picker then shows the
+  last copy kept (`~/.kazuki/models.json`) or the one Kazuki ships
+  (`models.txt`, made again with `bun ModelsDev.ts`).
 
-Keys are read from the environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-and `APNS_KEY`.
+## Providers
 
-With only an OpenAI key, set `vendors`, `pick`, and `compactor` to
-`openai-api` models, for example:
+Each provider is a plugin (`Plugin.ts`, `Provider.ts`). The server offers
+only the connected ones, and won't start with none. `kazuki auth` lists
+them, and sends each connected one a small request to check that it
+works: it shows as connected only if it answers (each check costs a
+fraction of a cent):
 
-```sh
-KAZUKI_VENDORS=openai-api \
-KAZUKI_PICK=openai-api:gpt-6.1-sol:medium:slow \
-KAZUKI_COMPACTOR=openai-api:gpt-6-luna:high:slow \
-bun Server.ts
-```
+- `anthropic`: set `ANTHROPIC_API_KEY`.
+- `openai`: set `OPENAI_API_KEY`, or sign in with a ChatGPT plan:
+  `kazuki auth openai login` (or `kazuki chatgpt`, or `bun ChatGPT.ts`)
+  shows a link and a code to enter in any browser; `kazuki auth openai
+  logout` signs out. The sign-in is local to the server that uses it.
+  Voice messages need openai on its key (`kazuki auth openai use key`):
+  a ChatGPT sign-in has no transcription.
 
-With a ChatGPT plan instead, run `kazuki chatgpt` (or `bun ChatGPT.ts`; it
-shows a link and a code to enter in any browser; `logout` signs out) and use
-`openai-sub` the same way. The sign-in is local to the server that uses it.
+A provider runs on the method chosen: a sign-in chooses itself, and
+`kazuki auth <id> use key` (or `use oauth`) chooses. A chosen method
+that stops working disconnects the provider; it never falls back to
+another one that bills elsewhere. With none chosen, the first method set
+up is used (for openai, the key). The choice is in `~/.kazuki/auth.json`.
+
+Keys are read from the environment when the server starts, with
+`APNS_KEY`, and removed from it.
 
 ## The `kazuki` terminal
 

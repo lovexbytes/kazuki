@@ -7,7 +7,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as Import from "../Import.ts";
 import { Pick, type Move } from "../Pick.ts";
-import { Price } from "../Price.ts";
 import * as View from "../View.ts";
 import { browse } from "../Browse.ts";
 import { client_act, client_get, client_post, client_send, path_read, type Client } from "./Client.ts";
@@ -276,7 +275,9 @@ async function export_sessions(path: string): Promise<Import.Session[]> {
 
 // a part of the pick: to the value given, or, none, the list to pick from
 function cmd_pick(c: Client, move: "model" | "effort" | "speed", arg: string): void {
-  if (arg === "" && c.v.pick !== null) {
+  // an effort or speed the model has one of at most: View's Move says so
+  const none = move !== "model" && pick_options(c, move).length <= 1;
+  if (arg === "" && c.v.pick !== null && !none) {
     c.hooks.pick(move);
     return;
   }
@@ -291,15 +292,15 @@ export function pick_options(c: Client, move: Move): { text: string; hint: strin
   }
   const knob = View.view_pick(c.v).find((k) => k.move === move);
   const seen = new Set<string>();
-  return Pick.options(pick, move, c.v).flatMap(([part, p]) => {
-    const twin = move === "model" && Pick.twin(p.vendor, part, c.v.vendors);
+  return Pick.options(pick, move, c.v.providers).flatMap(([part, p]) => {
+    const twin = move === "model" && Pick.twin(p.vendor, part, c.v.providers);
     const to   = twin ? p.vendor + ":" + part : part;
     if (seen.has(to)) {
       return [];
     }
     seen.add(to);
     const now  = part === knob?.text && p.vendor === pick.vendor;
-    const rate = move === "model" ? Price.rate(Pick.ask(p).model) : undefined;
+    const rate = move === "model" ? Pick.model(c.v.providers, p.vendor, p.model)?.rate : undefined;
     const cost = rate === undefined ? "" : "$" + rate.input + "/M in, $" + rate.output + "/M out";
     return [{ text: part, hint: [twin ? p.vendor : "", cost].filter((x) => x !== "").join(" · "), to, now }];
   });
