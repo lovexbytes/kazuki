@@ -15,6 +15,7 @@ import { expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import type { OAuth } from "./Provider.ts";
+import { Ok } from "./Result.ts";
 
 const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-provider-");
 process.env.KAZUKI_DIR = DIR;
@@ -40,6 +41,10 @@ config.SECRETS.set("ANTHROPIC_API_KEY", "");
 config.SECRETS.set("OPENAI_API_KEY", "test");
 
 const picks = () => config.config_picks(Providers.offer(), Providers.catalog());
+const why = () => {
+  const got = picks();
+  return got.ok ? "" : got.error().message;
+};
 
 test("only the connected providers are offered", () => {
   expect(Plugin.ready()).toBe(true);
@@ -93,9 +98,9 @@ test("picks set but not connected give way, and each is told", () => {
 
 test("a pick naming no model is an error", () => {
   process.env.KAZUKI_PICK = "anthropic:sonet-5.5:medium:slow";
-  expect(picks).toThrow("Model not found: anthropic:sonet-5.5. Check your config (pick) provider:model names.");
+  expect(why()).toBe("Model not found: anthropic:sonet-5.5. Check your config (pick) provider:model names.");
   process.env.KAZUKI_PICK = "openai:gpt-6-luna:medium:quick";
-  expect(picks).toThrow("config: pick is no provider:model[:effort][:speed]: openai:gpt-6-luna:medium:quick");
+  expect(why()).toBe("config: pick is no provider:model[:effort][:speed]: openai:gpt-6-luna:medium:quick");
   delete process.env.KAZUKI_PICK;
 });
 
@@ -105,10 +110,10 @@ test("config models naming no connected model is its own error", () => {
     const { Plugin } = await import("./Plugin.ts");
     const { Providers } = await import("./Provider.ts");
     Plugin.load();
-    config.config_picks(Providers.offer(), Providers.catalog());
-  `], { cwd: import.meta.dir, env: { ...process.env, KAZUKI_MODELS: "opus-5.5", ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "test" }, stderr: "pipe" });
-  expect(run.exitCode).not.toBe(0);
-  expect(run.stderr.toString()).toContain("Model not found: opus-5.5. Check your config (models) model names");
+    const got = config.config_picks(Providers.offer(), Providers.catalog());
+    console.log(got.ok ? "" : got.error().message);
+  `], { cwd: import.meta.dir, env: { ...process.env, KAZUKI_MODELS: "opus-5.5", ANTHROPIC_API_KEY: "", OPENAI_API_KEY: "test" }, stdout: "pipe" });
+  expect(run.stdout.toString()).toContain("Model not found: opus-5.5. Check your config (models) model names");
 });
 
 test("a pick's effort and speed may be left out, in either order", () => {
@@ -174,7 +179,7 @@ test("the keys leave the environment once read, and go back only to workers", ()
 
 test("a call names its model as the method used names it", () => {
   const model = { label: "m", id: "key-m", name: "M", speeds: ["slow"] };
-  const signin: OAuth = { type: "oauth", name: "S", signed: () => true, login: async () => {}, logout: async () => "", models: [{ ...model, id: "signin-m" }] };
+  const signin: OAuth = { type: "oauth", name: "S", signed: () => true, login: async () => new Ok(), logout: async () => new Ok(""), models: [{ ...model, id: "signin-m" }] };
   Providers.add({ ...Providers.get("openai"), id: "fake", models: [model], auth: [signin] });
   expect(Providers.ask({ vendor: "fake", model: "m", effort: "medium", speed: "slow" }).model).toBe("signin-m");
 });
@@ -184,10 +189,14 @@ test("a ping says why a connected provider fails, and that one not connected isn
   let status = 400;
   globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "bad key" } }), { status })) as any;
   try {
-    expect(await Plugin.ping(Providers.get("openai"))).toBe("HTTP 400: bad key");
+    const why = async (id: string) => {
+      const got = await Plugin.ping(Providers.get(id));
+      return got.ok ? "" : got.error().message;
+    };
+    expect(await why("openai")).toBe("HTTP 400: bad key");
     status = 401;
-    expect(await Plugin.ping(Providers.get("openai"))).toBe("Provider authentication failed (openai): bad key");
-    expect(await Plugin.ping(Providers.get("anthropic"))).toBe("not connected");
+    expect(await why("openai")).toBe("Provider authentication failed (openai): bad key");
+    expect(await why("anthropic")).toBe("not connected");
   } finally {
     globalThis.fetch = real;
   }
@@ -197,7 +206,8 @@ test("voice bills only a key chosen: with the ChatGPT sign-in chosen, it refuses
   const { OpenAI } = await import("./OpenAI.ts");
   Providers.choose("openai", "oauth", true);
   try {
-    await expect(OpenAI.transcribe(new Blob(["x"], { type: "audio/webm" }))).rejects.toThrow("Voice needs openai on OPENAI_API_KEY");
+    const got = await OpenAI.transcribe(new Blob(["x"], { type: "audio/webm" }));
+    expect(got.ok ? "" : got.error().message).toContain("Voice needs openai on OPENAI_API_KEY");
   } finally {
     Providers.choose("openai", "oauth", false);
   }

@@ -15,6 +15,7 @@ import { ChatGPT } from "./ChatGPT.ts";
 import { OpenAI } from "./OpenAI.ts";
 import { Pick } from "./Pick.ts";
 import { Providers, type Auth, type Provider } from "./Provider.ts";
+import { Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -76,7 +77,7 @@ export namespace Plugin {
   // set up is pinged as listed, chosen or signed in, and shown connected
   // only if it answers: a key set or a sign-in held is no proof it works
   // (its credit may be gone)
-  export async function auth(args: string[]): Promise<void> {
+  export async function auth(args: string[]): Promise<Result<void, Error>> {
     Plugin.load();
     const [, id, act] = args;
     if (id === undefined) {
@@ -84,34 +85,56 @@ export namespace Plugin {
       const pings = await quiet(() => Promise.all(all.map(Plugin.ping)));
       all.forEach((p, k) => {
         const a = Providers.active(p);
-        const state = a === undefined ? "not connected" : pings[k] === "" ? "connected (" + Plugin.method(a) + ")" : "not connected: " + pings[k];
+        const ping = pings[k];
+        const state = a === undefined ? "not connected" : ping.ok ? "connected (" + Plugin.method(a) + ")" : "not connected: " + ping.error().message;
         console.log(p.id.padEnd(12) + p.name.padEnd(12) + state);
       });
       console.log("\nUse `kazuki auth <provider_id>` to connect a provider.");
-      return;
+      return new Ok();
     }
-    const p = Providers.get(id);
+    const p = Providers.all().find((p) => p.id === id);
+    if (p === undefined) {
+      return new Err(new Error("no provider " + id + "; one of: " + Providers.all().map((p) => p.id).join(", ")));
+    }
     if (act === "use") {
       const a = p.auth.find((a) => a.type === args[3]);
       if (a === undefined) {
-        throw new Error(id + " has no method " + args[3] + "; one of: " + p.auth.map((a) => a.type).join(", "));
+        return new Err(new Error(id + " has no method " + args[3] + "; one of: " + p.auth.map((a) => a.type).join(", ")));
       }
-      Providers.choose(id, a.type, true);
+      const chose = Providers.choose(id, a.type, true);
+      if (!chose.ok) {
+        return chose;
+      }
       const bold = process.stdout.isTTY ? "\x1b[1m" + id + "\x1b[22m" : id;
       console.log("provider " + bold + " will now use " + Plugin.method(a) + (Providers.connected(p) ? "." : ", which isn't set up yet."));
-      return check(p);
+      await check(p);
+      return new Ok();
     }
     const oauth = p.auth.find((a) => a.type === "oauth");
     if (act === "login" || act === "logout") {
       if (oauth === undefined) {
-        throw new Error(id + " has no sign-in");
+        return new Err(new Error(id + " has no sign-in"));
       }
-      return act === "login" ? oauth.login().then(() => check(p)) : console.log(await oauth.logout());
+      if (act === "logout") {
+        const out = await oauth.logout();
+        if (!out.ok) {
+          return new Err(out.error());
+        }
+        console.log(out.value());
+        return new Ok();
+      }
+      const login = await oauth.login();
+      if (!login.ok) {
+        return login;
+      }
+      await check(p);
+      return new Ok();
     }
     for (const a of p.auth) {
       console.log(a.type === "key" ? "Set " + a.envs.join(" and ") + " where the server starts." : "`kazuki auth " + id + " login`: sign in with " + a.name + "; `logout` signs out.");
     }
     console.log("A sign-in chooses itself; `kazuki auth " + id + " use key` or `use oauth` chooses. With none chosen, the first one set up is used.");
+    return new Ok();
   }
 
   // a method as the user knows it: its key's variable, or the sign-in's name
@@ -120,11 +143,11 @@ export namespace Plugin {
   }
 
   // one small call on the provider's cheapest model, as the method used
-  // runs it: "" if it answers, else why not
-  export async function ping(p: Provider): Promise<string> {
+  // runs it: Ok if it answers, else why not
+  export async function ping(p: Provider): Promise<Result<void, Error>> {
     const c = Providers.offer().find((c) => c.id === p.id);
     if (c === undefined) {
-      return Providers.connected(p) ? "no model offered: config models names none of its models" : "not connected";
+      return new Err(new Error(Providers.connected(p) ? "no model offered: config models names none of its models" : "not connected"));
     }
     const model = Pick.cheapest(c.models);
     const pick = Pick.on({ vendor: p.id, model: model.label, effort: "low" }, p.id, model);
@@ -132,14 +155,17 @@ export namespace Plugin {
     // a check, not a turn: a busy or unreachable provider is not waited out
     const late = setTimeout(call.stop, PING);
     const end = await call.done.finally(() => clearTimeout(late));
-    return end.ok ? "" : end.text === "stopped" ? "no answer in " + PING / 1e3 + " s" : end.text;
+    if (end.ok) {
+      return new Ok();
+    }
+    return new Err(new Error(end.text === "stopped" ? "no answer in " + PING / 1e3 + " s" : end.text));
   }
 
   // says whether a connected provider works
   async function check(p: Provider): Promise<void> {
     if (Providers.connected(p)) {
-      const why = await quiet(() => Plugin.ping(p));
-      console.log(why === "" ? "Connected to " + p.name + "." : "Not connected: " + why);
+      const ping = await quiet(() => Plugin.ping(p));
+      console.log(ping.ok ? "Connected to " + p.name + "." : "Not connected: " + ping.error().message);
     }
   }
 

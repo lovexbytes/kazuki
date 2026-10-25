@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import { EFFORTS, Pick, SPEEDS, type Model, type Offer } from "./Pick.ts";
+import { Err, Ok, type Result } from "./Result.ts";
 
 // Constants
 // =========
@@ -71,23 +72,27 @@ function config_path(path: string): string {
 }
 
 // the picks, from the offer (the connected providers) and the catalog
-// (every provider): one naming no model of the catalog throws
-export function config_picks(offer: Offer, catalog: Offer): void {
+// (every provider): one naming no model of the catalog fails
+export function config_picks(offer: Offer, catalog: Offer): Result<void, Error> {
   const models = Pick.models(offer);
   if (models.length === 0 && MODELS !== null) {
-    throw new Error("Model not found: " + MODELS.join(", ") + ". Check your config (models) model names: no connected provider has them.");
+    return new Err(new Error("Model not found: " + MODELS.join(", ") + ". Check your config (models) model names: no connected provider has them."));
   }
   if (models.length === 0) {
-    throw new Error("config: no provider is connected");
+    return new Err(new Error("config: no provider is connected"));
   }
+  const picks = (["pick", "compactor", "agents"] as const).map((key) => config_pick(key, offer, catalog));
+  const failed = picks.find((p) => !p.ok);
+  if (failed !== undefined && !failed.ok) {
+    return new Err(failed.error());
+  }
+  const [pick, compactor, agents] = picks.map((p) => (p.ok ? p.value() : null));
   const vendor = models[0][0];
   const cheapest = Pick.cheapest(models.filter(([v]) => v === vendor).map(([, m]) => m));
   const on = (model: Model, effort: string): Pick => Pick.on({ vendor, model: model.label, effort }, vendor, model);
-  const pick      = config_pick("pick", offer, catalog);
-  const compactor = config_pick("compactor", offer, catalog);
   PICK      = pick ?? on(models[0][1], "medium");
   COMPACTOR = compactor ?? on(cheapest, "high");
-  AGENTS    = config_pick("agents", offer, catalog);
+  AGENTS    = agents;
   LOST      = [];
   const lost = (key: string, got: Pick | null, runs: string) => {
     if (config_get(key, "") !== "" && got === null) {
@@ -97,24 +102,25 @@ export function config_picks(offer: Offer, catalog: Offer): void {
   lost("pick", pick, "new chats run on " + Pick.label(PICK));
   lost("compactor", compactor, "summaries run on " + Pick.label(COMPACTOR));
   lost("agents", AGENTS, "agents run on the chat's pick");
+  return new Ok();
 }
 
 // a pick set as vendor:model[:effort][:speed], if offered (null: none
 // set, or not connected); an effort or speed its model lacks steps down
 // (Pick.on)
-function config_pick(key: string, offer: Offer, catalog: Offer): Pick | null {
+function config_pick(key: string, offer: Offer, catalog: Offer): Result<Pick | null, Error> {
   const text = config_get(key, "");
   const [vendor, model, ...rest] = text.split(":");
   const x = { vendor, model, effort: rest.find((r) => EFFORTS.includes(r)), speed: rest.find((r) => SPEEDS.includes(r)) };
   const odd = rest.some((r) => !EFFORTS.includes(r) && !SPEEDS.includes(r));
   if (text !== "" && odd) {
-    throw new Error("config: " + key + " is no provider:model[:effort][:speed]: " + text);
+    return new Err(new Error("config: " + key + " is no provider:model[:effort][:speed]: " + text));
   }
   if (text !== "" && Pick.read(x, catalog) === null) {
     const hidden = MODELS !== null && !MODELS.includes(model) ? ", or add it to config models" : "";
-    throw new Error("Model not found: " + vendor + ":" + model + ". Check your config (" + key + ") provider:model names" + hidden + ".");
+    return new Err(new Error("Model not found: " + vendor + ":" + model + ". Check your config (" + key + ") provider:model names" + hidden + "."));
   }
-  return Pick.read(x, offer);
+  return new Ok(Pick.read(x, offer));
 }
 
 // a secret: read once hidden, else from the environment

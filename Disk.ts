@@ -12,6 +12,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import type { FileSink } from "bun";
 import * as config from "./Config.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -65,35 +66,44 @@ export namespace Disk {
       const waits = WAITS;
       DIRTY.clear();
       WAITS = [];
-      await Disk.flush(files).catch((err: Error) => console.error("disk: a flush failed: " + err.message));
+      const flushed = await Disk.flush(files);
+      if (!flushed.ok) {
+        console.error("disk: a flush failed: " + flushed.error().message);
+      }
       waits.forEach((ok) => ok());
     }
     RUN = null;
   }
 
-  export async function flush(files: string[]): Promise<void> {
+  export async function flush(files: string[]): Promise<Result<void, Error>> {
     if (process.platform !== "linux") {
-      await Promise.all(files.map(Disk.fsync));
-      return;
+      return Disk.each(files);
     }
-    const shell = (SHELL ??= Disk.shell());
-    shell.stdin.write("\n");
-    shell.stdin.flush();
-    while (!shell.got.includes("\n")) {
-      const got = await shell.out.read();
-      // the shell ended (a stop's signal): each file by itself
-      if (got.done) {
-        SHELL = null;
-        await Promise.all(files.map(Disk.fsync));
-        return;
+    try {
+      const shell = (SHELL ??= Disk.shell());
+      shell.stdin.write("\n");
+      shell.stdin.flush();
+      while (!shell.got.includes("\n")) {
+        const got = await shell.out.read();
+        // the shell ended (a stop's signal): each file by itself
+        if (got.done) {
+          SHELL = null;
+          return Disk.each(files);
+        }
+        shell.got += new TextDecoder().decode(got.value);
       }
-      shell.got += new TextDecoder().decode(got.value);
+      const code = shell.got.slice(0, shell.got.indexOf("\n"));
+      shell.got = shell.got.slice(code.length + 1);
+      return code === "0" ? new Ok() : new Err(new Error("sync -f " + config.DIR + " exited " + code));
+    } catch (e) {
+      return caught(e);
     }
-    const code = shell.got.slice(0, shell.got.indexOf("\n"));
-    shell.got = shell.got.slice(code.length + 1);
-    if (code !== "0") {
-      throw new Error("sync -f " + config.DIR + " exited " + code);
-    }
+  }
+
+  // each file synced by itself; the first that fails says why
+  export async function each(files: string[]): Promise<Result<void, Error>> {
+    const all = await Promise.all(files.map(Disk.fsync));
+    return all.find((r) => !r.ok) ?? new Ok();
   }
 
   export function shell(): Shell {
@@ -103,15 +113,14 @@ export namespace Disk {
   }
 
   // a file gone since needs none
-  export async function fsync(file: string): Promise<void> {
-    const handle = await fs.promises.open(file, "r").catch((err) => {
-      if (err.code !== "ENOENT") {
-        throw err;
-      }
-      return null;
-    });
+  export async function fsync(file: string): Promise<Result<void, Error>> {
+    let handle: fs.promises.FileHandle | null = null;
     try {
-      await handle?.sync();
+      handle = await fs.promises.open(file, "r");
+      await handle.sync();
+      return new Ok();
+    } catch (e: any) {
+      return e?.code === "ENOENT" ? new Ok() : caught(e);
     } finally {
       await handle?.close();
     }

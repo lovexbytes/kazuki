@@ -26,6 +26,7 @@ import type { Emit, Item, Refusal, Tool, Wire } from "./Agent.ts";
 import { MODELS, OpenAI, type State } from "./OpenAI.ts";
 import { Providers, type OAuth } from "./Provider.ts";
 import * as config from "./Config.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -72,7 +73,7 @@ const LIMITS: Record<string, string> = {
 const SIGN_IN = "sign in again: `kazuki chatgpt` (or `bun ChatGPT.ts`) on the server";
 
 // the refresh under way in this process, which every call waits on
-let REFRESHING: Promise<Auth> | null = null;
+let REFRESHING: Promise<Result<Auth, Error>> | null = null;
 
 // ChatGPT
 // =======
@@ -99,33 +100,40 @@ export namespace ChatGPT {
     }
   }
 
-  // FILE's sign-in (null: none)
-  export function load(): Auth | null {
-    if (!fs.existsSync(config.CHATGPT)) {
-      return null;
+  // FILE's sign-in (null: none); a file not JSON, or without its tokens,
+  // fails
+  export function load(): Result<Auth | null, Error> {
+    try {
+      if (!fs.existsSync(config.CHATGPT)) {
+        return new Ok(null);
+      }
+      const auth = JSON.parse(fs.readFileSync(config.CHATGPT, "utf8"));
+      if (typeof auth?.tokens?.access_token !== "string" || typeof auth.tokens.refresh_token !== "string") {
+        return new Err(new Error(config.CHATGPT + " holds no ChatGPT sign-in"));
+      }
+      return new Ok(auth);
+    } catch (e) {
+      return caught(e);
     }
-    const auth = JSON.parse(fs.readFileSync(config.CHATGPT, "utf8"));
-    if (typeof auth?.tokens?.access_token !== "string" || typeof auth.tokens.refresh_token !== "string") {
-      throw new Error(config.CHATGPT + " holds no ChatGPT sign-in");
-    }
-    return auth;
   }
 
-  // whether FILE holds a sign-in: a file without its tokens holds none
+  // whether FILE holds a sign-in: a file that fails holds none
   export function held(): boolean {
-    try {
-      return ChatGPT.load() !== null;
-    } catch {
-      return false;
-    }
+    const auth = ChatGPT.load();
+    return auth.ok && auth.value() !== null;
   }
 
   // written whole (a temp file renamed over it), owner only, its dir made
-  export function save(auth: Auth): void {
-    fs.mkdirSync(path.dirname(config.CHATGPT), { recursive: true, mode: 0o700 });
-    const tmp = config.CHATGPT + "." + process.pid + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(auth, null, 2) + "\n", { mode: 0o600 });
-    fs.renameSync(tmp, config.CHATGPT);
+  export function save(auth: Auth): Result<void, Error> {
+    try {
+      fs.mkdirSync(path.dirname(config.CHATGPT), { recursive: true, mode: 0o700 });
+      const tmp = config.CHATGPT + "." + process.pid + ".tmp";
+      fs.writeFileSync(tmp, JSON.stringify(auth, null, 2) + "\n", { mode: 0o600 });
+      fs.renameSync(tmp, config.CHATGPT);
+    } catch (e) {
+      return caught(e);
+    }
+    return new Ok();
   }
 
   // a sign-in from a token response (old: the tokens it refreshed)
@@ -148,16 +156,21 @@ export namespace ChatGPT {
 
   // the access token a request sends, refreshed if due or if it is the
   // one a 401 refused (Agent.ts Wire auth)
-  export async function token(refused?: string): Promise<string> {
-    const auth = ChatGPT.load();
+  export async function token(refused?: string): Promise<Result<string, Error>> {
+    const got = ChatGPT.load();
+    if (!got.ok) {
+      return new Err(got.error());
+    }
+    const auth = got.value();
     if (auth === null) {
-      throw new Error("not signed in to ChatGPT: " + SIGN_IN);
+      return new Err(new Error("not signed in to ChatGPT: " + SIGN_IN));
     }
     if (auth.tokens.access_token !== refused && !ChatGPT.due(auth)) {
-      return auth.tokens.access_token;
+      return new Ok(auth.tokens.access_token);
     }
     REFRESHING ??= ChatGPT.refresh(auth).finally(() => (REFRESHING = null));
-    return (await REFRESHING).tokens.access_token;
+    const fresh = await REFRESHING;
+    return fresh.ok ? new Ok(fresh.value().tokens.access_token) : new Err(fresh.error());
   }
 
   // an error that asking again may get past: a busy try (Agent.ts)
@@ -168,13 +181,18 @@ export namespace ChatGPT {
   // as Codex asks it (its fields only); refused for good, FILE read again
   // for SETTLE ms: another process's new tokens, if it writes some. Saved
   // only if FILE still holds `old`'s, else FILE's sign-in is the one used
-  export async function refresh(old: Auth): Promise<Auth> {
-    const newer = () => {
+  export async function refresh(old: Auth): Promise<Result<Auth, Error>> {
+    // FILE's sign-in if another refreshed it (null: still old's)
+    const newer = (): Result<Auth | null, Error> => {
       const now = ChatGPT.load();
-      if (now === null) {
-        throw new Error("signed out of ChatGPT: " + SIGN_IN);
+      if (!now.ok) {
+        return now;
       }
-      return now.tokens.refresh_token !== old.tokens.refresh_token ? now : null;
+      const auth = now.value();
+      if (auth === null) {
+        return new Err(new Error("signed out of ChatGPT: " + SIGN_IN));
+      }
+      return new Ok(auth.tokens.refresh_token !== old.tokens.refresh_token ? auth : null);
     };
     let res: Response;
     let text: string;
@@ -186,100 +204,124 @@ export namespace ChatGPT {
         signal  : AbortSignal.timeout(REQUEST),
       });
       text = await res.text();
-    } catch (err: any) {
-      throw ChatGPT.busy(err.message);
+    } catch (e) {
+      return new Err(ChatGPT.busy(caught(e).error().message));
     }
     const body = ChatGPT.json(text);
     if (!res.ok) {
       const code = String(typeof body.error === "string" ? body.error : body.error?.code ?? body.code ?? "").toLowerCase();
       if (res.status !== 401 && !GONE.includes(code)) {
-        throw ChatGPT.busy("HTTP " + res.status);
+        return new Err(ChatGPT.busy("HTTP " + res.status));
       }
       for (const end = Date.now() + SETTLE; ; await Bun.sleep(250)) {
         const now = newer();
-        if (now !== null) {
-          return now;
+        if (!now.ok) {
+          return new Err(now.error());
+        }
+        const auth = now.value();
+        if (auth !== null) {
+          return new Ok(auth);
         }
         if (Date.now() >= end) {
           break;
         }
       }
-      throw new Error("the ChatGPT sign-in has expired or was revoked (" + (code || "HTTP " + res.status) + "): " + SIGN_IN);
+      return new Err(new Error("the ChatGPT sign-in has expired or was revoked (" + (code || "HTTP " + res.status) + "): " + SIGN_IN));
     }
     if (typeof body.access_token !== "string") {
-      throw ChatGPT.busy("no access token");
+      return new Err(ChatGPT.busy("no access token"));
     }
     const auth = ChatGPT.auth(body, old.tokens);
     const now = newer();
-    if (now !== null) {
-      return now;
+    if (!now.ok) {
+      return new Err(now.error());
     }
-    ChatGPT.save(auth);
-    return auth;
+    const theirs = now.value();
+    if (theirs !== null) {
+      return new Ok(theirs);
+    }
+    const saved = ChatGPT.save(auth);
+    return saved.ok ? new Ok(auth) : new Err(saved.error());
   }
 
   // Sign-in
   // -------
 
   // an authorization code's tokens, saved
-  export async function exchange(code: string, redirect: string, verifier: string): Promise<Auth> {
-    const form = new URLSearchParams({ grant_type: "authorization_code", client_id: CLIENT, code, redirect_uri: redirect, code_verifier: verifier });
-    const res = await fetch(ISSUER + "/oauth/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form, signal: AbortSignal.timeout(REQUEST) });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error("ChatGPT sign-in failed: HTTP " + res.status + ": " + text.slice(0, 300));
+  export async function exchange(code: string, redirect: string, verifier: string): Promise<Result<Auth, Error>> {
+    try {
+      const form = new URLSearchParams({ grant_type: "authorization_code", client_id: CLIENT, code, redirect_uri: redirect, code_verifier: verifier });
+      const res = await fetch(ISSUER + "/oauth/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form, signal: AbortSignal.timeout(REQUEST) });
+      const text = await res.text();
+      if (!res.ok) {
+        return new Err(new Error("ChatGPT sign-in failed: HTTP " + res.status + ": " + text.slice(0, 300)));
+      }
+      const auth = ChatGPT.auth(JSON.parse(text));
+      const saved = ChatGPT.save(auth);
+      return saved.ok ? new Ok(auth) : new Err(saved.error());
+    } catch (e) {
+      return caught(e);
     }
-    const auth = ChatGPT.auth(JSON.parse(text));
-    ChatGPT.save(auth);
-    return auth;
   }
 
   // by a device code: the link and code to show, then polling till the
   // user entered it, within `wait` ms; a poll the issuer fails (5xx, no
   // answer) polls on
-  export async function device(show: (url: string, code: string) => void, wait = DEVICE): Promise<Auth> {
+  export async function device(show: (url: string, code: string) => void, wait = DEVICE): Promise<Result<Auth, Error>> {
     const api = ISSUER + "/api/accounts/deviceauth";
     const post = (path: string, body: object) =>
       fetch(api + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(REQUEST) });
-    const res = await post("/usercode", { client_id: CLIENT });
-    if (!res.ok) {
-      const off = res.status === 404 ? " (device code sign-in is off for this account: allow it in ChatGPT's security settings)" : "";
-      throw new Error("ChatGPT device code request failed: HTTP " + res.status + off);
-    }
-    const got = await res.json();
-    const code = got.user_code ?? got.usercode;
-    const every = Math.max(1, Number(got.interval) || 5) * 1000;
-    show(ISSUER + "/codex/device", code);
-    for (const end = Date.now() + wait; Date.now() < end; await Bun.sleep(Math.min(every, end - Date.now()))) {
-      const poll = await post("/token", { device_auth_id: got.device_auth_id, user_code: code }).catch(() => null);
-      if (poll?.ok) {
-        const ok = await poll.json();
-        return ChatGPT.exchange(ok.authorization_code, ISSUER + "/deviceauth/callback", ok.code_verifier);
+    try {
+      const res = await post("/usercode", { client_id: CLIENT });
+      if (!res.ok) {
+        const off = res.status === 404 ? " (device code sign-in is off for this account: allow it in ChatGPT's security settings)" : "";
+        return new Err(new Error("ChatGPT device code request failed: HTTP " + res.status + off));
       }
-      if (poll !== null && poll.status !== 403 && poll.status !== 404 && poll.status < 500) {
-        throw new Error("ChatGPT device sign-in failed: HTTP " + poll.status);
+      const got: any = await res.json();
+      const code = got.user_code ?? got.usercode;
+      const every = Math.max(1, Number(got.interval) || 5) * 1000;
+      show(ISSUER + "/codex/device", code);
+      for (const end = Date.now() + wait; Date.now() < end; await Bun.sleep(Math.min(every, end - Date.now()))) {
+        const poll = await post("/token", { device_auth_id: got.device_auth_id, user_code: code }).catch(() => null);
+        if (poll?.ok) {
+          const ok: any = await poll.json();
+          return ChatGPT.exchange(ok.authorization_code, ISSUER + "/deviceauth/callback", ok.code_verifier);
+        }
+        if (poll !== null && poll.status !== 403 && poll.status !== 404 && poll.status < 500) {
+          return new Err(new Error("ChatGPT device sign-in failed: HTTP " + poll.status));
+        }
       }
+      return new Err(new Error("ChatGPT device sign-in timed out after " + Math.round(wait / 60e3) + " minutes"));
+    } catch (e) {
+      return caught(e);
     }
-    throw new Error("ChatGPT device sign-in timed out after " + Math.round(wait / 60e3) + " minutes");
   }
 
   // revokes the refresh token (Codex's logout), then forgets the sign-in
-  // whether or not that worked. The choice stays: openai isn't connected
-  // till another is chosen, so it never moves to a key that bills
-  export async function logout(): Promise<string> {
-    const auth = ChatGPT.load();
-    if (auth === null) {
-      return "Not signed in to ChatGPT.";
+  // whether or not that worked (one in a file that fails to load has no
+  // token to revoke). The choice stays: openai isn't
+  // connected till another is chosen, so it never moves to a key that
+  // bills
+  export async function logout(): Promise<Result<string, Error>> {
+    const got = ChatGPT.load();
+    const auth = got.ok ? got.value() : null;
+    if (got.ok && auth === null) {
+      return new Ok("Not signed in to ChatGPT.");
     }
-    const res = await fetch(ISSUER + "/oauth/revoke", {
+    const res = auth === null ? null : await fetch(ISSUER + "/oauth/revoke", {
       method  : "POST",
       headers : { "content-type": "application/json" },
       body    : JSON.stringify({ token: auth.tokens.refresh_token, token_type_hint: "refresh_token", client_id: CLIENT }),
       signal  : AbortSignal.timeout(REQUEST),
     }).catch(() => null);
-    fs.rmSync(config.CHATGPT, { force: true });
+    try {
+      fs.rmSync(config.CHATGPT, { force: true });
+    } catch (e) {
+      return caught(e);
+    }
     const note = Providers.chosen().openai === "oauth" ? " To run openai on OPENAI_API_KEY: `kazuki auth openai use key`." : "";
-    return "Signed out of ChatGPT" + (res?.ok ? "." : " (its token wasn't revoked: " + (res ? "HTTP " + res.status : "offline") + ").") + note;
+    const why = auth === null ? "it held no token" : res ? "HTTP " + res.status : "offline";
+    return new Ok("Signed out of ChatGPT" + (res?.ok ? "." : " (its token wasn't revoked: " + why + ").") + note);
   }
 
   // who FILE is signed in as
@@ -290,14 +332,25 @@ export namespace ChatGPT {
   }
 
   // `kazuki chatgpt [logout]`
-  export async function cli(args: string[]): Promise<void> {
+  export async function cli(args: string[]): Promise<Result<void, Error>> {
     if (args.includes("logout")) {
-      console.log(await ChatGPT.logout());
-      return;
+      const out = await ChatGPT.logout();
+      if (!out.ok) {
+        return new Err(out.error());
+      }
+      console.log(out.value());
+      return new Ok();
     }
-    const auth = await ChatGPT.device((url, code) => console.log("To sign this server in to ChatGPT, open\n\n  " + url + "\n\nand enter the code\n\n  " + code + "\n\n(it expires in 15 minutes; enter it only if you started this sign-in)"));
-    Providers.choose("openai", "oauth", true);
-    console.log("\nSigned in to ChatGPT as " + ChatGPT.who(auth) + "; tokens in " + config.CHATGPT + ". openai now runs on it.");
+    const got = await ChatGPT.device((url, code) => console.log("To sign this server in to ChatGPT, open\n\n  " + url + "\n\nand enter the code\n\n  " + code + "\n\n(it expires in 15 minutes; enter it only if you started this sign-in)"));
+    if (!got.ok) {
+      return new Err(got.error());
+    }
+    const chose = Providers.choose("openai", "oauth", true);
+    if (!chose.ok) {
+      return new Err(chose.error());
+    }
+    console.log("\nSigned in to ChatGPT as " + ChatGPT.who(got.value()) + "; tokens in " + config.CHATGPT + ". openai now runs on it.");
+    return new Ok();
   }
 
   // Wire
@@ -333,9 +386,10 @@ export namespace ChatGPT {
   }
 
   export function headers(token: string): Record<string, string> {
+    const saved = ChatGPT.load();
     return {
       authorization        : "Bearer " + token,
-      "chatgpt-account-id" : ChatGPT.claims(token)[CLAIMS]?.chatgpt_account_id ?? ChatGPT.load()?.tokens.account_id ?? "",
+      "chatgpt-account-id" : ChatGPT.claims(token)[CLAIMS]?.chatgpt_account_id ?? (saved.ok ? saved.value()?.tokens.account_id : undefined) ?? "",
       "openai-beta"        : "responses=experimental",
       "content-type"       : "application/json",
       accept               : "text/event-stream",
@@ -398,8 +452,9 @@ export namespace ChatGPT {
 }
 
 if (import.meta.main) {
-  await ChatGPT.cli(process.argv.slice(2)).catch((err) => {
-    console.error(err.message);
+  const got = await ChatGPT.cli(process.argv.slice(2));
+  if (!got.ok) {
+    console.error(got.error().message);
     process.exit(1);
-  });
+  }
 }

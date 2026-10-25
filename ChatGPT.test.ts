@@ -9,6 +9,7 @@
 import { beforeEach, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
+import { Ok } from "./Result.ts";
 
 // Fake
 // ====
@@ -254,14 +255,15 @@ test("a refresh refused as used reads the file again: another process's tokens, 
     fake.spent.add("refresh-0");
     setTimeout(() => sign_in(theirs, "refresh-9"), 300);
   };
-  expect(await ChatGPT.token()).toBe(theirs);
+  expect(await ChatGPT.token()).toEqual(new Ok(theirs));
   expect(file().tokens.refresh_token).toBe("refresh-9");
 });
 
 test("a refresh under way when another process signs out doesn't sign back in", async () => {
   sign_in(access(1, now() + 10), "refresh-0");
   fake.before = () => fs.rmSync(FILE);
-  await expect(ChatGPT.token()).rejects.toThrow("signed out");
+  const got = await ChatGPT.token();
+  expect(got.ok ? "" : got.error().message).toContain("signed out");
   expect(fs.existsSync(FILE)).toBe(false);
 });
 
@@ -359,14 +361,15 @@ test("device sign-in: polled till entered, past the issuer's 5xx, and saved", as
   fake.down = 1;
   const auth = await ChatGPT.device(() => {});
   expect(fake.exchanges[0]).toMatchObject({ code: "code-ok", code_verifier: "verifier-dev" });
-  expect(auth.tokens.access_token).toBe(file().tokens.access_token);
+  expect(auth.ok && auth.value().tokens.access_token).toBe(file().tokens.access_token);
 });
 
 test("logout revokes the refresh token and deletes the file; openai doesn't move to the key", async () => {
   sign_in(access(1), "refresh-7");
   Providers.choose("openai", "oauth", true);
   config.SECRETS.set("OPENAI_API_KEY", "test");
-  expect(await ChatGPT.logout()).toContain("kazuki auth openai use key");
+  const out = await ChatGPT.logout();
+  expect(out.ok ? out.value() : "").toContain("kazuki auth openai use key");
   expect(fake.revoked[0].token).toBe("refresh-7");
   expect(fs.existsSync(FILE)).toBe(false);
   expect(Providers.connected(Providers.get("openai"))).toBe(false);

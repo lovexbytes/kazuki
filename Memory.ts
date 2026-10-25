@@ -51,6 +51,7 @@ import { AskAI, type Ask, type Block, type Call, type Img, type Kind, type Say, 
 import { clip_page, clip_pages } from "./Clip.ts";
 import * as config from "./Config.ts";
 import { Disk } from "./Disk.ts";
+import { Err, Ok, type Result } from "./Result.ts";
 import { Providers } from "./Provider.ts";
 import * as names from "./Names.ts";
 import { image_kind } from "./View.ts";
@@ -680,12 +681,16 @@ export namespace Memory {
   export function job(mem: Memory, l: number, i: number, text: string, call: Call | null = null): void {
     const key = Memory.slot(l, i);
     mem.busy.set(key, Memory.side(mem, l, i));
-    Memory.build(mem, l, i, text, call).finally(() => {
+    Memory.build(mem, l, i, text, call).then((built) => {
+      if (!built.ok) {
+        console.error("compactor: node " + l + "/" + i + ": " + built.error().message);
+      }
+    }).finally(() => {
       mem.busy.delete(key);
       Memory.pump(mem);
       Memory.fit(mem);
     }).catch((err) => {
-      console.error("compactor: node " + l + "/" + i + ": " + (err?.message ?? err));
+      console.error("compactor: node " + l + "/" + i + ": " + (err?.stack ?? err));
     });
   }
 
@@ -726,8 +731,8 @@ export namespace Memory {
   // thoughts; one after a line too long adds only its size and where the
   // limit cuts it (`over`): never more than the first and that note. No
   // line (a refusal: its input's doing): its source clipped; a try cut
-  // (a pause, a stop) throws, unless a line came
-  export async function build(mem: Memory, l: number, i: number, text: string, call: Call | null): Promise<void> {
+  // (a pause, a stop) fails, unless a line came
+  export async function build(mem: Memory, l: number, i: number, text: string, call: Call | null): Promise<Result<void, Error>> {
     const task = { text: Memory.task(l, i) + text + "\n</input>", mark: false };
     const upto = Math.min(Memory.ctx(l, i), Memory.first(mem, 0, Memory.side(mem, l, i)));
     const blocks = [...Memory.view(mem, upto, mem.seen.parts), task];
@@ -743,13 +748,14 @@ export namespace Memory {
       end = await Memory.compact(mem, l, i, Memory.ask(mem, l, i, text, [...blocks, note]));
     }
     if (lines.length === 0 && !end.ok && end.stop !== "fail") {
-      throw new Error(end.text);
+      return new Err(new Error(end.text));
     }
     if (lines.length === 0) {
       console.error("compactor: node " + l + "/" + i + ": " + (end.ok ? "an empty line" : end.text) + "; clipped");
     }
     const line = lines.length === 0 ? Memory.cut(Memory.flat(text)) : lines.reduce((a, b) => (Memory.bytes(b) < Memory.bytes(a) ? b : a));
     Memory.store(mem, [{ l, i, text: line }]);
+    return new Ok();
   }
 
   // what node (l,i)'s summary serves: an import, or the chat

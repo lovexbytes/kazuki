@@ -14,6 +14,7 @@ import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use
 import { EFFORTS, type Model } from "./Pick.ts";
 import { Providers, type Provider } from "./Provider.ts";
 import * as config from "./Config.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -195,24 +196,28 @@ export namespace OpenAI {
   }
 
   // a recording's words and seconds
-  export async function transcribe(audio: Blob): Promise<{ text: string; seconds: number }> {
+  export async function transcribe(audio: Blob): Promise<Result<{ text: string; seconds: number }, Error>> {
     // the method chosen bills: a ChatGPT sign-in has no transcription, and
     // no key is used behind it
     const used = Providers.route(Providers.get("openai")).used;
     if (used?.type !== "key") {
-      throw new Error("Voice needs openai on OPENAI_API_KEY: `kazuki auth openai use key`.");
+      return new Err(new Error("Voice needs openai on OPENAI_API_KEY: `kazuki auth openai use key`."));
     }
     const key = config.secret(used.envs[0]);
     const form = new FormData();
     form.append("model", TRANSCRIBER);
     form.append("file", audio, "voice." + audio.type.split(/[/;]/)[1]);
     const init = { method: "POST", headers: { authorization: "Bearer " + key }, body: form };
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", init);
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error("Transcription failed: " + (out.error?.message ?? "HTTP " + res.status));
+    try {
+      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", init);
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return new Err(new Error("Transcription failed: " + (out.error?.message ?? "HTTP " + res.status)));
+      }
+      return new Ok({ text: out.text, seconds: out.usage.seconds });
+    } catch (e) {
+      return caught(e);
     }
-    return { text: out.text, seconds: out.usage.seconds };
   }
 
   export const wire: Wire<State> = {

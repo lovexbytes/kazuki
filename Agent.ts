@@ -32,6 +32,7 @@ import { Providers, type Provider } from "./Provider.ts";
 import { live_push } from "./View.ts";
 import { Machine, type Spec } from "./Machine.ts";
 import * as config from "./Config.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -93,7 +94,7 @@ export type Emit = (kind: Kind, text: string, fresh?: boolean) => void;
 // into a step (S: what it read so far), and which error responses are
 // refusals (null: not one)
 export type Wire<S> = {
-  auth?   : (refused: string | undefined) => Promise<string>;
+  auth?   : (refused: string | undefined) => Promise<Result<string, Error>>;
   refusal?: (res: Response, body: string) => Refusal | null;
   idle    : number;
   url     : string;
@@ -137,8 +138,12 @@ export namespace Agent {
       run.abort.abort();
     };
     const done = (async () => {
+      // a bug that throws ends the call alike, saying it
       try {
-        await Agent.loop(Providers.get(ask.vendor), run);
+        const done = await Agent.loop(Providers.get(ask.vendor), run);
+        if (!done.ok) {
+          end.text ||= done.error().message;
+        }
       } catch (err: any) {
         end.text ||= err.message;
       }
@@ -149,19 +154,27 @@ export namespace Agent {
     return { send, stop, done };
   }
 
-  export async function loop(p: Provider, run: Run): Promise<void> {
+  export async function loop(p: Provider, run: Run): Promise<Result<void, Error>> {
     const { ask, on, end } = run;
     const { wire, used } = Providers.route(p);
     const signal = run.abort.signal;
     if (used === undefined) {
-      throw new Error(p.name + " isn't connected: run `kazuki auth " + p.id + "`");
+      return new Err(new Error(p.name + " isn't connected: run `kazuki auth " + p.id + "`"));
     }
     const key = used.type === "key" ? config.secret(used.envs[0]) : "";
-    const tools = await Agent.server(run);
+    const listed = await Agent.server(run);
+    if (!listed.ok) {
+      return new Err(listed.error());
+    }
+    const tools = listed.value();
     const parts = ask.blocks.filter((b) => b.text !== "");
     const items: Item[] = [{ $: "User", parts, imgs: ask.imgs ?? [] }];
     while (!signal.aborted) {
-      const step = await Agent.step(wire, run, key, wire.body(ask, items, tools, MAX));
+      const got = await Agent.step(wire, run, key, wire.body(ask, items, tools, MAX));
+      if (!got.ok) {
+        return new Err(got.error());
+      }
+      const step = got.value();
       for (const entry of step.entries) {
         on({ $: "Entry", ...entry });
       }
@@ -169,7 +182,7 @@ export namespace Agent {
         end.text ||= step.stop === "down" ? step.refusal?.say ?? step.why : step.why;
         end.stop = step.stop;
         end.until = step.refusal?.until;
-        return;
+        return new Ok();
       }
       items.push({ $: "Turn", out: step.out });
       end.note = step.note || end.note;
@@ -179,14 +192,14 @@ export namespace Agent {
       const backs: Back[] = [];
       for (const use of step.uses) {
         if (signal.aborted) {
-          return;
+          return new Ok();
         }
         const out = await Agent.use(run, tools, use);
         on({ $: "Entry", kind: "echo", text: (out.fail ? "error: " : "") + out.text, of: use.id });
         backs.push({ id: use.id, out });
       }
       if (signal.aborted) {
-        return;
+        return new Ok();
       }
       const says = run.sent.splice(0);
       const replies = step.entries.filter((e) => e.kind === "unii");
@@ -194,7 +207,7 @@ export namespace Agent {
       if (backs.length === 0 && says.length === 0) {
         end.ok   = true;
         end.text = text;
-        return;
+        return new Ok();
       }
       for (const say of says) {
         on({ $: "Entry", kind: "user", text: say.text });
@@ -208,13 +221,14 @@ export namespace Agent {
         items.push({ $: "User", parts, imgs });
       }
     }
+    return new Ok();
   }
 
   // body: the request's. Asking again, it holds its room (Room): its
   // model's, or its import's, which one request holds at a time while the
   // rest wait on it, so each import has one request at a busy model
   // however many it runs, and imports share its room alike
-  export async function step<S>(wire: Wire<S>, run: Run, key: string, body: unknown): Promise<Step> {
+  export async function step<S>(wire: Wire<S>, run: Run, key: string, body: unknown): Promise<Result<Step, Error>> {
     const signal = run.abort.signal;
     const model = run.ask.model;
     const own = run.ask.yields === undefined ? model : model + " " + run.ask.yields;
@@ -224,22 +238,25 @@ export namespace Agent {
       for (let k = 1; !signal.aborted; k++) {
         await Agent.yielded(run, own, asking);
         if (signal.aborted) {
-          return Agent.fail("stopped", []);
+          return new Ok(Agent.fail("stopped", []));
         }
         const seen: Entry[] = [];
         const stopped = new Promise<null>((done) => signal.addEventListener("abort", () => done(null), { once: true }));
         const token = await Promise.race([Agent.token(wire, key, refused), stopped]);
         if (token === null) {
-          return Agent.fail("stopped", seen);
+          return new Ok(Agent.fail("stopped", seen));
         }
-        const sent = typeof token === "string" ? Agent.request(wire, run, token, body, seen) : Promise.resolve({ res: null, step: token });
+        if (!token.ok) {
+          return new Err(token.error());
+        }
+        const sent = typeof token.value() === "string" ? Agent.request(wire, run, token.value() as string, body, seen) : Promise.resolve({ res: null, step: token.value() as Step });
         const got = await Promise.race([sent, stopped]);
         if (got === null) {
-          return Agent.fail("stopped", seen);
+          return new Ok(Agent.fail("stopped", seen));
         }
         const { res, step } = got;
         if (res?.status === 401 && wire.auth && refused === undefined) {
-          refused = token as string;
+          refused = token.value() as string;
           k -= 1;
           continue;
         }
@@ -247,7 +264,7 @@ export namespace Agent {
           console.error(model + ": " + step.why.slice(0, 300));
         }
         if (step.stop !== "busy" || k >= TRIES) {
-          return step.stop === "busy" ? { ...step, stop: "down" } : step;
+          return new Ok(step.stop === "busy" ? { ...step, stop: "down" } : step);
         }
         if (!asking && own !== model && (ROOMS.get(own)?.busy ?? 0) > 0) {
           continue;
@@ -261,7 +278,7 @@ export namespace Agent {
         run.on({ $: "Entry", kind: "mind", text: "The AI service is busy: asking again in " + wait + " s." });
         await Machine.nap(wait * 1000, signal);
       }
-      return Agent.fail("stopped", []);
+      return new Ok(Agent.fail("stopped", []));
     } finally {
       if (asking) {
         Agent.free(model, own);
@@ -273,18 +290,15 @@ export namespace Agent {
   // refused); one it can't get for now, a busy step. Getting it counts in
   // READING even once the call stopped: a refresh spends its refresh
   // token, so the process lives till the new ones are saved
-  export async function token<S>(wire: Wire<S>, key: string, refused: string | undefined): Promise<string | Step> {
+  export async function token<S>(wire: Wire<S>, key: string, refused: string | undefined): Promise<Result<string | Step, Error>> {
     if (wire.auth === undefined) {
-      return key;
+      return new Ok(key);
     }
     READING.n += 1;
     try {
-      return await wire.auth(refused);
-    } catch (err: any) {
-      if (err?.busy !== true) {
-        throw err;
-      }
-      return Agent.fail(err.message, [], "busy");
+      const got = await wire.auth(refused);
+      const err = got.ok ? null : (got.error() as Error & { busy?: boolean });
+      return err?.busy === true ? new Ok(Agent.fail(err.message, [], "busy")) : got;
     } finally {
       READING.n -= 1;
     }
@@ -458,43 +472,47 @@ export namespace Agent {
     if (use.input === null || typeof use.input !== "object") {
       return { text: "The input is not a JSON object.", fail: true };
     }
-    try {
-      const out = await Agent.call(run, use.name, use.input);
-      return { ...out, text: out.text || "(no output)" };
-    } catch (err: any) {
-      const why = run.abort.signal.aborted ? "(stopped)" : err.message;
-      return { text: why, fail: true };
+    const got = await Agent.call(run, use.name, use.input);
+    if (!got.ok) {
+      return { text: run.abort.signal.aborted ? "(stopped)" : got.error().message, fail: true };
     }
+    const out = got.value();
+    return { ...out, text: out.text || "(no output)" };
   }
 
-  export async function server(run: Run): Promise<Tool[]> {
+  export async function server(run: Run): Promise<Result<Tool[], Error>> {
     if (!run.ask.server) {
-      return [];
+      return new Ok([]);
     }
     const list = await Agent.rpc(run, "tools/list", {});
-    return list.tools.map((t: any) => ({ name: t.name, info: t.description, schema: t.inputSchema }));
+    return list.ok ? new Ok(list.value().tools.map((t: any) => ({ name: t.name, info: t.description, schema: t.inputSchema }))) : list;
   }
 
-  export async function call(run: Run, name: string, input: unknown): Promise<Out> {
-    const res = await Agent.rpc(run, "tools/call", { name, arguments: input });
+  export async function call(run: Run, name: string, input: unknown): Promise<Result<Out, Error>> {
+    const got = await Agent.rpc(run, "tools/call", { name, arguments: input });
+    if (!got.ok) {
+      return got;
+    }
+    const res = got.value();
     const pics = res.content.filter((part: any) => part.type === "image");
     const imgs = pics.map((part: any) => ({ type: part.mimeType, data: part.data }));
-    return { text: AskAI.show(res.content), fail: res.isError === true, imgs };
+    return new Ok({ text: AskAI.show(res.content), fail: res.isError === true, imgs });
   }
 
-  export async function rpc(run: Run, method: string, params: unknown): Promise<any> {
-    const res = await fetch(run.ask.server, {
-      method  : "POST",
-      headers : { "content-type": "application/json" },
-      body    : JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-      signal  : run.abort.signal,
-      timeout : false,
-    } as RequestInit);
-    const msg = await res.json();
-    if (msg.error) {
-      throw new Error(method + ": " + msg.error.message);
+  export async function rpc(run: Run, method: string, params: unknown): Promise<Result<any, Error>> {
+    try {
+      const res = await fetch(run.ask.server, {
+        method  : "POST",
+        headers : { "content-type": "application/json" },
+        body    : JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal  : run.abort.signal,
+        timeout : false,
+      } as RequestInit);
+      const msg = await res.json();
+      return msg.error ? new Err(new Error(method + ": " + msg.error.message)) : new Ok(msg.result);
+    } catch (e) {
+      return caught(e);
     }
-    return msg.result;
   }
 
 }

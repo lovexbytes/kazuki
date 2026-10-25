@@ -9,6 +9,7 @@ import * as Import from "../Import.ts";
 import { Pick, type Move } from "../Pick.ts";
 import * as View from "../View.ts";
 import { browse } from "../Browse.ts";
+import { caught, Err, Ok, type Result } from "../Result.ts";
 import { client_act, client_get, client_post, client_send, path_read, type Client } from "./Client.ts";
 
 // Types
@@ -223,12 +224,13 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
     return;
   }
   c.hooks.note("Looking for Claude and ChatGPT chats on this computer…");
-  const read = await Promise.all([...IMPORTS.map(import_sessions), ...files.map(export_sessions)]).catch((e) => String(e.message ?? e));
-  if (typeof read === "string") {
-    c.hooks.note("Not imported: " + read);
+  const read = await Promise.all([...IMPORTS.map(import_sessions), ...files.map(export_sessions)]);
+  const failed = read.find((r) => !r.ok);
+  if (failed !== undefined && !failed.ok) {
+    c.hooks.note("Not imported: " + failed.error().message);
     return;
   }
-  const sessions = read.flat().filter((s) => apps.length === 0 || apps.includes(s.app));
+  const sessions = read.flatMap((r) => (r.ok ? r.value() : [])).filter((s) => apps.length === 0 || apps.includes(s.app));
   const done  = await client_get(c, "/api/imported", "read what Kazuki has");
   if (done === null) {
     return;
@@ -253,19 +255,23 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
 }
 
 // a dir's sessions (none if it is missing), a file at a time
-async function import_sessions(dir: string): Promise<Import.Session[]> {
-  const files = fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map((f) => dir + "/" + f).filter(Import.import_file) : [];
-  const found: Import.Session[] = [];
-  for (const f of files) {
-    found.push(...[await Import.import_session(Bun.file(f), "log")].filter((s) => s !== null));
+async function import_sessions(dir: string): Promise<Result<Import.Session[], Error>> {
+  try {
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map((f) => dir + "/" + f).filter(Import.import_file) : [];
+    const found: Import.Session[] = [];
+    for (const f of files) {
+      found.push(...[await Import.import_session(Bun.file(f), "log")].filter((s) => s !== null));
+    }
+    return new Ok(found);
+  } catch (e) {
+    return caught(e);
   }
-  return found;
 }
 
 // a site's export file's sessions
-async function export_sessions(path: string): Promise<Import.Session[]> {
+async function export_sessions(path: string): Promise<Result<Import.Session[], Error>> {
   if (!fs.existsSync(path)) {
-    throw new Error("no file " + path);
+    return new Err(new Error("no file " + path));
   }
   return Import.import_export(Bun.file(path));
 }
@@ -350,7 +356,7 @@ function agent_named(c: Client, arg: string): string {
 async function cmd_delete(c: Client, arg: string): Promise<void> {
   const out = await client_post(c, "/api/delete", { confirm: arg });
   if (!out.ok) {
-    c.hooks.note(out.error ?? "No connection.");
+    c.hooks.note(out.error().message);
     return;
   }
   c.hooks.note("Your account and chat are deleted.");

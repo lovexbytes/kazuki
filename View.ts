@@ -14,6 +14,7 @@ import * as Call from "./Call.ts";
 import * as Md from "./Md.ts";
 import { type Move, type Offer, Pick } from "./Pick.ts";
 import { Price } from "./Price.ts";
+import { Err, Ok, type Result } from "./Result.ts";
 import { GLYPH, WHO } from "./Theme.ts";
 
 // Types
@@ -105,10 +106,15 @@ export type Server =
 // a message a person sends: its text, its images
 export type Sent = { text: string; images?: Blob[] };
 
-// an act's answer: why refused (status: HTTP's), a recording's words, an
-// import's still running; a body, made anew for each post (what fetch
-// takes)
+// an act's answer as JSON (on the wire, and kept: Cloud.act_put): why
+// refused (status: HTTP's), a recording's words, an import's still
+// running; a body, made anew for each post (what fetch takes)
 export type Answer = { error?: string; status?: number; text?: string; going?: boolean };
+
+// an act's answer as each side holds it (Result.ts): what it said, or
+// why refused (an Error with `status`: HTTP's, else 400)
+export type Said = { text?: string; going?: boolean };
+export type Done = Result<Said, Error & { status?: number }>;
 export type Body   = () => any;
 
 // the acts a view sends (out: a job's output): changes, then reads; a
@@ -128,7 +134,7 @@ export type Client =
 
 // an act not answered: with its id, the socket it went by, what its
 // answer does, what a message said (shown while offline: view_tail)
-export type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Answer) => void; said: string };
+export type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Done) => void; said: string };
 
 // how a view reaches the server: a socket by its query, a post, what it
 // does with a message, and, one lost (up: it showed the chat), whether to
@@ -324,7 +330,7 @@ export function view_hear(v: View, msg: Server): Client[] {
     case "ack": {
       const post = v.out.find((p) => p.msg.id === msg.id);
       v.out = v.out.filter((p) => p !== post);
-      post?.done(msg);
+      post?.done(answer_read(msg));
       return [];
     }
     default: {
@@ -621,23 +627,43 @@ export function link_open(v: View, link: Link): void {
 
 // an act, kept until answered; by default a refusal is a note; said: a
 // message's text
-export function link_send(v: View, msg: Client, done = (a: Answer) => link_note(v, a), said = ""): void {
+export function link_send(v: View, msg: Client, done = (a: Done) => link_note(v, a), said = ""): void {
   v.out.push({ msg: { id: crypto.randomUUID(), ...msg }, ws: null, done, said });
   v.flush();
 }
 
-export function link_note(v: View, a: Answer): void {
-  if (a.error !== undefined) {
-    v.notes.push(a.error);
+export function link_note(v: View, a: Done): void {
+  if (!a.ok) {
+    v.notes.push(a.error().message);
   }
 }
 
-// a JSON post's answer, ok if its status was
-export async function post(url: string, body: object, auth: Record<string, string> = {}): Promise<any> {
+// an act's answer as JSON, from its Result
+export function answer_json(a: Done): Answer {
+  if (a.ok) {
+    return a.value();
+  }
+  const err = a.error();
+  return err.status === undefined ? { error: err.message } : { error: err.message, status: err.status };
+}
+
+// an act's answer as a Result, from its JSON
+export function answer_read(a: Answer): Done {
+  if (typeof a?.error !== "string") {
+    return new Ok({ text: a?.text, going: a?.going });
+  }
+  return new Err(Object.assign(new Error(a.error), a.status === undefined ? {} : { status: a.status }));
+}
+
+// a JSON post's answer: its JSON if its status was ok, else why not
+export async function post(url: string, body: object, auth: Record<string, string> = {}): Promise<Result<any, Error>> {
   const headers = { ...auth, "content-type": "application/json" };
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => null);
-  const out = res === null ? { error: "Can't reach the server." } : await res.json().catch(() => (res.ok ? {} : { error: "HTTP " + res.status }));
-  return { ...out, ok: res?.ok === true, status: res?.status ?? 0 };
+  if (res === null) {
+    return new Err(new Error("Can't reach the server."));
+  }
+  const out = await res.json().catch(() => null);
+  return res.ok ? new Ok(out ?? {}) : new Err(new Error(out?.error ?? "HTTP " + res.status));
 }
 
 // Part

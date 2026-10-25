@@ -12,6 +12,7 @@
 import * as fs from "node:fs";
 import * as config from "./Config.ts";
 import type { Rate } from "./Price.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 import SNAPSHOT from "./models.txt" with { type: "text" };
 
 // Types
@@ -63,18 +64,22 @@ export namespace ModelsDev {
   }
 
   // models.dev's catalog, its prices only
-  export async function fetched(): Promise<Catalog> {
-    const res = await fetch(API, { headers: { "User-Agent": "kazuki" }, signal: AbortSignal.timeout(10e3) });
-    if (!res.ok) {
-      throw new Error(API + ": " + res.status);
+  export async function fetched(): Promise<Result<Catalog, Error>> {
+    try {
+      const res = await fetch(API, { headers: { "User-Agent": "kazuki" }, signal: AbortSignal.timeout(10e3) });
+      if (!res.ok) {
+        return new Err(new Error(API + ": " + res.status));
+      }
+      const all: Record<string, { models?: Record<string, { cost?: Cost }> }> = await res.json();
+      const priced = (models: Record<string, { cost?: Cost }>) => Object.entries(models).flatMap(([id, m]) => (m.cost === undefined ? [] : [[id, { cost: m.cost }]]));
+      const body = Object.fromEntries(Object.entries(all).map(([id, p]) => [id, { models: Object.fromEntries(priced(p.models ?? {})) }]));
+      if (Object.keys(body).length < LEAST) {
+        return new Err(new Error(API + " has " + Object.keys(body).length + " providers"));
+      }
+      return new Ok(body);
+    } catch (e) {
+      return caught(e);
     }
-    const all: Record<string, { models?: Record<string, { cost?: Cost }> }> = await res.json();
-    const priced = (models: Record<string, { cost?: Cost }>) => Object.entries(models).flatMap(([id, m]) => (m.cost === undefined ? [] : [[id, { cost: m.cost }]]));
-    const body = Object.fromEntries(Object.entries(all).map(([id, p]) => [id, { models: Object.fromEntries(priced(p.models ?? {})) }]));
-    if (Object.keys(body).length < LEAST) {
-      throw new Error(API + " has " + Object.keys(body).length + " providers");
-    }
-    return body;
   }
 
   export async function refresh(): Promise<void> {
@@ -83,15 +88,23 @@ export namespace ModelsDev {
       NOW.catalog = stored!.body;
       return;
     }
+    const got = await ModelsDev.fetched();
+    const kept = got.ok ? ModelsDev.keep(got.value()) : got;
+    if (!kept.ok) {
+      console.error("models.dev: " + kept.error().message);
+    }
+  }
+
+  // the copy kept, whole or not at all: the workers read it
+  export function keep(body: Catalog): Result<void, Error> {
     try {
-      const body = await ModelsDev.fetched();
-      // whole or not at all: the workers read it
       fs.writeFileSync(PATH + ".tmp", JSON.stringify({ at: Date.now(), body }));
       fs.renameSync(PATH + ".tmp", PATH);
-      NOW.catalog = body;
-    } catch (err) {
-      console.error("models.dev: " + (err as Error).message);
+    } catch (e) {
+      return caught(e);
     }
+    NOW.catalog = body;
+    return new Ok();
   }
 
   // the copy, read again
@@ -112,7 +125,11 @@ export namespace ModelsDev {
 }
 
 if (import.meta.main) {
-  const body = await ModelsDev.fetched();
-  await Bun.write(import.meta.dir + "/models.txt", JSON.stringify(body));
-  console.log("models.txt: " + Object.keys(body).length + " providers");
+  const got = await ModelsDev.fetched();
+  if (!got.ok) {
+    console.error(got.error().message);
+    process.exit(1);
+  }
+  await Bun.write(import.meta.dir + "/models.txt", JSON.stringify(got.value()));
+  console.log("models.txt: " + Object.keys(got.value()).length + " providers");
 }

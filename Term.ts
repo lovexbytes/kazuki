@@ -147,10 +147,9 @@ async function local_start(url: string): Promise<boolean> {
   }
   const { Providers } = await import("./Provider.ts");
   const config = await import("./Config.ts");
-  try {
-    config.config_picks(Providers.offer(), Providers.catalog());
-  } catch (err: any) {
-    cli_error(err.message);
+  const picks = config.config_picks(Providers.offer(), Providers.catalog());
+  if (!picks.ok) {
+    cli_error(picks.error().message);
     return false;
   }
   const set = process.env.KAZUKI_DIR || os.homedir() + "/.kazuki";
@@ -204,9 +203,15 @@ if (HELP || ODD !== undefined) {
 } else if (UPDATE) {
   update_run(REMOTE ?? "");
 } else if (AUTH) {
-  await (await import("./Plugin.ts")).Plugin.auth(ARGS).catch((err) => cli_error(err.message));
+  const done = await (await import("./Plugin.ts")).Plugin.auth(ARGS);
+  if (!done.ok) {
+    cli_error(done.error().message);
+  }
 } else if (SUB) {
-  await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS).catch((err) => cli_error(err.message));
+  const done = await (await import("./ChatGPT.ts")).ChatGPT.cli(ARGS);
+  if (!done.ok) {
+    cli_error(done.error().message);
+  }
 } else if (SERVE) {
   await (await import("./Server.ts")).serve(Number(PORT ?? 8788), null);
 } else if (START) {

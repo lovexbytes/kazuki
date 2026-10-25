@@ -12,6 +12,7 @@
 // every local browser opens the same chat.
 
 import * as Import from "../../Import.ts";
+import { caught, Ok, type Result } from "../../Result.ts";
 import { theme_css } from "../../Theme.ts";
 import * as View from "../../View.ts";
 import * as Html from "./Html.ts";
@@ -164,8 +165,8 @@ function submit(): void {
 
 // a message refused goes back in the box, unless another is in it; the
 // why is a toast
-function back(sent: View.Sent, out: View.Answer): void {
-  if (out.error === undefined) {
+function back(sent: View.Sent, out: View.Done): void {
+  if (out.ok) {
     return;
   }
   if (BOX.value.trim() === "" && P.imgs.length === 0) {
@@ -173,7 +174,7 @@ function back(sent: View.Sent, out: View.Answer): void {
     BOX.dispatchEvent(new Event("input"));
     pics(sent.images ?? []);
   }
-  toast(out.error);
+  toast(out.error().message);
 }
 
 // files to send with the next message
@@ -313,11 +314,11 @@ function words(audio: Blob): void {
   draw(false);
 }
 
-function heard(out: View.Answer): void {
+function heard(out: View.Done): void {
   draw(false);
-  const text = out.text?.trim() ?? "";
+  const text = out.ok ? out.value().text?.trim() ?? "" : "";
   if (text === "") {
-    toast(out.error ?? "No words heard.");
+    toast(out.ok ? "No words heard." : out.error().message);
     return;
   }
   const gap = /\S$/.test(BOX.value.slice(0, BOX.selectionStart)) ? " " : "";
@@ -410,8 +411,10 @@ function importer(): void {
     import_draw(reading(1));
     for (const [k, f] of files.entries()) {
       $("#import .guess").textContent = reading(k + 1);
-      const s = await import_copy(f).then((b) => Import.import_session(b, "log"), () => undefined);
-      moved += s === undefined ? 1 : 0;
+      // a file that changed as it was read moved
+      const copy = await import_copy(f);
+      const s = copy.ok ? await Import.import_session(copy.value(), "log") : null;
+      moved += copy.ok ? 0 : 1;
       found.push(...(s ? [s] : []));
     }
     dir.value = "";
@@ -420,12 +423,14 @@ function importer(): void {
   zip.onchange = async () => {
     for (const f of zip.files ?? []) {
       import_draw("Reading " + f.name + "…");
-      try {
-        const found = await Import.import_export(await import_copy(f));
-        import_took(f.name, { sessions: found, moved: 0 }, found.length > 0 ? "" : "No chats in " + f.name + ".");
-      } catch (e) {
-        import_took(f.name, { sessions: [], moved: 0 }, f.name + ": " + (e as Error).message);
+      const copy = await import_copy(f);
+      const got = copy.ok ? await Import.import_export(copy.value()) : copy;
+      if (!got.ok) {
+        import_took(f.name, { sessions: [], moved: 0 }, f.name + ": " + got.error().message);
+        continue;
       }
+      const found = got.value();
+      import_took(f.name, { sessions: found, moved: 0 }, found.length > 0 ? "" : "No chats in " + f.name + ".");
     }
     zip.value = "";
   };
@@ -438,7 +443,7 @@ function importer(): void {
 // the progress's button: Pause or Resume
 function import_flow(): void {
   const run = v.importing;
-  View.link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.error && toast(out.error));
+  View.link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.ok || toast(out.error().message));
 }
 
 // before an account's first import on this browser, a warning: this is
@@ -504,12 +509,12 @@ function import_send(): void {
 
 // the box stays open on the import's progress (the answer says whether it
 // still runs: its first progress may come before or after it)
-function import_sent(out: View.Answer): void {
-  P.step = out.error !== undefined ? "" : out.going ? "run" : "done";
-  if (out.error === undefined) {
+function import_sent(out: View.Done): void {
+  P.step = !out.ok ? "" : out.value().going ? "run" : "done";
+  if (out.ok) {
     P.found.clear();
   }
-  import_draw(out.error === undefined ? "" : "Not imported: " + out.error);
+  import_draw(out.ok ? "" : "Not imported: " + out.error().message);
   $("#import").showPopover();
 }
 
@@ -602,13 +607,17 @@ function import_srcs(): HTMLElement[] {
 
 // a picked file as it is now, copied a chunk at a time (the browser keeps
 // the chunks, on disk when large, so the page never holds it whole)
-async function import_copy(file: File): Promise<Blob> {
-  const reader = file.stream().getReader();
-  const parts: Blob[] = [];
-  for (let got = await reader.read(); !got.done; got = await reader.read()) {
-    parts.push(new Blob([got.value]));
+async function import_copy(file: File): Promise<Result<Blob, Error>> {
+  try {
+    const reader = file.stream().getReader();
+    const parts: Blob[] = [];
+    for (let got = await reader.read(); !got.done; got = await reader.read()) {
+      parts.push(new Blob([got.value]));
+    }
+    return new Ok(new Blob(parts));
+  } catch (e) {
+    return caught(e);
   }
-  return new Blob(parts);
 }
 
 // Drawing
@@ -795,11 +804,11 @@ async function account(): Promise<void> {
 async function account_delete(kill: HTMLFormElement): Promise<void> {
   const name = kill.querySelector("input")!.value;
   const out = await View.post("/api/delete", { confirm: name });
-  if (out.error === undefined) {
+  if (out.ok) {
     location.href = "/?deleted";
     return;
   }
-  kill.querySelector(".why")!.textContent = out.error;
+  kill.querySelector(".why")!.textContent = out.error().message;
 }
 
 // Notes

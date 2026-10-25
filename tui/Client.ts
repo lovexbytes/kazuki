@@ -10,6 +10,7 @@
 import * as os from "node:os";
 import { batch, createSignal, type Accessor } from "solid-js";
 import { Machine, type Job } from "../Machine.ts";
+import type { Result } from "../Result.ts";
 import * as View from "../View.ts";
 
 // Types
@@ -155,10 +156,10 @@ export function client_act(c: Client, act: View.Act): View.Client[] {
 export function client_send(c: Client, msg: View.Client, sent?: View.Sent): void {
   const said = sent === undefined ? "" : sent.text.trim();
   View.link_send(c.v, msg, (a) => {
-    if (a.error !== undefined) {
-      c.hooks.note(a.error);
+    if (!a.ok) {
+      c.hooks.note(a.error().message);
     }
-    if (a.error !== undefined && sent !== undefined) {
+    if (!a.ok && sent !== undefined) {
       c.hooks.back(sent);
     }
     c.bump();
@@ -192,7 +193,7 @@ export async function client_get(c: Client, path: string, what: string): Promise
 }
 
 // a JSON POST to the server (View.post)
-export function client_post(c: Client, path: string, body: object): Promise<any> {
+export function client_post(c: Client, path: string, body: object): Promise<Result<any, Error>> {
   return View.post(c.url + path, body);
 }
 

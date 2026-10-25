@@ -213,7 +213,7 @@ await Bun.sleep(10);
 const model = chat.pick.model;
 const waited = Chat.waits(chat);
 const to = { ...chat.pick, model: model === "opus-5.5" ? "haiku-5.5" : "opus-5.5" };
-const acted = await Chat.act(chat, "pick", { $: "pick", to }, "");
+const acted = (await Chat.act(chat, "pick", { $: "pick", to }, "")).ok;
 console.log(JSON.stringify({ model, waited, acted, picked: chat.pick.model, to: to.model, after: Chat.waits(chat) }));
 process.exit(0);
 `;
@@ -226,7 +226,7 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
   expect(out.model).toMatch(/\w/);
   expect(out.to).not.toBe(out.model);
   expect(out.waited).toBe(out.model);
-  expect(out.acted).toEqual({});
+  expect(out.acted).toBe(true);
   expect(out.picked).toBe(out.to);
   expect(out.after).toBe(out.model);
 });
@@ -258,9 +258,9 @@ for (const [id, saved] of [["u1", "paused"], ["u2", null]]) {
 const [held, goes] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
 await Bun.sleep(10);
 const out = { held: Chat.state(held).importing?.why, goes: Chat.state(goes).importing?.why, paused: [held.mem.paused, goes.mem.paused] };
-out.on = Chat.go(held, true);
+out.on = Chat.go(held, true).ok;
 out.went = why("u1");
-out.off = Chat.go(held, false);
+out.off = Chat.go(held, false).ok;
 out.kept = why("u1");
 console.log(JSON.stringify(out));
 process.exit(0);
@@ -271,7 +271,7 @@ test("an import's pause survives its chat opening again", async () => {
   fs.writeFileSync(dir + "/resume.ts", RESUME);
   const proc = Bun.spawn([process.execPath, dir + "/resume.ts"], { env: { ...process.env, KAZUKI_DIR: dir }, stdout: "pipe", stderr: "inherit" });
   const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
-  expect(out).toEqual({ held: "paused", goes: null, paused: [true, false], on: {}, went: null, off: {}, kept: "paused" });
+  expect(out).toEqual({ held: "paused", goes: null, paused: [true, false], on: true, went: null, off: true, kept: "paused" });
 });
 
 test("a worker that dies starts again; one that fails in its place, after a pause", async () => {

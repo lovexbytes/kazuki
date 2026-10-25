@@ -23,6 +23,7 @@ import type { Catalog, Model, Offer, Pick } from "./Pick.ts";
 import * as fs from "node:fs";
 import * as config from "./Config.ts";
 import { ModelsDev } from "./ModelsDev.ts";
+import { caught, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -36,7 +37,7 @@ export type Key = { type: "key"; envs: string[] } & Route;
 
 // a sign-in: whether one is held, and how to make and end it (`kazuki
 // auth`)
-export type OAuth = { type: "oauth"; name: string; signed: () => boolean; login: () => Promise<void>; logout: () => Promise<string> } & Route;
+export type OAuth = { type: "oauth"; name: string; signed: () => boolean; login: () => Promise<Result<void, Error>>; logout: () => Promise<Result<string, Error>> } & Route;
 
 export type Auth = Key | OAuth;
 
@@ -101,19 +102,24 @@ export namespace Providers {
 
   // chooses provider id's method of this type (on), or drops it if it is
   // the one chosen (off)
-  export function choose(id: Vendor, type: Auth["type"], on: boolean): void {
+  export function choose(id: Vendor, type: Auth["type"], on: boolean): Result<void, Error> {
     const all = Providers.chosen();
     if (!on && all[id] !== type) {
-      return;
+      return new Ok();
     }
     if (on) {
       all[id] = type;
     } else {
       delete all[id];
     }
-    fs.mkdirSync(config.DIR, { recursive: true });
-    fs.writeFileSync(config.AUTH, JSON.stringify(all, null, 2));
-    fs.chmodSync(config.AUTH, 0o600);
+    try {
+      fs.mkdirSync(config.DIR, { recursive: true });
+      fs.writeFileSync(config.AUTH, JSON.stringify(all, null, 2));
+      fs.chmodSync(config.AUTH, 0o600);
+    } catch (e) {
+      return caught(e);
+    }
+    return new Ok();
   }
 
   export function connected(p: Provider): boolean {

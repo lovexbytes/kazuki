@@ -17,6 +17,7 @@
 
 import type { Kind } from "./AskAI.ts";
 import { clip_pages, stream_lines } from "./Clip.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 
 // Types
 // =====
@@ -310,18 +311,22 @@ function node_merge(a: Node, b: Node): Node {
 // a site's export, its zip (conversations.json in it) or that file alone,
 // as sessions, one a chat: ChatGPT's (a tree, `mapping`) or Claude's
 // (`chat_messages`); a file not a list of those is no export
-export async function import_export(file: Blob): Promise<Session[]> {
-  const zip  = (await file.slice(0, 2).text()) === "PK";
-  const json = zip ? await zip_file(file, "conversations.json") : file;
-  if (json === null) {
-    throw new Error("No conversations.json in the zip.");
+export async function import_export(file: Blob): Promise<Result<Session[], Error>> {
+  try {
+    const zip  = (await file.slice(0, 2).text()) === "PK";
+    const json = zip ? await zip_file(file, "conversations.json") : file;
+    if (json === null) {
+      return new Err(new Error("No conversations.json in the zip."));
+    }
+    const chats = await json.text().then(JSON.parse).catch(() => null);
+    if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
+      return new Err(new Error(NOT_EXPORT));
+    }
+    const sessions = await Promise.all(chats.map(chat_session));
+    return new Ok(sessions.filter((s) => s !== null));
+  } catch (e) {
+    return caught(e);
   }
-  const chats = await json.text().then(JSON.parse).catch(() => null);
-  if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
-    throw new Error(NOT_EXPORT);
-  }
-  const sessions = await Promise.all(chats.map(chat_session));
-  return sessions.filter((s) => s !== null);
 }
 
 // a chat as a session: its messages as JSON lines, its title as where

@@ -35,6 +35,32 @@ async function* stream_lines(stream) {
   yield [rest];
 }
 
+// Result.ts
+class Ok {
+  ok = true;
+  data;
+  constructor(data) {
+    this.data = data;
+  }
+  value() {
+    return this.data;
+  }
+}
+
+class Err {
+  ok = false;
+  data;
+  constructor(data) {
+    this.data = data;
+  }
+  error() {
+    return this.data;
+  }
+}
+function caught(e) {
+  return new Err(e instanceof Error ? e : new Error(String(e)));
+}
+
 // Import.ts
 var NODE = 512;
 var LINE = 480;
@@ -180,17 +206,21 @@ function node_merge(a, b) {
   return { bytes: a.bytes + 1 + b.bytes, depth: Math.max(a.depth, b.depth) };
 }
 async function import_export(file) {
-  const zip = await file.slice(0, 2).text() === "PK";
-  const json = zip ? await zip_file(file, "conversations.json") : file;
-  if (json === null) {
-    throw new Error("No conversations.json in the zip.");
+  try {
+    const zip = await file.slice(0, 2).text() === "PK";
+    const json = zip ? await zip_file(file, "conversations.json") : file;
+    if (json === null) {
+      return new Err(new Error("No conversations.json in the zip."));
+    }
+    const chats = await json.text().then(JSON.parse).catch(() => null);
+    if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
+      return new Err(new Error(NOT_EXPORT));
+    }
+    const sessions = await Promise.all(chats.map(chat_session));
+    return new Ok(sessions.filter((s) => s !== null));
+  } catch (e) {
+    return caught(e);
   }
-  const chats = await json.text().then(JSON.parse).catch(() => null);
-  if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
-    throw new Error(NOT_EXPORT);
-  }
-  const sessions = await Promise.all(chats.map(chat_session));
-  return sessions.filter((s) => s !== null);
 }
 function chat_session(chat) {
   const [app, msgs] = chat.mapping ? ["ChatGPT", chat_openai(chat)] : ["Claude", chat_claude(chat)];
@@ -945,7 +975,7 @@ function view_hear(v, msg) {
     case "ack": {
       const post = v.out.find((p) => p.msg.id === msg.id);
       v.out = v.out.filter((p) => p !== post);
-      post?.done(msg);
+      post?.done(answer_read(msg));
       return [];
     }
     default: {
@@ -1190,15 +1220,24 @@ function link_send(v, msg, done = (a) => link_note(v, a), said = "") {
   v.flush();
 }
 function link_note(v, a) {
-  if (a.error !== undefined) {
-    v.notes.push(a.error);
+  if (!a.ok) {
+    v.notes.push(a.error().message);
   }
+}
+function answer_read(a) {
+  if (typeof a?.error !== "string") {
+    return new Ok({ text: a?.text, going: a?.going });
+  }
+  return new Err(Object.assign(new Error(a.error), a.status === undefined ? {} : { status: a.status }));
 }
 async function post(url, body, auth = {}) {
   const headers = { ...auth, "content-type": "application/json" };
   const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => null);
-  const out = res === null ? { error: "Can't reach the server." } : await res.json().catch(() => res.ok ? {} : { error: "HTTP " + res.status });
-  return { ...out, ok: res?.ok === true, status: res?.status ?? 0 };
+  if (res === null) {
+    return new Err(new Error("Can't reach the server."));
+  }
+  const out = await res.json().catch(() => null);
+  return res.ok ? new Ok(out ?? {}) : new Err(new Error(out?.error ?? "HTTP " + res.status));
 }
 function part_due(v, part, before) {
   const last = before === undefined ? NaN : part_window(v, before);
@@ -1567,7 +1606,7 @@ function submit() {
   BOX.dispatchEvent(new Event("input"));
 }
 function back(sent, out) {
-  if (out.error === undefined) {
+  if (out.ok) {
     return;
   }
   if (BOX.value.trim() === "" && P.imgs.length === 0) {
@@ -1575,7 +1614,7 @@ function back(sent, out) {
     BOX.dispatchEvent(new Event("input"));
     pics(sent.images ?? []);
   }
-  toast(out.error);
+  toast(out.error().message);
 }
 function attach(files) {
   if (files.length > 0) {
@@ -1694,9 +1733,9 @@ function words(audio) {
 }
 function heard(out) {
   draw(false);
-  const text = out.text?.trim() ?? "";
+  const text = out.ok ? out.value().text?.trim() ?? "" : "";
   if (text === "") {
-    toast(out.error ?? "No words heard.");
+    toast(out.ok ? "No words heard." : out.error().message);
     return;
   }
   const gap = /\S$/.test(BOX.value.slice(0, BOX.selectionStart)) ? " " : "";
@@ -1769,10 +1808,9 @@ function importer() {
     import_draw(reading(1));
     for (const [k, f] of files.entries()) {
       $("#import .guess").textContent = reading(k + 1);
-      const s = await import_copy(f).then((b) => import_session(b, "log"), () => {
-        return;
-      });
-      moved += s === undefined ? 1 : 0;
+      const copy = await import_copy(f);
+      const s = copy.ok ? await import_session(copy.value(), "log") : null;
+      moved += copy.ok ? 0 : 1;
       found.push(...s ? [s] : []);
     }
     dir.value = "";
@@ -1781,12 +1819,14 @@ function importer() {
   zip.onchange = async () => {
     for (const f of zip.files ?? []) {
       import_draw("Reading " + f.name + "…");
-      try {
-        const found = await import_export(await import_copy(f));
-        import_took(f.name, { sessions: found, moved: 0 }, found.length > 0 ? "" : "No chats in " + f.name + ".");
-      } catch (e) {
-        import_took(f.name, { sessions: [], moved: 0 }, f.name + ": " + e.message);
+      const copy = await import_copy(f);
+      const got = copy.ok ? await import_export(copy.value()) : copy;
+      if (!got.ok) {
+        import_took(f.name, { sessions: [], moved: 0 }, f.name + ": " + got.error().message);
+        continue;
       }
+      const found = got.value();
+      import_took(f.name, { sessions: found, moved: 0 }, found.length > 0 ? "" : "No chats in " + f.name + ".");
     }
     zip.value = "";
   };
@@ -1797,7 +1837,7 @@ function importer() {
 }
 function import_flow() {
   const run = v.importing;
-  link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.error && toast(out.error));
+  link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.ok || toast(out.error().message));
 }
 function warned(from, then) {
   if (localStorage.getItem(kept("risked")) !== null) {
@@ -1843,11 +1883,11 @@ function import_send() {
   link_send(v, { $: "import", body }, import_sent);
 }
 function import_sent(out) {
-  P.step = out.error !== undefined ? "" : out.going ? "run" : "done";
-  if (out.error === undefined) {
+  P.step = !out.ok ? "" : out.value().going ? "run" : "done";
+  if (out.ok) {
     P.found.clear();
   }
-  import_draw(out.error === undefined ? "" : "Not imported: " + out.error);
+  import_draw(out.ok ? "" : "Not imported: " + out.error().message);
   $("#import").showPopover();
 }
 function import_plan2() {
@@ -1925,12 +1965,16 @@ function import_srcs() {
   return [...document.querySelectorAll("#import .src")];
 }
 async function import_copy(file) {
-  const reader = file.stream().getReader();
-  const parts = [];
-  for (let got = await reader.read();!got.done; got = await reader.read()) {
-    parts.push(new Blob([got.value]));
+  try {
+    const reader = file.stream().getReader();
+    const parts = [];
+    for (let got = await reader.read();!got.done; got = await reader.read()) {
+      parts.push(new Blob([got.value]));
+    }
+    return new Ok(new Blob(parts));
+  } catch (e) {
+    return caught(e);
   }
-  return new Blob(parts);
 }
 var MARKUP = new WeakMap;
 function markup(el, htmls) {
@@ -2081,11 +2125,11 @@ async function account() {
 async function account_delete(kill) {
   const name = kill.querySelector("input").value;
   const out = await post("/api/delete", { confirm: name });
-  if (out.error === undefined) {
+  if (out.ok) {
     location.href = "/?deleted";
     return;
   }
-  kill.querySelector(".why").textContent = out.error;
+  kill.querySelector(".why").textContent = out.error().message;
 }
 function toast(text) {
   const el = $("#toast");

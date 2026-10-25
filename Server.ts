@@ -44,8 +44,9 @@ import { NONE, Plugin } from "./Plugin.ts";
 import { Providers } from "./Provider.ts";
 import { ModelsDev } from "./ModelsDev.ts";
 import { MASTER, SEARCHES, Tools, type Agent, type Live, type Moved as Kit } from "./Tools.ts";
-import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, type Answer, type Part, type Server as Out, type Wait } from "./View.ts";
+import { FRAME, IMAGES, live_push, MOVE, PING, QUIT, SUMMARIES, TICK, TURN, WIRE, answer_json, answer_read, type Done, type Part, type Server as Out, type Wait } from "./View.ts";
 import * as config from "./Config.ts";
+import { caught, Err, Ok, type Result } from "./Result.ts";
 import hello_md from "./hello.md" with { type: "text" };
 import app_js from "./web/app.js" with { type: "file" };
 import index_page from "./web/index.html" with { type: "file" };
@@ -97,7 +98,7 @@ type Chat = {
   tools : Tools;
   pick  : Pick;
   socks : Set<Sock>;
-  acts  : Map<string, Promise<Answer>>;
+  acts  : Map<string, Promise<Done>>;
   busy  : boolean;
   posts : number;
   call  : Call | null;
@@ -369,19 +370,19 @@ export namespace Chat {
 
   // a message (its body: its images, sizes given, then its text), logged
   // and taken
-  export async function say(chat: Chat, id: string, sizes: number[], body: Body): Promise<Answer> {
+  export async function say(chat: Chat, id: string, sizes: number[], body: Body): Promise<Done> {
     const images: string[] = [];
     let at = 0;
     for (const size of sizes) {
       const name = await Memory.image_add(chat.mem, await Chat.read(body, at, size));
       if (name === null) {
-        return { error: IMAGES };
+        return new Err(new Error(IMAGES));
       }
       images.push(name);
       at += size;
     }
     await Chat.writing(chat, async () => Chat.take(chat, await Chat.text(chat, body, at, images, id)));
-    return {};
+    return new Ok({});
   }
 
   // up to n bytes of a body, from byte `at`
@@ -446,13 +447,14 @@ export namespace Chat {
   }
 
   // a recording's words, logged as the act's answer
-  export async function voice(chat: Chat, id: string, type: string, body: Body): Promise<Answer> {
-    const got = await OpenAI.transcribe(new Blob([await Chat.read(body, 0, body.size)], { type })).catch((err: Error) => err);
-    if (got instanceof Error) {
-      return { error: got.message };
+  export async function voice(chat: Chat, id: string, type: string, body: Body): Promise<Done> {
+    const got = await OpenAI.transcribe(new Blob([await Chat.read(body, 0, body.size)], { type }));
+    if (!got.ok) {
+      return new Err(got.error());
     }
-    Chat.mark(chat, id, { ans: { text: got.text } });
-    return { text: got.text };
+    const said = new Ok({ text: got.value().text });
+    Chat.mark(chat, id, { ans: answer_json(said) });
+    return said;
   }
 
   // a message logged: to the running call if whole beside its view, else
@@ -730,9 +732,9 @@ export namespace Chat {
   // an import (its body: messages as JSON lines), those new (fresh) logged
   // as one, summarized on the compactor; refused amid a turn or an
   // import
-  export async function ingest(chat: Chat, id: string, body: Body): Promise<Answer> {
+  export async function ingest(chat: Chat, id: string, body: Body): Promise<Done> {
     if (chat.busy || chat.batch !== null) {
-      return { error: (chat.busy ? "Kazuki is answering" : "An import is under way") + ": import again once it ends." };
+      return new Err(new Error((chat.busy ? "Kazuki is answering" : "An import is under way") + ": import again once it ends."));
     }
     const done = Chat.done(chat);
     const sizes: number[] = [];
@@ -743,7 +745,7 @@ export namespace Chat {
     }
     const a = chat.mem.count;
     if (sizes.length === 0) {
-      return { error: "Nothing to import: no new messages found." };
+      return new Err(new Error("Nothing to import: no new messages found."));
     }
     chat.mem.paused = false;
     const tag = (m: Log, of: boolean): Log => ({ ...m, imported: true, ...(of ? { more: true } : { more: false, act: id }) });
@@ -757,7 +759,7 @@ export namespace Chat {
     chat.batch = Chat.batch(chat, { a, b: chat.mem.count, said });
     chat.socks.forEach((sock) => Chat.show(chat, sock));
     Chat.progress(chat);
-    return { going: chat.batch !== null };
+    return new Ok({ going: chat.batch !== null });
   }
 
   // an import run: its estimate, of its messages' sizes as logged, timed
@@ -901,9 +903,9 @@ export namespace Chat {
   }
 
   // an import paused, at once (Memory.pause), or resumed
-  export function go(chat: Chat, on: boolean): Answer {
+  export function go(chat: Chat, on: boolean): Done {
     if (chat.batch === null) {
-      return { error: "No import is running." };
+      return new Err(new Error("No import is running."));
     }
     if (on) {
       chat.mem.paused = false;
@@ -914,7 +916,7 @@ export namespace Chat {
     Chat.all(chat, Chat.state(chat));
     Memory.pump(chat.mem);
     Chat.change(chat);
-    return {};
+    return new Ok({});
   }
 
   // the chats a restart cut at work or importing, opened; one that fails
@@ -1082,28 +1084,37 @@ export namespace Chat {
   }
 
   // a view's message answered (ack): a read at once, else as Chat.apply
-  // does it. A client sends it, so it may be anything (not JSON, a field
-  // missing): one that fails is answered its error, as a failed act is,
-  // and never ends the process, which serves other users too
+  // does it. A client sends it, so it may be anything: one not JSON is
+  // answered why; one that throws (a field missing) is answered its
+  // error and logged (Chat.fail), never ending the process, which serves
+  // other users too
   export async function answer(chat: Chat, sock: Sock, data: string): Promise<void> {
     chat.posts += 1;
-    let msg: any = null;
-    const out = await Promise.try(() => {
-      msg = JSON.parse(data);
-      return Chat.ask(chat, sock, msg) ?? Chat.apply(chat, msg, sock.data.device ?? "");
-    }).catch(Chat.fail);
+    const parsed = Chat.json(data);
+    const msg = parsed.ok ? parsed.value() : null;
+    const out = parsed.ok ? await Promise.try(() => Chat.ask(chat, sock, msg) ?? Chat.apply(chat, msg, sock.data.device ?? "")).catch(Chat.fail) : new Err(parsed.error());
     chat.posts -= 1;
-    Chat.send(sock, { $: "ack", id: msg?.id, ...out });
+    Chat.send(sock, { $: "ack", id: msg?.id, ...answer_json(out) });
     Chat.free(chat);
   }
 
+  // a client's message, parsed
+  export function json(data: string): Result<any, Error> {
+    try {
+      return new Ok(JSON.parse(data));
+    } catch (e) {
+      return caught(e);
+    }
+  }
+
   // what a message or act that threw answers
-  export function fail(err: any): Answer {
-    return { error: String(err?.message ?? err) };
+  export function fail(err: unknown): Done {
+    console.error("kazuki: an act failed: " + ((err as Error)?.stack ?? err));
+    return caught(err);
   }
 
   // a read, answered by what it sends; null: no read
-  export function ask(chat: Chat, sock: Sock, msg: any): Answer | null {
+  export function ask(chat: Chat, sock: Sock, msg: any): Done | null {
     switch (msg.$) {
       case "zoom": {
         const [id, n] = [...msg.part].map(Number);
@@ -1112,13 +1123,13 @@ export namespace Chat {
           Chat.teach(chat, sock, parts);
           Chat.send(sock, { $: "zoom", id, n, parts });
         }
-        return {};
+        return new Ok({});
       }
       case "root": {
         const parts = Memory.roots(chat.mem.count).map(({ l, i }): Part => [i * 2 ** l, 2 ** l]);
         Chat.teach(chat, sock, parts);
         Chat.send(sock, { $: "root", parts });
-        return {};
+        return new Ok({});
       }
       case "agent": {
         const name = String(msg.name);
@@ -1126,7 +1137,7 @@ export namespace Chat {
         Chat.send(sock, { $: "agent", name, found: log !== null });
         log?.forEach(({ kind, text, date }) => Chat.send(sock, { $: "entry", agent: name, kind, text, date }));
         Chat.send(sock, { $: "live", agent: name, live: chat.tools.agents.get(name)?.live ?? [] });
-        return {};
+        return new Ok({});
       }
     }
     return null;
@@ -1136,11 +1147,15 @@ export namespace Chat {
   // comes. An act being done, or recorded done (its record's answer, kept
   // by Cloud.act_put as the log indexes it), gets that answer; else
   // Chat.act does it, answered once on disk
-  export function apply(chat: Chat, msg: any, device: string): Promise<Answer> {
+  export function apply(chat: Chat, msg: any, device: string): Promise<Done> {
     const id = String(msg.id);
-    const was = chat.acts.get(id) ?? (Cloud.act_get(chat.acct, id) as Answer | null);
+    const doing = chat.acts.get(id);
+    if (doing !== undefined) {
+      return doing;
+    }
+    const was = Cloud.act_get(chat.acct, id);
     if (was !== null) {
-      return Promise.resolve(was);
+      return Promise.resolve(answer_read(was));
     }
     const run = Chat.act(chat, id, msg, device).catch(Chat.fail).then(async (out) => {
       await Disk.synced();
@@ -1159,7 +1174,7 @@ export namespace Chat {
   // job, so done again they change nothing, and only that state is kept,
   // written over; a stop with nothing to stop is one (so one a client
   // sends again, its answer lost, may end what runs by then)
-  export async function act(chat: Chat, id: string, msg: any, device: string): Promise<Answer> {
+  export async function act(chat: Chat, id: string, msg: any, device: string): Promise<Done> {
     if ("req" in msg && BODIES.includes(msg.$)) {
       return Chat.post(chat, id, msg);
     }
@@ -1170,7 +1185,7 @@ export namespace Chat {
         const why = "Stopped by the user: " + what.join(", ") + ".";
         const turn = what.includes(TURN);
         if (what.length === 0) {
-          return {};
+          return new Ok({});
         }
         Chat.mark(chat, id, {});
         if (turn) {
@@ -1180,19 +1195,19 @@ export namespace Chat {
         if (!turn) {
           Chat.note(chat, why);
         }
-        return {};
+        return new Ok({});
       }
       case "goal": {
         const goal = msg.text === null ? null : String(msg.text);
         if (goal === chat.mem.goal) {
-          return {};
+          return new Ok({});
         }
         chat.mem.goal = goal;
         Memory.save(chat.mem);
         if (goal === null) {
           Chat.note(chat, "Goal halted by the user.");
         }
-        return {};
+        return new Ok({});
       }
       case "go": {
         return Chat.go(chat, msg.on === true || msg.on === "true");
@@ -1200,28 +1215,28 @@ export namespace Chat {
       case "pick": {
         const pick = Pick.read(msg.to, Providers.offer());
         if (pick === null) {
-          return { error: "No pick " + JSON.stringify(msg.to) + "." };
+          return new Err(new Error("No pick " + JSON.stringify(msg.to) + "."));
         }
         chat.pick = chat.mem.pick = pick;
         Memory.save(chat.mem);
         Chat.change(chat);
-        return {};
+        return new Ok({});
       }
       case "out": {
         Tools.done(chat.tools, device, String(msg.job), msg.out);
-        return {};
+        return new Ok({});
       }
     }
-    return { error: "No act " + msg.$ + "." };
+    return new Err(new Error("No act " + msg.$ + "."));
   }
 
   // a post (msg.req) refused before a byte of its body is read: under
   // SPARE free, 507. Else its body goes to a file unlinked once open,
   // then its act is done
-  export async function post(chat: Chat, id: string, msg: any): Promise<Answer> {
+  export async function post(chat: Chat, id: string, msg: any): Promise<Done> {
     const disk = fs.statfsSync(config.DIR);
     if (disk.bavail * disk.bsize < SPARE) {
-      return { error: FULL, status: 507 };
+      return new Err(Object.assign(new Error(FULL), { status: 507 }));
     }
     const file = chat.mem.dir + "/up/" + crypto.randomUUID();
     fs.mkdirSync(chat.mem.dir + "/up", { recursive: true });
@@ -1243,7 +1258,10 @@ export namespace Chat {
           return await Chat.voice(chat, id, String(msg.type), body);
         }
       }
-      return { error: "No act " + msg.$ + "." };
+      return new Err(new Error("No act " + msg.$ + "."));
+    } catch (e) {
+      // its body unread or cut short (Chat.pieces)
+      return caught(e);
     } finally {
       await body.fh.close();
     }
@@ -1450,7 +1468,7 @@ export namespace Main {
           return Response.json({ error: "Too many requests: wait a moment." }, { status: 429 });
         }
         const msg = { ...Object.fromEntries(new URL(req.url).searchParams), req };
-        const out = await Chat.apply(chat, msg, "");
+        const out = answer_json(await Chat.apply(chat, msg, ""));
         return Response.json(out, { status: out.status ?? (out.error === undefined ? 200 : 400) });
       }
       case "/api/imported": {
@@ -2051,7 +2069,12 @@ export async function serve(port: number, run: string[] | null): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  config.config_picks(Providers.offer(), Providers.catalog());
+  const picks = config.config_picks(Providers.offer(), Providers.catalog());
+  if (!picks.ok) {
+    console.error("kazuki: " + picks.error().message);
+    process.exitCode = 1;
+    return;
+  }
   config.LOST.forEach((text) => console.error("kazuki: config: " + text));
   config.config_hide(Providers.envs());
   const worker = process.env.KAZUKI_WORKER;

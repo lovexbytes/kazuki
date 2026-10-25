@@ -24,7 +24,9 @@ test("a session's key is the same in any time zone", () => {
 test("a ZIP64 export imports", async () => {
   const chats = [{ name: "t", chat_messages: [{ sender: "human", text: "hi", created_at: "2026-10-01T00:00:00Z" }] }];
   const zip = zip64("export/conversations.json", new TextEncoder().encode(JSON.stringify(chats)));
-  const sessions = await Import.import_export(zip);
+  const got = await Import.import_export(zip);
+  expect(got.ok).toBe(true);
+  const sessions = got.ok ? got.value() : [];
   expect(sessions.map((s) => [s.app, s.where, s.heads.length])).toEqual([["Claude", 'chat "t"', 1]]);
 });
 
