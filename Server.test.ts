@@ -199,6 +199,7 @@ const TURN = `
 const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")});
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
+const { Memory } = await import(${JSON.stringify(import.meta.dir + "/Memory.ts")});
 const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
 const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
 const { Providers } = await import(${JSON.stringify(import.meta.dir + "/Provider.ts")});
@@ -231,23 +232,35 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
 });
 
 // an import paused stays paused once its chat opens again (import.json
-// keeps why); any other why (an old file's "out of credit") goes on
+// keeps why); one not paused (why null) goes on, though a chat loads
+// paused (Memory.load). Each imports 2 messages too long to summarize
+// with no call, its calls never ending, so it still runs at the reads
 const RESUME = `
 const fs = await import("node:fs");
 const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")});
+const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
+const { Memory } = await import(${JSON.stringify(import.meta.dir + "/Memory.ts")});
+const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
+const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
+const { Providers } = await import(${JSON.stringify(import.meta.dir + "/Provider.ts")});
+Plugin.load();
+config.config_picks(Providers.offer(), Providers.catalog());
 Chat.cloud = Cloud.open(() => {});
+AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
 const file = (id) => process.env.KAZUKI_DIR + "/users/" + id + "/import.json";
 const why = (id) => JSON.parse(fs.readFileSync(file(id), "utf8")).why;
-for (const [id, saved] of [["u1", "paused"], ["u2", "out of credit"]]) {
+for (const [id, saved] of [["u1", "paused"], ["u2", null]]) {
   fs.mkdirSync(process.env.KAZUKI_DIR + "/users/" + id, { recursive: true });
-  fs.writeFileSync(file(id), JSON.stringify({ a: 0, b: 0, said: 0, why: saved }));
+  Memory.push(Memory.load(process.env.KAZUKI_DIR + "/users/" + id, () => ({})), [{ kind: "user", text: "hi ".repeat(9999) }, { kind: "assistant", text: "hello ".repeat(9999) }]);
+  fs.writeFileSync(file(id), JSON.stringify({ a: 0, b: 2, said: 2, why: saved }));
 }
-const [held, old] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
-const out = { held: Chat.state(held).importing?.why, old: Chat.state(old).importing?.why };
-Chat.go(held, true);
+const [held, goes] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
+await Bun.sleep(10);
+const out = { held: Chat.state(held).importing?.why, goes: Chat.state(goes).importing?.why, paused: [held.mem.paused, goes.mem.paused] };
+out.on = Chat.go(held, true);
 out.went = why("u1");
-Chat.go(held, false);
+out.off = Chat.go(held, false);
 out.kept = why("u1");
 console.log(JSON.stringify(out));
 process.exit(0);
@@ -258,7 +271,7 @@ test("an import's pause survives its chat opening again", async () => {
   fs.writeFileSync(dir + "/resume.ts", RESUME);
   const proc = Bun.spawn([process.execPath, dir + "/resume.ts"], { env: { ...process.env, KAZUKI_DIR: dir }, stdout: "pipe", stderr: "inherit" });
   const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
-  expect(out).toEqual({ held: "paused", old: null, went: null, kept: "paused" });
+  expect(out).toEqual({ held: "paused", goes: null, paused: [true, false], on: {}, went: null, off: {}, kept: "paused" });
 });
 
 test("a worker that dies starts again; one that fails in its place, after a pause", async () => {
