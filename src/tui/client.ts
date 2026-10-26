@@ -12,6 +12,7 @@ import { batch, createSignal, type Accessor } from "solid-js";
 import { Machine, type Job } from "../device/machine.ts";
 import type { Result } from "../util/result.ts";
 import * as View from "../view/view.ts";
+import { link_open, link_send, post } from "../view/link.ts";
 
 // Types
 // =====
@@ -105,7 +106,7 @@ export function client_new(url: string, device: string, work: string, screen: bo
 // connects, by View's link, naming this device
 export function client_connect(c: Client): void {
   const dev = "&device=" + encodeURIComponent(c.device) + "&computer=" + (c.screen ? 1 : 0) + "&work=" + encodeURIComponent(c.work);
-  View.link_open(c.v, {
+  link_open(c.v, {
     open : (query) => new WebSocket(c.url.replace(/^http/, "ws") + "/ws" + query + dev),
     post : (path, body) => fetch(c.url + path, { method: "POST", body }),
     hear : (msg) => client_hear(c, msg),
@@ -155,7 +156,7 @@ export function client_act(c: Client, act: View.Act): View.Client[] {
 // an act to the server; a message refused goes back in the input
 export function client_send(c: Client, msg: View.Client, sent?: View.Sent): void {
   const said = sent === undefined ? "" : sent.text.trim();
-  View.link_send(c.v, msg, (a) => {
+  link_send(c.v, msg, (a) => {
     if (!a.ok) {
       c.hooks.note(a.error().message);
     }
@@ -192,9 +193,9 @@ export async function client_get(c: Client, path: string, what: string): Promise
   return res;
 }
 
-// a JSON POST to the server (View.post)
+// a JSON POST to the server (link.ts post)
 export function client_post(c: Client, path: string, body: object): Promise<Result<any, Error>> {
-  return View.post(c.url + path, body);
+  return post(c.url + path, body);
 }
 
 // leaves, telling the server; its jobs here end as the process exits

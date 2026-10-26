@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import { Cloud, type User } from "../cloud.ts";
 import { Memory } from "../memory.ts";
-import { answer_json } from "../../view/view.ts";
+import { answer_json } from "../../view/link.ts";
 import * as config from "../../config.ts";
 import { Sock, OWN, PIECE, SOCKETS, USERS, WEB, local_request } from "./shared.ts";
 import { Chat } from "./chat.ts";

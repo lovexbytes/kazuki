@@ -14,6 +14,7 @@
 import * as Import from "../../src/import/import.ts";
 import { theme_css } from "../../src/view/theme.ts";
 import * as View from "../../src/view/view.ts";
+import { link_open, link_send } from "../../src/view/link.ts";
 import { go, route } from "./account.ts";
 import * as Html from "./html.ts";
 import { import_bar, import_welcome, importer, type Read } from "./import.ts";
@@ -195,7 +196,7 @@ function act(a: View.Act): void {
   P.end = P.end || a.$ === "Send";
   P.rows = true;
   for (const msg of View.view_act(v, a)) {
-    View.link_send(v, msg, a.$ === "Send" ? (out) => back(a, out) : undefined, said);
+    link_send(v, msg, a.$ === "Send" ? (out) => back(a, out) : undefined, said);
   }
   draw(a.$ === "Send");
 }
@@ -237,7 +238,7 @@ function copied(button: HTMLElement): void {
 // chat reconnects while the local server is available.
 
 function connect(): void {
-  View.link_open(v, {
+  link_open(v, {
     open : (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
     post : (path, body) => fetch(path, { method: "POST", body }),
     hear : hear,
@@ -254,7 +255,7 @@ function hear(msg: View.Server): void {
   const was = View.view_pick(v);
   const agents = v.agents.join();
   for (const out of View.view_hear(v, msg)) {
-    View.link_send(v, out);
+    link_send(v, out);
   }
   const now = View.view_pick(v).filter((k) => was.length > 0 && !was.some((w) => w.text === k.text));
   if (now.length > 0) {

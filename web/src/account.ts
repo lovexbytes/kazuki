@@ -4,6 +4,7 @@
 // and after each act on it.
 
 import * as View from "../../src/view/view.ts";
+import { post } from "../../src/view/link.ts";
 import * as Html from "./html.ts";
 import { $, draw, P } from "./main.ts";
 
@@ -60,7 +61,7 @@ async function account(): Promise<void> {
 // the server deletes it all, once the account's name is typed
 async function account_delete(kill: HTMLFormElement): Promise<void> {
   const name = kill.querySelector("input")!.value;
-  const out = await View.post("/api/delete", { confirm: name });
+  const out = await post("/api/delete", { confirm: name });
   if (out.ok) {
     location.href = "/?deleted";
     return;

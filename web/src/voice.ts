@@ -6,6 +6,7 @@
 // is, to edit and send.
 
 import * as View from "../../src/view/view.ts";
+import { link_send } from "../../src/view/link.ts";
 import { $, BOX, draw, P, toast, v } from "./main.ts";
 
 
@@ -73,7 +74,7 @@ function meter(stream: MediaStream, rec: MediaRecorder): void {
 
 function words(audio: Blob): void {
   const act: View.Client = { $: "voice", type: audio.type, body: () => audio };
-  View.link_send(v, act, heard);
+  link_send(v, act, heard);
   draw(false);
 }
 

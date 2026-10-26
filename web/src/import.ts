@@ -11,6 +11,7 @@
 import * as Import from "../../src/import/import.ts";
 import { caught, Ok, type Result } from "../../src/util/result.ts";
 import * as View from "../../src/view/view.ts";
+import { link_send } from "../../src/view/link.ts";
 import * as Html from "./html.ts";
 import { $, BACK, DESK, INTRO, kept, markup, P, toast, v } from "./main.ts";
 
@@ -100,7 +101,7 @@ export function importer(): void {
 // the progress's button: Pause or Resume
 function import_flow(): void {
   const run = v.importing;
-  View.link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.ok || toast(out.error().message));
+  link_send(v, { $: "go", on: Boolean(run?.why) }, (out) => out.ok || toast(out.error().message));
 }
 
 // before an account's first import on this browser, a warning: this is
@@ -161,7 +162,7 @@ function import_send(): void {
   P.step = "send";
   import_draw("");
   const body = async () => new Blob(await Array.fromAsync(Import.import_body(picked), (part) => new Blob([part])));
-  View.link_send(v, { $: "import", body }, import_sent);
+  link_send(v, { $: "import", body }, import_sent);
 }
 
 // the box stays open on the import's progress (the answer says whether it
