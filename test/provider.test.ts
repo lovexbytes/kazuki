@@ -172,13 +172,10 @@ test("with none connected, the server doesn't start", () => {
 test("the keys leave the environment once read, and go back only to workers", () => {
   config.SECRETS.clear();
   process.env.OPENAI_API_KEY = "sk-test";
-  process.env.APNS_KEY       = "apns-test";
   config.config_hide(Providers.envs());
   expect(process.env.OPENAI_API_KEY).toBeUndefined();
-  expect(process.env.APNS_KEY).toBeUndefined();
   expect(config.secret("OPENAI_API_KEY")).toBe("sk-test");
   expect(config.config_env().OPENAI_API_KEY).toBe("sk-test");
-  expect(config.config_env().APNS_KEY).toBe("apns-test");
 });
 
 test("a call names its model as the method used names it", () => {

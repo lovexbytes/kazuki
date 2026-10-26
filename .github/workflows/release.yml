@@ -64,14 +64,13 @@ jobs:
           trap 'test -z "$pid" || kill "$pid" 2>/dev/null || true; rm -rf "$work"' EXIT
           cp kazuki "$work/kazuki"
           cd "$work"
-          export KAZUKI_DIR="$work/data" KAZUKI_SITE=http://127.0.0.1:9876
+          export KAZUKI_DIR="$work/data"
           mkdir -p "$KAZUKI_DIR"
           ./kazuki serve 9876 >server.log 2>&1 &
           pid=$!
-          for n in {1..100}; do curl -fsS http://127.0.0.1:9876/ >/dev/null && break; sleep .05; done
-          curl -fsS http://127.0.0.1:9876/ >/dev/null
-          curl -fsS http://127.0.0.1:9876/app.js >/dev/null
-          curl -fsS http://127.0.0.1:9876/install.sh >/dev/null
+          for n in {1..100}; do curl -fsS http://127.0.0.1:9876/api/me >/dev/null && break; sleep .05; done
+          curl -fsS http://127.0.0.1:9876/api/me >/dev/null
+          curl -fsS http://127.0.0.1:9876/tree >/dev/null
           kill "$pid"
           wait "$pid" || true
       - name: Archive binary

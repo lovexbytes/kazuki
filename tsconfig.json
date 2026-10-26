@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "exclude": ["node_modules", "web", "ios"]
+  "exclude": ["node_modules"]
 }

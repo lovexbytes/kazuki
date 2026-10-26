@@ -11,13 +11,6 @@ import { type Live, type Moved as Kit } from "../tools.ts";
 import { type Part } from "../../view/view.ts";
 import * as config from "../../config.ts";
 import hello_md from "../hello.md" with { type: "text" };
-import app_js from "../../../web/app.js" with { type: "file" };
-import index_page from "../../../web/index.html" with { type: "file" };
-import install_sh from "../../../install.sh" with { type: "file" };
-import mark_svg from "../../../web/mark.svg" with { type: "file" };
-import experimental_jpg from "../../../web/experimental.jpg" with { type: "file" };
-import og_png from "../../../web/og.png" with { type: "file" };
-import style_css from "../../../web/style.css" with { type: "file" };
 
 // Types
 // =====
@@ -138,7 +131,7 @@ export const NETS: Limit = { rate: 100, most: 1000, keys: new Map() };
 // the model requests a worker may have open at once (Bun's fetch: 256)
 export const FETCHES    = 65535;
 
-// the local chat's paths, besides /api/ (the rest: the site's files)
+// the local chat's paths, besides /api/ and /image/
 export const OWN        = ["/ws", "/tree", "/export"];
 
 export function local_request(req: Request): boolean {
@@ -149,24 +142,8 @@ export function local_request(req: Request): boolean {
 }
 
 
-// the first message, ending in the installer every terminal starts from
-export const HELLO      = hello_md.trim().replace("{install}", config.SITE + "/install.sh");
-
-// with type "file", the page's path: Bun's types say an HTMLBundle
-export const index_html = index_page as unknown as string;
-
-// the site's files, by path (a new one is imported above)
-export const WEB: Record<string, string> = {
-  "/"               : index_html,
-  "/account"        : index_html,
-  "/app.js"         : app_js,
-  "/experimental.jpg": experimental_jpg,
-  "/favicon.svg"    : mark_svg,
-  "/install.sh"     : install_sh,
-  "/mark.svg"       : mark_svg,
-  "/og.png"         : og_png,
-  "/style.css"      : style_css,
-};
+// the first message
+export const HELLO      = hello_md.trim();
 
 // a new account's chat opens as its guest's talk went (main.ts guest), so
 // its next line follows from the email: hello.md asking for it (View.ask),

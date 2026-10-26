@@ -331,7 +331,6 @@ export namespace Chat {
       chat.wait = [];
       chat.busy = false;
       Chat.live(chat, null, []);
-      Chat.phone(chat);
       Chat.after(chat);
       Views.change(chat);
     }
@@ -537,15 +536,6 @@ export namespace Chat {
       Views.change(chat);
       Chat.free(chat);
     });
-  }
-
-  // a turn's last message, Kazuki's reply or why there was none, to the
-  // user's phones (Cloud.push)
-  export function phone(chat: Chat): void {
-    const last = Memory.message(chat.mem, chat.mem.count - 1);
-    if (last !== null && (last.kind === "unii" || last.kind === "note")) {
-      Cloud.push(Chat.cloud, chat.acct.user, last.text);
-    }
   }
 
   // config.AFTER, a shell command, after each turn

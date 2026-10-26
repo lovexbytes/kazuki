@@ -1,6 +1,6 @@
 // Commands
 // ========
-// Every act of the site as a command typed here (`/name arg`), by group:
+// Every act as a command typed here (`/name arg`), by group:
 // what /help lists and the input completes. Keys are app.tsx's (KEYS).
 
 import * as fs from "node:fs";

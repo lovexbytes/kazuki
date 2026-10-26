@@ -20,16 +20,13 @@ test("Cloud always resolves the stable local user", () => {
   expect(Cloud.user(cloud, "1")).toBeNull();
 });
 
-test("Cloud creates only local tables and clears local push records", async () => {
+test("Cloud creates only local tables and clears local records", async () => {
   const cloud = cloud_new();
   const tables = cloud.db.query("select name from sqlite_master where type = 'table' order by name").all() as { name: string }[];
-  expect(tables.map(({ name }) => name)).toEqual(["acts", "pushes"]);
-  cloud.db.query("insert into pushes values (?, ?, ?)").run("a".repeat(64), "local", "local");
-  cloud.db.query("insert into pushes values (?, ?, ?)").run("b".repeat(64), "old", "old");
+  expect(tables.map(({ name }) => name)).toEqual(["acts"]);
   cloud.db.query("insert into acts values (?, ?, ?, ?)").run("local", "1", "{}", 0);
   cloud.db.query("insert into acts values (?, ?, ?, ?)").run("old", "1", "{}", 0);
   Cloud.close(cloud, LOCAL);
-  expect(cloud.db.query("select user from pushes order by user").all()).toEqual([{ user: "old" }]);
   expect(cloud.db.query("select user from acts order by user").all()).toEqual([{ user: "old" }]);
 });
 

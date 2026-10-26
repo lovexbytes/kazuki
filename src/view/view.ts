@@ -1,7 +1,7 @@
 // View
 // ====
-// What a view of the chat holds and draws, shared by the web (main.ts)
-// and the terminal (src/cli.ts), with no DOM: `view_hear` takes the server's
+// What a view of the chat holds and draws for the terminal (src/cli.ts),
+// with no DOM: `view_hear` takes the server's
 // messages, `view_act` the person's acts, and both answer what to send
 // (by the Link). The main chat shows what its agent sees (server.ts): the
 // view's parts as blocks ("nx"), from the turn on each message whole
@@ -41,9 +41,6 @@ export type Progress = { done: number; total: number; why: string | null; msgs: 
 // an import's minutes a unit of its time (micro-USD on the compactor,
 // measured on a real import: 990 s for 162,900)
 const PACE = 1e-4;
-
-// A new local chat has a short hello and its opening prompt (server.ts).
-export const OPENING = 2;
 
 // what a turn waits on while nothing streams: nothing (""), SUMMARIES,
 // or the first piece of the model it names (a request out, no tool
@@ -164,11 +161,10 @@ export type Row =
 
 export type Tab = { name: string | null; here: boolean; text: string };
 
-// hint: what the knob's value means (a tooltip; the site's note when it
-// changes)
+// hint: what the knob's value means (a note when it changes)
 export type Knob = { text: string; move: Move; hint: string };
 
-// a user's account, as /api/account gives it (Cloud.data)
+// a user's account, as Cloud.data gives it
 export type Account = { name: string };
 
 // Constants
@@ -365,7 +361,7 @@ export function view_act(v: View, act: Act): Client[] {
         return [];
       }
       if (word !== undefined && goal === null) {
-        v.notes.push(word + " is no command; nothing was sent. The terminal's /help lists its commands; the site's are in its ☰ menu.");
+        v.notes.push(word + " is no command; nothing was sent. /help lists the commands.");
         return [];
       }
       const blob = new Blob([...images, text]);
@@ -482,13 +478,6 @@ export function view_tabs(v: View): Tab[] {
     const text = (here ? GLYPH.here : GLYPH.tab) + " " + (name ?? MAIN);
     return { name, here, text };
   });
-}
-
-export function view_fold(v: View): string | null {
-  if (v.page !== null) {
-    return null;
-  }
-  return v.fold === null ? "fold all" : "unfold all";
 }
 
 export function view_typing(v: View): boolean {

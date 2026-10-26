@@ -2,8 +2,8 @@
 // ======
 // A person's past Claude and ChatGPT chats (APPS), read into their chat:
 // those on their computer (Claude Code's and Codex's logs), by the
-// terminal (src/cli.ts `/import`) or a folder picked on the site (main.ts),
-// and those on the websites, from the zip each mails on request
+// terminal (src/cli.ts `/import`), and those on the websites, from the
+// zip each mails on request
 // (import_export). A session (a log; a site's chat) is streamed twice:
 // for its messages' heads (the count and the estimate), then the heads
 // picked (Want) as JSON lines (import_body): a note, then its messages
@@ -73,8 +73,8 @@ const LINE = 480;
 // on 5,617 compaction calls of real imports
 const PRICE = { base: 187, byte: 735, depth: 628 };
 
-// what import_body yields at least (characters): the site keeps each as a
-// Blob, on disk when large, so a page never holds an import whole
+// what import_body yields at least (characters), so no piece holds an
+// import whole
 const PART = 2 ** 20;
 
 // the apps a session is of: two sources, each its program on the
@@ -83,12 +83,6 @@ export const APPS = ["Claude", "ChatGPT"];
 
 // sessions all imported before
 export const OLD = "Nothing new: these chats are in Kazuki's memory already.";
-
-// what a message sent while an import runs does (Memory.settle)
-export const MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
-
-// an import's end, as it went
-export const DONE = "Your past chats are in Kazuki's memory: ask about them any time.";
 
 // a session's day and count as listed (import_cells), made once
 const DAY   = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });

@@ -3,7 +3,7 @@
 // ======
 // The agent: chats that never end (memory.ts), one per user signed in
 // (cloud.ts), at config.DIR/users/<id>, and their views, terminals
-// (src/cli.ts) and browser tabs (web/), each one WebSocket (view.ts's Link)
+// (src/cli.ts), each one WebSocket (view.ts's Link)
 // carrying the chat's events and its acts (one with a body: a post to
 // /api/act), each done once (Views.apply), within USERS' limit. A
 // terminal's socket names its device, which the agent's tools reach
@@ -14,7 +14,7 @@
 // next call does, on the chat's pick (pick.ts). One nobody views is let
 // go.
 //
-// Alone, this process serves the site. Workers (config.WORKERS, behind a
+// Alone, this process serves the chat. Workers (config.WORKERS, behind a
 // proxy: README) each serve the users shard() gives them, under this
 // process (Main.supervise), which only routes. A deploy is a handover:
 // told so (SIGHUP), the supervisor starts each worker anew beside the

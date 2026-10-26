@@ -3,23 +3,22 @@
 // ====
 // `kazuki`: the command. It starts the local server (server.ts, which it
 // carries) or reaches one by its url, and opens the terminal's chat
-// (src/tui/): a client of that server as the web is, and, while open, a
-// device its tools reach (DEVICE). Every act of the site is a command
-// there (/help). The agent's jobs run there (machine.ts) until done or
-// halted; all they left running dies as this kazuki quits. From a pipe,
+// (src/tui/): a client of that server and, while open, a device its tools
+// reach (DEVICE). Every act is a command there (/help). The agent's jobs
+// run there (machine.ts) until done or halted; all they left running dies
+// as this kazuki quits. From a pipe,
 // each line is a message.
 //
 // One executable per platform (install.sh fetches it; scripts/build.ts makes
 // it). `kazuki serve` runs the server it carries. The server: the url
 // given, else $KAZUKI_URL, else the local server at 127.0.0.1:8788.
-// `kazuki update` without a url uses this repository's installer.
+// `kazuki update` runs this repository's installer.
 //
 // Usage: USAGE (`kazuki help` prints it).
 
 import * as child from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { browse } from "./util/browse.ts";
 
 // Constants
 // =========
@@ -35,11 +34,10 @@ const UPDATE = ARGS.includes("update");
 const SERVE  = ARGS.includes("serve");
 const START  = ARGS.includes("server");
 const TUI    = ARGS.includes("tui");
-const SITE   = ARGS.includes("web");
 const PORT   = SERVE ? ARGS.find((a) => /^\d+$/.test(a)) : undefined;
 const SUB    = ARGS.includes("chatgpt");
 const AUTH   = ARGS[0] === "auth";
-const WORDS  = ["help", "--help", "-h", "version", "update", "serve", "server", "tui", "web", "chatgpt", ...(SUB ? ["logout"] : [])];
+const WORDS  = ["help", "--help", "-h", "version", "update", "serve", "server", "tui", "chatgpt", ...(SUB ? ["logout"] : [])];
 const WEB    = /^https?:\/\//;
 const ODD    = AUTH ? undefined : ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT);
 const INSTALL = "https://raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh";
@@ -49,11 +47,9 @@ const SERVER = (REMOTE ?? process.env.KAZUKI_URL ?? "http://127.0.0.1:8788").rep
 const USAGE = `Usage: kazuki [url]           the chat (url: $KAZUKI_URL, else http://127.0.0.1:8788)
        kazuki server          start its local server in the background
        kazuki tui             open the local server in this terminal
-       kazuki web             start the local server and open it in a browser
-       kazuki update [url]    install the latest kazuki (curl | sh, shown first)
+       kazuki update          install the latest kazuki (curl | sh, shown first)
        kazuki version         this kazuki's version
-       kazuki serve [port]    your own Kazuki server, at http://127.0.0.1:8788
-                            (another port: set KAZUKI_SITE to its address too),
+       kazuki serve [port]    your own Kazuki server, at http://127.0.0.1:8788,
                             on the providers connected (kazuki auth);
                             chat with it: kazuki http://127.0.0.1:8788
        kazuki auth            the providers, and which are connected
@@ -84,10 +80,9 @@ const COMPUTER = process.env.KAZUKI_COMPUTER === "1";
 
 // runs the installer again: the one way kazuki changes. The command prints
 // first, so one can run it alone.
-function update_run(url: string): void {
-  const script = url === "" ? INSTALL : url.replace(/\/$/, "") + "/install.sh";
-  console.error("curl -fsSL " + script + " | sh");
-  const got = child.spawnSync("curl", ["-fsSL", script], { stdio: ["ignore", "pipe", "inherit"] });
+function update_run(): void {
+  console.error("curl -fsSL " + INSTALL + " | sh");
+  const got = child.spawnSync("curl", ["-fsSL", INSTALL], { stdio: ["ignore", "pipe", "inherit"] });
   if (got.status !== 0) {
     process.exitCode = got.status ?? 1;
     return;
@@ -161,7 +156,7 @@ async function local_start(url: string): Promise<boolean> {
   try {
     const source = process.argv[1] === import.meta.path && process.execPath === process.argv[0];
     const args = source ? [import.meta.path, "serve", String(port)] : ["serve", String(port)];
-    proc = child.spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out], env: { ...process.env, KAZUKI_SITE: process.env.KAZUKI_SITE ?? url } });
+    proc = child.spawn(process.execPath, args, { detached: true, stdio: ["ignore", out, out] });
   } catch (err: any) {
     fs.closeSync(out);
     cli_error("could not start local server at " + url + ": " + (err?.message ?? err) + " (log: " + log + ")");
@@ -201,7 +196,7 @@ if (HELP || ODD !== undefined) {
 } else if (ASKVER) {
   console.log("kazuki " + VERSION);
 } else if (UPDATE) {
-  update_run(REMOTE ?? "");
+  update_run();
 } else if (AUTH) {
   const done = await (await import("./core/plugin.ts")).Plugin.auth(ARGS);
   if (!done.ok) {
@@ -219,11 +214,6 @@ if (HELP || ODD !== undefined) {
 } else if (TUI) {
   if (await local_tui(SERVER)) {
     await tui_open(SERVER);
-  }
-} else if (SITE) {
-  if (await local_start(SERVER)) {
-    console.log(SERVER);
-    browse(SERVER);
   }
 } else {
   if (local_url(SERVER) === null) {
