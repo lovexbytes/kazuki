@@ -51,7 +51,7 @@ export type Turn = { busy: boolean; call: string | null; model: string; check: C
 
 // another process (the one this gives its chats to or takes them from,
 // or one a call is fed from or to), by a line of JSON a message
-// (Main.told): the calls fed from it here, by ref (Main.far); end: the
+// (Handover.told): the calls fed from it here, by ref (Handover.far); end: the
 // line closed once all sent is out, then `then`
 export type Peer = {
   send   : (msg: object) => void;
@@ -59,7 +59,7 @@ export type Peer = {
   feeds  : Map<string, Sink>;
 };
 
-// a call fed from here to the process its chat is in (Main.away): run
+// a call fed from here to the process its chat is in (Handover.away): run
 // here, or passed on (a relay) till its origin feeds that process itself
 export type Away = { call: Call; link: Peer };
 
@@ -80,7 +80,7 @@ export const LOCK       = config.DIR + "/lock";
 export const LOST: { told: string[] } = { told: [] };
 // how long the supervisor waits to start again a worker whose start failed
 export const RETRY      = 5e3;
-// where worker k's successor reaches it, HAND + k (Main.listen); how
+// where worker k's successor reaches it, HAND + k (Handover.listen); how
 // often one that gave its chats looks whether its last requests ended
 export const HAND       = config.DIR + "/hand";
 export const LEAVE      = 500;
@@ -110,7 +110,7 @@ export const READ       = 2 ** 20;
 // what a socket may hold unsent (Bun's default, 16 MiB, drops the rest)
 export const BUFFER     = 2 ** 31 - 1;
 
-// a piece of a long answer (Main.stream)
+// a piece of a long answer (Http.stream)
 export const PIECE      = 2 ** 16;
 
 // what a user's clients may send (Main.spend): 200 messages (acts, asks,

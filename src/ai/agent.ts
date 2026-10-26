@@ -124,7 +124,7 @@ const BUSY  = "the AI service is busy or unavailable right now";
 const ROOMS = new Map<string, Room>();
 
 // the requests sent whose answers are not read to their end: a process
-// ends only once none is (main.ts Main.leave), and a sign-in's token
+// ends only once none is (handover.ts Handover.leave), and a sign-in's token
 // being got (Agent.token)
 export const READING = { n: 0 };
 

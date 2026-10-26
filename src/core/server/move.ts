@@ -8,8 +8,8 @@ import { Tools } from "../tools.ts";
 import { MOVE } from "../../view/view.ts";
 import { Moved, Peer } from "./shared.ts";
 import { Chat } from "./chat.ts";
+import { Handover } from "./handover.ts";
 import { Ingest } from "./ingest.ts";
-import { Main } from "./main.ts";
 
 export namespace Move {
 
@@ -23,11 +23,11 @@ export namespace Move {
     Chat.free(chat);
   }
 
-  // the chat moves: what it runs goes on there (its calls by Main.away),
+  // the chat moves: what it runs goes on there (its calls by Handover.away),
   // and its views open again there
   export function move(chat: Chat, peer: Peer, url: string): void {
     const user = chat.acct.user;
-    const far = (call: Call) => Main.away(peer, call);
+    const far = (call: Call) => Handover.away(peer, call);
     const { busy, model, sent, wait, asked, open, live, calls, eye } = chat;
     const check = chat.check && { call: far(chat.check.call), goal: chat.check.goal };
     const turn = { busy, call: chat.call && far(chat.call), model, check, sent, wait, asked, open, live, calls, eye };
@@ -40,14 +40,14 @@ export namespace Move {
     Memory.stop(chat.mem);
     peer.send({ $: "chat", moved: { user, turn, tools, sums } });
     chat.socks.forEach((sock) => sock.close(MOVE));
-    Main.done();
+    Handover.done();
   }
 
   // a chat moved here (Move.move) goes on: its turn, agents and summaries,
-  // each call running there by Main.far
+  // each call running there by Handover.far
   export function arrive(chat: Chat, moved: Moved, peer: Peer): void {
     const { call, check, ...turn } = moved.turn;
-    const far = (id: string, on: (ev: Event) => void) => Main.far(peer, id, chat.tools.key, on);
+    const far = (id: string, on: (ev: Event) => void) => Handover.far(peer, id, chat.tools.key, on);
     Object.assign(chat, turn);
     Tools.take(chat.tools, moved.tools, far);
     Memory.take(chat.mem, moved.sums, (id) => far(id, () => {}));

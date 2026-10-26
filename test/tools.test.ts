@@ -3,7 +3,7 @@
 // `bun test tools.test.ts`. A chat moves twice (A to B to C) while an
 // agent's call still runs in A, its MCP requests sent to A's tools. B,
 // once its relay is done, ends; A's requests must then reach C, not B:
-// C taking the call tells A where the chat is (Main.far, Tools.went).
+// C taking the call tells A where the chat is (Handover.far, Tools.went).
 
 import { expect, test } from "bun:test";
 import * as fs from "node:fs";

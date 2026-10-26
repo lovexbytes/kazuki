@@ -21,8 +21,8 @@
 // old one, on the same port; the old one takes no more connections and
 // gives the new one each chat once no post of it runs (Move.give): its
 // work goes on there, the calls it runs (its turn's, agents', summaries')
-// going on where they started, fed straight to where the chat is (Main.away,
-// Main.far), and its views open again there at once (view.ts MOVE). It
+// going on where they started, fed straight to where the chat is (Handover.away,
+// Handover.far), and its views open again there at once (view.ts MOVE). It
 // ends once those calls do (a process that ran none, at once). A stop or
 // crash cuts all: a start resumes what ran (Chat.wake), told so.
 //
@@ -36,6 +36,8 @@ import { LOST } from "./server/shared.ts";
 import { Main } from "./server/main.ts";
 
 export { Chat } from "./server/chat.ts";
+export { Handover } from "./server/handover.ts";
+export { Http } from "./server/http.ts";
 export { Ingest } from "./server/ingest.ts";
 export { Move } from "./server/move.ts";
 export { Views } from "./server/views.ts";

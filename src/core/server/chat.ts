@@ -16,6 +16,7 @@ import { IMAGES, TURN, answer_json, type Done } from "../../view/view.ts";
 import * as config from "../../config.ts";
 import { Err, Ok } from "../../util/result.ts";
 import { Sock, Body, Msg, Eye, Check, Batch, Moved, Peer, LOST, HEAD, GOAL, GOAL_ASK, GOAL_NO, BATCH, READ, HELLO, HELLO_LINE, OPEN_PROMPT } from "./shared.ts";
+import { Handover } from "./handover.ts";
 import { Ingest } from "./ingest.ts";
 import { Move } from "./move.ts";
 import { Views } from "./views.ts";
@@ -60,7 +61,7 @@ export type Chat = {
 // a chat as it moves to another process (Move.move): its user (an id:
 // a chat moved is never new, so no hello needs their name, and they may
 // have signed out since), its turn (its call and goal check's by their
-// refs, Main.away), the tools' part, its summaries running
+// refs, Handover.away), the tools' part, its summaries running
 
 export namespace Chat {
 
@@ -74,7 +75,7 @@ export namespace Chat {
   export function open(user: User, moved: Moved | null = null, peer: Peer | null = null): Chat | null {
     const cloud = Chat.cloud;
     const old = Chat.chats.get(user.id);
-    if (old !== undefined || (Main.given && moved === null)) {
+    if (old !== undefined || (Handover.given && moved === null)) {
       return old ?? null;
     }
     const acct = { cloud, user: user.id };

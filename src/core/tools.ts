@@ -615,7 +615,7 @@ export namespace Tools {
   }
 
   // the chat `key`, given away from here, is now at the tools at `url`
-  // (its new process took a call that runs here: Main.far): this
+  // (its new process took a call that runs here: Handover.far): this
   // process's calls reach it straight, never through one that ended
   export function went(key: string, url: string): void {
     if (GONE.has(key)) {
