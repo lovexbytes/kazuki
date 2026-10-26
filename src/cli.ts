@@ -208,7 +208,7 @@ if (HELP || ODD !== undefined) {
     cli_error(done.error().message);
   }
 } else if (SUB) {
-  const done = await (await import("./ai/chatgpt.ts")).ChatGPT.cli(ARGS);
+  const done = await (await import("./ai/chatgpt-auth.ts")).ChatGPTAuth.cli(ARGS);
   if (!done.ok) {
     cli_error(done.error().message);
   }

@@ -152,6 +152,7 @@ process.env.KAZUKI_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex";
 
 const config = await import("../src/config.ts");
 const { ChatGPT } = await import("../src/ai/chatgpt.ts");
+const { ChatGPTAuth } = await import("../src/ai/chatgpt-auth.ts");
 const { AskAI } = await import("../src/ai/ask-ai.ts");
 const Nap = await import("../src/util/nap.ts");
 const { Plugin } = await import("../src/core/plugin.ts");
@@ -255,14 +256,14 @@ test("a refresh refused as used reads the file again: another process's tokens, 
     fake.spent.add("refresh-0");
     setTimeout(() => sign_in(theirs, "refresh-9"), 300);
   };
-  expect(await ChatGPT.token()).toEqual(new Ok(theirs));
+  expect(await ChatGPTAuth.token()).toEqual(new Ok(theirs));
   expect(file().tokens.refresh_token).toBe("refresh-9");
 });
 
 test("a refresh under way when another process signs out doesn't sign back in", async () => {
   sign_in(access(1, now() + 10), "refresh-0");
   fake.before = () => fs.rmSync(FILE);
-  const got = await ChatGPT.token();
+  const got = await ChatGPTAuth.token();
   expect(got.ok ? "" : got.error().message).toContain("signed out");
   expect(fs.existsSync(FILE)).toBe(false);
 });
@@ -315,7 +316,7 @@ test("a refresh refused for good fails the call, keeping the file", async () => 
 
 test("a first sign-in makes the file's missing dir, owner only", async () => {
   fs.rmSync(DIR, { recursive: true, force: true });
-  await ChatGPT.exchange("code-ok", "https://auth.openai.com/deviceauth/callback", "v");
+  await ChatGPTAuth.exchange("code-ok", "https://auth.openai.com/deviceauth/callback", "v");
   expect(fs.statSync(DIR).mode & 0o777).toBe(0o700);
   expect(fs.statSync(FILE).mode & 0o777).toBe(0o600);
 });
@@ -359,7 +360,7 @@ test("a patient call (a summary's) at a usage limit waits for the reset, not ask
 
 test("device sign-in: polled till entered, past the issuer's 5xx, and saved", async () => {
   fake.down = 1;
-  const auth = await ChatGPT.device(() => {});
+  const auth = await ChatGPTAuth.device(() => {});
   expect(fake.exchanges[0]).toMatchObject({ code: "code-ok", code_verifier: "verifier-dev" });
   expect(auth.ok && auth.value().tokens.access_token).toBe(file().tokens.access_token);
 });
@@ -368,7 +369,7 @@ test("logout revokes the refresh token and deletes the file; openai doesn't move
   sign_in(access(1), "refresh-7");
   Providers.choose("openai", "oauth", true);
   config.SECRETS.set("OPENAI_API_KEY", "test");
-  const out = await ChatGPT.logout();
+  const out = await ChatGPTAuth.logout();
   expect(out.ok ? out.value() : "").toContain("kazuki auth openai use key");
   expect(fake.revoked[0].token).toBe("refresh-7");
   expect(fs.existsSync(FILE)).toBe(false);
