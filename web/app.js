@@ -1,362 +1,4 @@
-// Clip.ts
-var CAP = 30000;
-function clip_end(str, at) {
-  if (str.length - at <= CAP) {
-    return str.length;
-  }
-  const nl = str.lastIndexOf(`
-`, at + CAP - 1);
-  const low = str.charCodeAt(at + CAP) >> 10 === 55;
-  return nl >= at ? nl + 1 : at + CAP - (low ? 1 : 0);
-}
-function clip_pages(str) {
-  const pages = [];
-  let at = 0;
-  do {
-    const end = clip_end(str, at);
-    pages.push(str.slice(at, end));
-    at = end;
-  } while (at < str.length);
-  return pages;
-}
-async function* stream_lines(stream) {
-  const reader = stream.pipeThrough(new TextDecoderStream).getReader();
-  let rest = "";
-  for (let got = await reader.read();!got.done; got = await reader.read()) {
-    const nl = got.value.lastIndexOf(`
-`);
-    if (nl >= 0) {
-      yield (rest + got.value.slice(0, nl)).split(`
-`);
-      rest = "";
-    }
-    rest += got.value.slice(nl + 1);
-  }
-  yield [rest];
-}
-
-// Result.ts
-class Ok {
-  ok = true;
-  data;
-  constructor(data) {
-    this.data = data;
-  }
-  value() {
-    return this.data;
-  }
-}
-
-class Err {
-  ok = false;
-  data;
-  constructor(data) {
-    this.data = data;
-  }
-  error() {
-    return this.data;
-  }
-}
-function caught(e) {
-  return new Err(e instanceof Error ? e : new Error(String(e)));
-}
-
-// Import.ts
-var NODE = 512;
-var LINE = 480;
-var PRICE = { base: 187, byte: 735, depth: 628 };
-var PART = 2 ** 20;
-var OLD = "Nothing new: these chats are in Kazuki's memory already.";
-var NOT_EXPORT = "Not a Claude or ChatGPT export.";
-var MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
-var DONE = "Your past chats are in Kazuki's memory: ask about them any time.";
-var DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });
-var COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
-var EXPORTS = { Claude: "Settings › Privacy › Export data", ChatGPT: "Settings › Data controls › Export data" };
-var INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
-var SKIP = /^(<command-|<local-command|\[Request interrupted)/;
-function import_file(path) {
-  const session = /(^|\/)(projects|sessions|archived_sessions)\//.test(path);
-  return session && path.endsWith(".jsonl") && !path.includes("subagents/");
-}
-async function import_session(file, form, app = "", where = "") {
-  const s = { app, form, where, start: "", file, heads: [] };
-  for await (const m of import_read(s)) {
-    s.heads.push({ kind: m.kind, date: m.date, size: import_size(m), n: s.heads.length });
-  }
-  s.start = s.heads[0]?.date ?? "";
-  return s.heads.length > 0 ? s : null;
-}
-async function* import_read(s) {
-  let date = "";
-  for await (const lines of stream_lines(s.file.stream())) {
-    for (const line of lines) {
-      const msgs = line_msgs(s, line, date);
-      date = msgs.at(-1)?.date ?? date;
-      yield* msgs;
-    }
-  }
-}
-function line_log(s, j, last) {
-  s.app ||= j.type === "session_meta" ? "ChatGPT" : "Claude";
-  return s.app === "ChatGPT" ? line_codex(s, j, last) : line_claude(s, j, last);
-}
-function line_msgs(s, line, last) {
-  try {
-    const j = JSON.parse(line);
-    return s.form === "msgs" ? [j] : line_log(s, j, last);
-  } catch {
-    return [];
-  }
-}
-function import_pick(sessions, want, done) {
-  const old = [...sessions].sort((a, b) => a.start.localeCompare(b.start));
-  const keep = (m, last) => (want.tools || m.kind === "user" || m.kind === "unii") && m.date >= want.since && import_new(m, last);
-  const kept = (s, last) => s.heads.filter((m) => keep(m, last));
-  return old.map((s) => ({ ...s, heads: kept(s, done[import_id(s)]) })).filter((s) => s.heads.length > 0);
-}
-function import_plan(sessions, want, done, count) {
-  const all = import_pick(sessions, { ...want, since: "" }, done);
-  const shown = import_pick(all, want, {});
-  const picked = shown.filter((s) => !want.off.includes(import_id(s)));
-  const first = all.map((s) => s.heads[0].date).sort()[0] ?? "";
-  const sizes = picked.flatMap((s) => [import_size(import_note(s)), ...s.heads.map((m) => m.size)]);
-  return { sessions: shown, picked, msgs: sizes.length - picked.length, first: first.slice(0, 10), guess: import_usd(count, sizes) };
-}
-function import_new(m, last) {
-  return last === undefined || (m.date ?? "") > last;
-}
-function import_name(s) {
-  return s.app + " " + s.where + ", from " + new Date(s.start).toLocaleString("sv-SE").slice(0, 16);
-}
-function import_cells(s) {
-  const day = DAY.format(new Date(s.start));
-  const where = s.where.startsWith("session in ") ? path_short(s.where.slice(11)) : s.where.replace(/^chat "(.*)"$/, "$1") || "untitled";
-  return [day, count_short(s.heads.length), where];
-}
-function count_short(n) {
-  return COUNT.format(n).toLowerCase();
-}
-function path_short(path) {
-  const parts = path.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~").split("/");
-  const head = parts[0] === "" ? 2 : 1;
-  return parts.length - head > 3 ? [...parts.slice(0, head + 1), "…", ...parts.slice(-2)].join("/") : parts.join("/");
-}
-function import_note(s) {
-  return { kind: "note", text: import_name(s) + " (imported)", date: s.start };
-}
-function import_id(s) {
-  return import_key(import_note(s));
-}
-function import_key(note) {
-  return note.date + " " + note.text.replace(/^.*?(?= session in | chat ")/, "").replace(/, from [^,]*$/, "");
-}
-async function* import_body(picked) {
-  let part = "";
-  for (const s of picked) {
-    const kept = new Set(s.heads.map((m) => m.n));
-    let n = 0;
-    part += JSON.stringify(import_note(s)) + `
-`;
-    for await (const m of import_read(s)) {
-      part += kept.has(n++) ? JSON.stringify(m) + `
-` : "";
-      if (part.length >= PART) {
-        yield part;
-        part = "";
-      }
-    }
-  }
-  yield part;
-}
-function import_guess(a, sizes) {
-  const usd = [];
-  let nodes = sizes.map((bytes) => ({ bytes, depth: 0 }));
-  for (let l = 0, i = a;nodes.length > 0; l++, i = Math.floor(i / 2)) {
-    usd.push(nodes.map(node_usd));
-    const line = (k) => k < 0 ? { bytes: LINE, depth: l } : node_line(nodes[k]);
-    const from = Math.floor(i / 2);
-    nodes = Array.from({ length: Math.floor((i + nodes.length) / 2) - from }, (_, j) => node_merge(line(2 * (from + j) - i), line(2 * (from + j) + 1 - i)));
-  }
-  return usd;
-}
-function import_usd(a, sizes) {
-  return import_guess(a, sizes).flat().reduce((x, y) => x + y, 0) / 1e6;
-}
-function import_size(m) {
-  return new TextEncoder().encode(m.kind + ": " + m.text).length;
-}
-function import_count(n, what) {
-  return n.toLocaleString("en-US") + " " + what + (n === 1 ? "message" : "messages");
-}
-function guess_usd(usd) {
-  return "$" + Math.max(0.01, usd).toFixed(2);
-}
-function node_usd(node) {
-  if (node.bytes <= NODE) {
-    return 0;
-  }
-  const { base, byte, depth } = PRICE;
-  return Math.round(base + byte * Math.log2(node.bytes / NODE) + depth * (node.depth + 1));
-}
-function node_line(node) {
-  return node.bytes > NODE ? { bytes: LINE, depth: node.depth + 1 } : { bytes: node.bytes, depth: 0 };
-}
-function node_merge(a, b) {
-  return { bytes: a.bytes + 1 + b.bytes, depth: Math.max(a.depth, b.depth) };
-}
-async function import_export(file) {
-  try {
-    const zip = await file.slice(0, 2).text() === "PK";
-    const json = zip ? await zip_file(file, "conversations.json") : file;
-    if (json === null) {
-      return new Err(new Error("No conversations.json in the zip."));
-    }
-    const chats = await json.text().then(JSON.parse).catch(() => null);
-    if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
-      return new Err(new Error(NOT_EXPORT));
-    }
-    const sessions = await Promise.all(chats.map(chat_session));
-    return new Ok(sessions.filter((s) => s !== null));
-  } catch (e) {
-    return caught(e);
-  }
-}
-function chat_session(chat) {
-  const [app, msgs] = chat.mapping ? ["ChatGPT", chat_openai(chat)] : ["Claude", chat_claude(chat)];
-  const file = new Blob(msgs.map((m) => JSON.stringify(m) + `
-`));
-  return import_session(file, "msgs", app, 'chat "' + String(chat.title ?? chat.name ?? "") + '"');
-}
-function chat_openai(chat) {
-  const nodes = [];
-  for (let id = chat.current_node;id; id = chat.mapping[id]?.parent) {
-    nodes.unshift(chat.mapping[id]?.message);
-  }
-  let date = import_date(chat.create_time, "");
-  return nodes.flatMap((m) => {
-    const role = m?.author?.role;
-    const type = String(m?.content?.content_type);
-    const kind = role === "user" ? "user" : role === "assistant" ? m.recipient === "all" ? "unii" : "tool" : role === "tool" ? "echo" : null;
-    const skip = kind === null || m.metadata?.is_visually_hidden_from_conversation === true || type === "thoughts" || type === "reasoning_recap";
-    date = import_date(m?.create_time, date);
-    return skip ? [] : msgs_of(kind, (kind === "tool" ? m.recipient + " " : "") + parts_text(m.content.parts ?? [m.content.text]), date);
-  });
-}
-function chat_claude(chat) {
-  let date = import_date(chat.created_at, "");
-  return (chat.chat_messages ?? []).flatMap((m) => {
-    date = import_date(m.created_at, date);
-    const kind = m.sender === "human" ? "user" : "unii";
-    const blocks = Array.isArray(m.content) ? m.content : [{ type: "text", text: String(m.text ?? "") }];
-    const files = [...m.attachments ?? [], ...m.files ?? []].map((f) => ({ type: "text", text: "[file " + f.file_name + "]" }));
-    return blocks_msgs(kind, [...blocks, ...files], date);
-  });
-}
-async function zip_file(zip, name) {
-  const view = async (at, n) => new DataView(await zip.slice(at, at + n).arrayBuffer());
-  const back = Math.min(zip.size, 65577);
-  const tail = await view(zip.size - back, back);
-  let end = tail.byteLength - 22;
-  while (end >= 0 && tail.getUint32(end, true) !== 101010256) {
-    end -= 1;
-  }
-  if (end < 0) {
-    return null;
-  }
-  const wide = end >= 20 && tail.getUint32(end - 20, true) === 117853008;
-  const z64 = wide ? await view(Number(tail.getBigUint64(end - 12, true)), 56) : null;
-  const count = z64 === null ? tail.getUint16(end + 10, true) : Number(z64.getBigUint64(32, true));
-  const size = z64 === null ? tail.getUint32(end + 12, true) : Number(z64.getBigUint64(40, true));
-  const from = z64 === null ? tail.getUint32(end + 16, true) : Number(z64.getBigUint64(48, true));
-  const dir = await view(from, size);
-  for (let p = 0, k = 0;k < count; k++) {
-    const entry = new TextDecoder().decode(new Uint8Array(dir.buffer, p + 46, dir.getUint16(p + 28, true)));
-    const [, packed, at] = zip_sizes(dir, p);
-    if (entry === name || entry.endsWith("/" + name)) {
-      const head = await view(at, 30);
-      const data = zip.slice(at + 30 + head.getUint16(26, true) + head.getUint16(28, true)).slice(0, packed);
-      return dir.getUint16(p + 10, true) === 8 ? new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob() : data;
-    }
-    p += 46 + dir.getUint16(p + 28, true) + dir.getUint16(p + 30, true) + dir.getUint16(p + 32, true);
-  }
-  return null;
-}
-function zip_sizes(dir, p) {
-  const short = [p + 24, p + 20, p + 42].map((at) => dir.getUint32(at, true));
-  const extra = p + 46 + dir.getUint16(p + 28, true);
-  let x = extra;
-  while (x + 4 <= extra + dir.getUint16(p + 30, true) && dir.getUint16(x, true) !== 1) {
-    x += 4 + dir.getUint16(x + 2, true);
-  }
-  let k = 0;
-  return short.map((n) => n === 4294967295 ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n);
-}
-function line_claude(s, j, last) {
-  const date = import_date(j.timestamp, last);
-  const own = (j.type === "user" || j.type === "assistant") && !j.isMeta && !j.isSidechain && !j.isCompactSummary;
-  const content = j.message?.content;
-  const blocks = !own ? [] : typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
-  s.where ||= j.cwd ? "session in " + j.cwd : "";
-  if (j.type === "attachment" && j.attachment?.type === "queued_command") {
-    return msgs_of("user", String(j.attachment.prompt ?? ""), date);
-  }
-  return blocks_msgs(j.type === "user" ? "user" : "unii", blocks, date);
-}
-function blocks_msgs(kind, blocks, date) {
-  const say = blocks.filter((b) => b.type === "image" || b.type === "text" && !SKIP.test(b.text));
-  const tools = blocks.flatMap((b) => b.type === "tool_use" ? msgs_of("tool", b.name + " " + JSON.stringify(b.input), date) : b.type === "tool_result" ? msgs_of("echo", parts_text(b.content), date) : []);
-  return [...msgs_of(kind, parts_text(say), date), ...tools];
-}
-function line_codex(s, j, last) {
-  const p = j.payload ?? {};
-  const date = import_date(j.timestamp, last);
-  if (j.type === "session_meta") {
-    s.where = p.source?.subagent ?? p.source?.internal ? "" : "session in " + String(p.cwd ?? "");
-  }
-  return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : [];
-}
-function item_codex(p, date) {
-  switch (p.type) {
-    case "message": {
-      const kind = p.role === "user" ? "user" : p.role === "assistant" ? "unii" : null;
-      const parts = (p.content ?? []).filter((c) => !INJECTED.test(c.text ?? ""));
-      return kind === null ? [] : msgs_of(kind, parts_text(parts), date);
-    }
-    case "function_call": {
-      return msgs_of("tool", p.name + " " + p.arguments, date);
-    }
-    case "custom_tool_call": {
-      return msgs_of("tool", p.name + " " + JSON.stringify({ input: p.input }), date);
-    }
-    case "local_shell_call": {
-      return msgs_of("tool", "shell " + JSON.stringify({ command: p.action?.command }), date);
-    }
-    case "function_call_output":
-    case "custom_tool_call_output": {
-      return msgs_of("echo", parts_text(p.output), date);
-    }
-  }
-  return [];
-}
-function import_date(at, last) {
-  const ms = typeof at === "number" ? at * 1000 : Date.parse(String(at));
-  return Number.isNaN(ms) ? last : new Date(ms).toISOString();
-}
-function msgs_of(kind, text, date) {
-  const pages = text.trim() === "" ? [] : clip_pages(text);
-  return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1 }));
-}
-function parts_text(content) {
-  if (typeof content === "string") {
-    return content;
-  }
-  const parts = Array.isArray(content) ? content : [];
-  return parts.map((c) => typeof c === "string" ? c : typeof c.text === "string" ? c.text : String(c.type ?? c.content_type).includes("image") ? "[image]" : "").join(`
-`);
-}
-
-// Theme.ts
+// src/view/theme.ts
 var WHO = { work: "Report", note: "Note" };
 var KIND = {
   user: { dim: false, it: false },
@@ -398,7 +40,17 @@ function look_css(kind, look) {
   return ".msg." + kind + "{" + body + "}";
 }
 
-// Call.ts
+// src/ai/live.ts
+function live_push(live, kind, text, fresh = false) {
+  const top = live[live.length - 1];
+  if (top !== undefined && top.kind === kind && !fresh) {
+    top.text += text;
+  } else {
+    live.push({ kind, text });
+  }
+}
+
+// src/view/call.ts
 var SHORT = 60;
 var CALL = /^(\S+) (\{[\s\S]*)$/;
 var MCP = /^mcp__.+?__/;
@@ -508,7 +160,7 @@ function object_parse(text) {
   }
 }
 
-// Names.ts
+// src/util/names.ts
 var ADJS = `
 red blue green yellow orange purple pink brown black white gray silver golden
 amber azure bronze copper jade lemon lime mint navy peach plum ruby violet
@@ -539,7 +191,7 @@ function name_word(word) {
   return word[0].toUpperCase() + word.slice(1);
 }
 
-// Md.ts
+// src/view/md.ts
 var NAME2 = new RegExp("\\[(" + NAME + ")\\]", "g");
 var SPAN = new RegExp([
   /`([^`\n]+)`/.source,
@@ -762,7 +414,7 @@ function row_cells(line) {
   return cells.map((c) => span_parse(c.trim().replace(/\\\|/g, "|")));
 }
 
-// Pick.ts
+// src/ai/pick.ts
 var EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 var SPEEDS = ["slow", "fast", "ultrafast"];
 var Pick;
@@ -850,7 +502,7 @@ var Pick;
   Pick2.load = load;
 })(Pick ||= {});
 
-// Price.ts
+// src/ai/price.ts
 var SPEEDS2 = { slow: 1, fast: 2, ultrafast: 6 };
 var Price;
 ((Price) => {
@@ -860,7 +512,115 @@ var Price;
   Price.times = times;
 })(Price ||= {});
 
-// View.ts
+// src/util/result.ts
+class Ok {
+  ok = true;
+  data;
+  constructor(data) {
+    this.data = data;
+  }
+  value() {
+    return this.data;
+  }
+}
+
+class Err {
+  ok = false;
+  data;
+  constructor(data) {
+    this.data = data;
+  }
+  error() {
+    return this.data;
+  }
+}
+function caught(e) {
+  return new Err(e instanceof Error ? e : new Error(String(e)));
+}
+
+// src/view/link.ts
+function link_open(v, link) {
+  const ws = link.open("?tab=" + v.tab + "&wire=" + WIRE);
+  let heard = Date.now();
+  const tick = setInterval(() => Date.now() - heard > PING && drop(), PING / 2);
+  async function drop(moved = false) {
+    const up = v.up;
+    ws.onmessage = null;
+    ws.onclose = null;
+    clearInterval(tick);
+    ws.close();
+    [v.ws, v.up] = [null, false];
+    if (moved || await link.lost(up)) {
+      setTimeout(() => link_open(v, link), moved ? 0 : RETRY);
+    }
+  }
+  function flush() {
+    for (const post of v.up && v.ws === ws ? v.out.filter((p) => p.ws !== ws) : []) {
+      post.ws = ws;
+      if ("body" in post.msg) {
+        upload(post);
+      } else {
+        ws.send(JSON.stringify(post.msg));
+      }
+    }
+  }
+  async function upload(post) {
+    const { body, ...rest } = post.msg;
+    const query = Object.entries(rest).map(([k, x]) => k + "=" + encodeURIComponent(String(x)));
+    const res = await link.post("/api/act?" + query.join("&"), await body()).catch(() => null);
+    const out = await res?.json().catch(() => null);
+    if (out != null) {
+      link.hear({ $: "ack", id: post.msg.id, ...out });
+    } else if (post.ws === ws && v.ws === ws) {
+      drop();
+    }
+  }
+  [v.ws, v.flush] = [ws, flush];
+  ws.onmessage = (ev) => {
+    heard = Date.now();
+    if (ev.data === TICK) {
+      return;
+    }
+    const msg = JSON.parse(String(ev.data));
+    const join = msg.$ === "view" && !v.up;
+    if (join) {
+      v.up = true;
+      v.pages.clear();
+    }
+    link.hear(msg);
+    if (join) {
+      view_act(v, { $: "Goto", name: v.page?.name ?? null }).forEach((out) => link_send(v, out));
+      flush();
+    }
+  };
+  ws.onclose = (ev) => drop(ev.code === MOVE);
+}
+function link_send(v, msg, done = (a) => link_note(v, a), said = "") {
+  v.out.push({ msg: { id: crypto.randomUUID(), ...msg }, ws: null, done, said });
+  v.flush();
+}
+function link_note(v, a) {
+  if (!a.ok) {
+    v.notes.push(a.error().message);
+  }
+}
+function answer_read(a) {
+  if (typeof a?.error !== "string") {
+    return new Ok({ text: a?.text, going: a?.going });
+  }
+  return new Err(Object.assign(new Error(a.error), a.status === undefined ? {} : { status: a.status }));
+}
+async function post(url, body, auth = {}) {
+  const headers = { ...auth, "content-type": "application/json" };
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => null);
+  if (res === null) {
+    return new Err(new Error("Can't reach the server."));
+  }
+  const out = await res.json().catch(() => null);
+  return res.ok ? new Ok(out ?? {}) : new Err(new Error(out?.error ?? "HTTP " + res.status));
+}
+
+// src/view/view.ts
 var PACE = 0.0001;
 var OPENING = 2;
 var SUMMARIES = "summaries";
@@ -1159,86 +919,6 @@ function view_live(v, agent) {
   }
   return v.pages.get(agent)?.live ?? null;
 }
-function link_open(v, link) {
-  const ws = link.open("?tab=" + v.tab + "&wire=" + WIRE);
-  let heard = Date.now();
-  const tick = setInterval(() => Date.now() - heard > PING && drop(), PING / 2);
-  async function drop(moved = false) {
-    const up = v.up;
-    ws.onmessage = null;
-    ws.onclose = null;
-    clearInterval(tick);
-    ws.close();
-    [v.ws, v.up] = [null, false];
-    if (moved || await link.lost(up)) {
-      setTimeout(() => link_open(v, link), moved ? 0 : RETRY);
-    }
-  }
-  function flush() {
-    for (const post of v.up && v.ws === ws ? v.out.filter((p) => p.ws !== ws) : []) {
-      post.ws = ws;
-      if ("body" in post.msg) {
-        upload(post);
-      } else {
-        ws.send(JSON.stringify(post.msg));
-      }
-    }
-  }
-  async function upload(post) {
-    const { body, ...rest } = post.msg;
-    const query = Object.entries(rest).map(([k, x]) => k + "=" + encodeURIComponent(String(x)));
-    const res = await link.post("/api/act?" + query.join("&"), await body()).catch(() => null);
-    const out = await res?.json().catch(() => null);
-    if (out != null) {
-      link.hear({ $: "ack", id: post.msg.id, ...out });
-    } else if (post.ws === ws && v.ws === ws) {
-      drop();
-    }
-  }
-  [v.ws, v.flush] = [ws, flush];
-  ws.onmessage = (ev) => {
-    heard = Date.now();
-    if (ev.data === TICK) {
-      return;
-    }
-    const msg = JSON.parse(String(ev.data));
-    const join = msg.$ === "view" && !v.up;
-    if (join) {
-      v.up = true;
-      v.pages.clear();
-    }
-    link.hear(msg);
-    if (join) {
-      view_act(v, { $: "Goto", name: v.page?.name ?? null }).forEach((out) => link_send(v, out));
-      flush();
-    }
-  };
-  ws.onclose = (ev) => drop(ev.code === MOVE);
-}
-function link_send(v, msg, done = (a) => link_note(v, a), said = "") {
-  v.out.push({ msg: { id: crypto.randomUUID(), ...msg }, ws: null, done, said });
-  v.flush();
-}
-function link_note(v, a) {
-  if (!a.ok) {
-    v.notes.push(a.error().message);
-  }
-}
-function answer_read(a) {
-  if (typeof a?.error !== "string") {
-    return new Ok({ text: a?.text, going: a?.going });
-  }
-  return new Err(Object.assign(new Error(a.error), a.status === undefined ? {} : { status: a.status }));
-}
-async function post(url, body, auth = {}) {
-  const headers = { ...auth, "content-type": "application/json" };
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) }).catch(() => null);
-  if (res === null) {
-    return new Err(new Error("Can't reach the server."));
-  }
-  const out = await res.json().catch(() => null);
-  return res.ok ? new Ok(out ?? {}) : new Err(new Error(out?.error ?? "HTTP " + res.status));
-}
 function part_due(v, part, before) {
   const last = before === undefined ? NaN : part_window(v, before);
   return part[1] === 1 && part[0] >= v.turn && !Number.isNaN(last) && part_window(v, part) !== last;
@@ -1283,14 +963,6 @@ function page_rows(v, page, from = 0) {
   const head = Cap(page.name + (v.agents.includes(page.name) ? " · at work" : " · done"));
   return [head, ...(page.log ?? []).slice(from).flatMap((e) => whole_rows(null, e))];
 }
-function live_push(live, kind, text, fresh = false) {
-  const top = live[live.length - 1];
-  if (top !== undefined && top.kind === kind && !fresh) {
-    top.text += text;
-  } else {
-    live.push({ kind, text });
-  }
-}
 function live_set(live, now) {
   const goes = live.every((l, k) => now[k]?.kind === l.kind && now[k].text.startsWith(l.text));
   const held = goes ? live : [];
@@ -1323,7 +995,7 @@ function entry_body(kind, text) {
   }
 }
 
-// web/src/Html.ts
+// web/src/html.ts
 var ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 var TALL = 4000;
 var SHEETS = `<svg viewBox="0 0 16 16" width="15" height="15"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 3.5v-.2A1.8 1.8 0 0 0 8.7 1.5H4.3A1.8 1.8 0 0 0 2.5 3.3v4.4a1.8 1.8 0 0 0 1.8 1.8h.2"/></svg>`;
@@ -1496,279 +1168,403 @@ function span_html(s) {
   }
 }
 
-// web/src/main.ts
-var DESK = matchMedia("(hover: hover)");
-var NONE = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
-var SCENES = `
-  <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
-  <div class="scene"><i class="mark"></i><h1>Kazuki</h1></div>`;
-var v = view_new();
-var BOX = $("textarea");
-var BACK = $("#import [name=back]");
-var P = {
-  id: "",
-  imgs: [],
-  rec: null,
-  shown: "",
-  end: true,
-  stick: true,
-  frame: 0,
-  rows: true,
-  toast: 0,
-  found: new Map,
-  done: {},
-  off: new Set,
-  step: ""
-};
-function $(sel) {
-  return document.querySelector(sel);
-}
-function kept(fact) {
-  return "kazuki." + fact + "." + P.id;
-}
-async function boot() {
-  document.head.insertAdjacentHTML("beforeend", `<style>${theme_css()}</style>`);
-  const q = new URLSearchParams(location.search);
-  history.replaceState(null, "", location.pathname === "/account" ? "/account" : "/");
-  if (q.has("deleted")) {
-    solo("Your local chat was deleted.", `<a href="/">Start a new chat</a>`);
-    return;
+// web/src/account.ts
+function go(path) {
+  if (location.pathname !== path) {
+    history.pushState(null, "", path);
   }
-  const me = await boot_me();
-  P.id = me.id;
-  chat();
-  document.body.className = "";
-  BOX.placeholder = HINT;
-  BOX.removeAttribute("inputmode");
-  BOX.removeAttribute("enterkeyhint");
-  BOX.removeAttribute("autocomplete");
-  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
-  BOX.dispatchEvent(new Event("input"));
   route();
-  connect();
 }
-async function boot_me() {
-  for (;; ) {
-    const res = await fetch("/api/me").catch(() => null);
-    if (res?.ok)
-      return res.json();
-    await new Promise((ok) => setTimeout(ok, RETRY));
+function route() {
+  const page = location.pathname === "/account";
+  $("#log").hidden = page;
+  document.body.classList.toggle("account", page);
+  $("#account").hidden = !page;
+  P.shown = location.pathname;
+  if (page) {
+    account();
   }
+  draw(false);
 }
-function solo(title, sub) {
-  document.body.className = "solo";
-  document.body.innerHTML = `<main><h1>${title}</h1><p class="sub">${sub}</p></main>`;
-}
-function chat() {
-  const file = $("input[type=file]");
-  BOX.oninput = () => {
-    sessionStorage.setItem(kept("draft"), BOX.value);
-    BOX.style.height = "auto";
-    BOX.style.height = Math.min(BOX.scrollHeight, innerHeight * 0.4) + "px";
-    draw(true);
+async function account() {
+  const el = $("#account");
+  const res = await fetch("/api/account").catch(() => null);
+  const a = res !== null && res.ok ? await res.json() : null;
+  if (a === null) {
+    el.innerHTML = `<p class="sub">Could not read your account. Try again in a moment.</p>`;
+    return;
+  }
+  el.innerHTML = account_html(a);
+  const kill = $("#account .kill");
+  const del = $("#account .del");
+  const name = kill.querySelector("input");
+  const sure = (open) => {
+    kill.hidden = !open;
+    del.hidden = open;
   };
-  BOX.onkeydown = (ev) => {
-    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && DESK.matches) {
-      ev.preventDefault();
-      submit();
-    }
+  del.onclick = () => {
+    sure(true);
+    name.focus();
   };
-  BOX.onpaste = (ev) => attach([...ev.clipboardData?.files ?? []]);
-  $("form").onsubmit = (ev) => {
+  $("#account .keep").onclick = () => sure(false);
+  name.oninput = () => kill.querySelector(".red").disabled = name.value.trim().toLowerCase() !== a.name.toLowerCase();
+  kill.onsubmit = (ev) => {
     ev.preventDefault();
-    submit();
+    account_delete(kill);
   };
-  $(".attach").onclick = () => file.click();
-  $(".mic").onclick = mic;
-  file.onchange = () => {
-    attach([...file.files ?? []]);
-    file.value = "";
-  };
-  onpopstate = route;
-  importer();
-  document.ondragover = (ev) => ev.preventDefault();
-  document.ondrop = (ev) => {
-    ev.preventDefault();
-    attach([...ev.dataTransfer?.files ?? []]);
-  };
-  document.onclick = click;
-  visualViewport.onresize = () => draw(true);
-  document.onscroll = () => {
-    P.end = innerHeight + scrollY >= document.documentElement.scrollHeight - 1;
-  };
-  draw(true);
 }
-function submit() {
-  const text = BOX.value.trim();
-  act({ $: "Send", text, images: P.imgs });
-  pics([]);
-  BOX.value = "";
-  BOX.dispatchEvent(new Event("input"));
-}
-function back(sent, out) {
+async function account_delete(kill) {
+  const name = kill.querySelector("input").value;
+  const out = await post("/api/delete", { confirm: name });
   if (out.ok) {
+    location.href = "/?deleted";
     return;
   }
-  if (BOX.value.trim() === "" && P.imgs.length === 0) {
-    BOX.value = sent.text;
-    BOX.dispatchEvent(new Event("input"));
-    pics(sent.images ?? []);
-  }
-  toast(out.error().message);
+  kill.querySelector(".why").textContent = out.error().message;
 }
-function attach(files) {
-  if (files.length > 0) {
-    pics([...P.imgs, ...files]);
+
+// src/util/clip.ts
+var CAP = 30000;
+function clip_end(str, at) {
+  if (str.length - at <= CAP) {
+    return str.length;
   }
+  const nl = str.lastIndexOf(`
+`, at + CAP - 1);
+  const low = str.charCodeAt(at + CAP) >> 10 === 55;
+  return nl >= at ? nl + 1 : at + CAP - (low ? 1 : 0);
 }
-function pics(imgs) {
-  const els = imgs.map((img) => {
-    const el = new Image;
-    el.src = URL.createObjectURL(img);
-    el.title = "Remove";
-    el.onclick = () => pics(imgs.filter((x) => x !== img));
-    return el;
-  });
-  P.imgs = imgs;
-  $("#pics").replaceChildren(...els);
-  draw(true);
+function clip_pages(str) {
+  const pages = [];
+  let at = 0;
+  do {
+    const end = clip_end(str, at);
+    pages.push(str.slice(at, end));
+    at = end;
+  } while (at < str.length);
+  return pages;
 }
-function act(a) {
-  const said = a.$ === "Send" ? a.text.trim() : "";
-  P.end = P.end || a.$ === "Send";
-  P.rows = true;
-  for (const msg of view_act(v, a)) {
-    link_send(v, msg, a.$ === "Send" ? (out) => back(a, out) : undefined, said);
-  }
-  draw(a.$ === "Send");
-}
-function click(ev) {
-  const el = ev.target.closest("[data-act], [data-copy], [data-go]");
-  const sel = getSelection();
-  if (el === null || sel !== null && !sel.isCollapsed && el.contains(sel.focusNode)) {
-    return;
-  }
-  const { act: a, copy: text, go: path } = el.dataset;
-  const menu = el.closest("#menu") !== null;
-  if (menu) {
-    $("#menu").hidePopover();
-  }
-  if (path !== undefined || a !== undefined && menu) {
-    ev.preventDefault();
-    go(path ?? "/");
-  }
-  if (a !== undefined) {
-    act(JSON.parse(a));
-  }
-  if (text !== undefined) {
-    navigator.clipboard.writeText(text).then(() => copied(el), () => toast("Could not copy."));
-  }
-}
-function copied(button) {
-  button.innerHTML = CHECK;
-  setTimeout(() => button.innerHTML = SHEETS, 1200);
-}
-async function mic() {
-  if (P.rec !== null) {
-    P.rec.stop();
-    return;
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-  if (stream === null) {
-    toast("Kazuki can't use the microphone.");
-    return;
-  }
-  const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
-  const rec = new MediaRecorder(stream, { mimeType });
-  const parts = [];
-  rec.ondataavailable = (ev) => parts.push(ev.data);
-  rec.onstop = () => {
-    stream.getTracks().forEach((track) => track.stop());
-    P.rec = null;
-    words(new Blob(parts, { type: rec.mimeType }));
-  };
-  rec.start();
-  P.rec = rec;
-  draw(false);
-  meter(stream, rec);
-}
-function meter(stream, rec) {
-  const audio = new AudioContext;
-  const probe = audio.createAnalyser();
-  audio.createMediaStreamSource(stream).connect(probe);
-  const buf = new Uint8Array(probe.fftSize);
-  const canvas = $(".voice canvas");
-  const pen = canvas.getContext("2d");
-  const levels = [];
-  const start = performance.now();
-  const frame = (now) => {
-    if (P.rec !== rec) {
-      audio.close();
-      return;
+async function* stream_lines(stream) {
+  const reader = stream.pipeThrough(new TextDecoderStream).getReader();
+  let rest = "";
+  for (let got = await reader.read();!got.done; got = await reader.read()) {
+    const nl = got.value.lastIndexOf(`
+`);
+    if (nl >= 0) {
+      yield (rest + got.value.slice(0, nl)).split(`
+`);
+      rest = "";
     }
-    probe.getByteTimeDomainData(buf);
-    const power = buf.reduce((sum, b) => sum + ((b - 128) / 128) ** 2, 0) / buf.length;
-    const level = Math.min(1, Math.sqrt(power) * 5);
-    const slot = Math.floor((now - start) / 50);
-    levels[slot] = Math.max(levels[slot] ?? 0, level);
-    const secs = Math.floor((now - start) / 1000);
-    $(".voice span").textContent = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
-    const dpr = devicePixelRatio;
-    const w = canvas.width = canvas.clientWidth * dpr;
-    const h = canvas.height = canvas.clientHeight * dpr;
-    pen.fillStyle = getComputedStyle(canvas).color;
-    const step = 5 * dpr;
-    for (let i = 0;i * step < w && slot - i >= 0; i++) {
-      const bar = Math.max(2 * dpr, (levels[slot - i] ?? 0) * h);
-      pen.fillRect(w - (i + 1) * step, (h - bar) / 2, 3 * dpr, bar);
-    }
-    requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
-}
-function words(audio) {
-  const act = { $: "voice", type: audio.type, body: () => audio };
-  link_send(v, act, heard);
-  draw(false);
-}
-function heard(out) {
-  draw(false);
-  const text = out.ok ? out.value().text?.trim() ?? "" : "";
-  if (text === "") {
-    toast(out.ok ? "No words heard." : out.error().message);
-    return;
+    rest += got.value.slice(nl + 1);
   }
-  const gap = /\S$/.test(BOX.value.slice(0, BOX.selectionStart)) ? " " : "";
-  BOX.setRangeText(gap + text, BOX.selectionStart, BOX.selectionEnd, "end");
-  BOX.dispatchEvent(new Event("input"));
-  BOX.focus();
+  yield [rest];
 }
-function connect() {
-  link_open(v, {
-    open: (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
-    post: (path, body) => fetch(path, { method: "POST", body }),
-    hear,
-    lost
+
+// src/import/claude-code.ts
+var SKIP = /^(<command-|<local-command|\[Request interrupted)/;
+function line_claude(s, j, last) {
+  const date = import_date(j.timestamp, last);
+  const own = (j.type === "user" || j.type === "assistant") && !j.isMeta && !j.isSidechain && !j.isCompactSummary;
+  const content = j.message?.content;
+  const blocks = !own ? [] : typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
+  s.where ||= j.cwd ? "session in " + j.cwd : "";
+  if (j.type === "attachment" && j.attachment?.type === "queued_command") {
+    return msgs_of("user", String(j.attachment.prompt ?? ""), date);
+  }
+  return blocks_msgs(j.type === "user" ? "user" : "unii", blocks, date);
+}
+function blocks_msgs(kind, blocks, date) {
+  const say = blocks.filter((b) => b.type === "image" || b.type === "text" && !SKIP.test(b.text));
+  const tools = blocks.flatMap((b) => b.type === "tool_use" ? msgs_of("tool", b.name + " " + JSON.stringify(b.input), date) : b.type === "tool_result" ? msgs_of("echo", parts_text(b.content), date) : []);
+  return [...msgs_of(kind, parts_text(say), date), ...tools];
+}
+
+// src/import/codex.ts
+var INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
+function line_codex(s, j, last) {
+  const p = j.payload ?? {};
+  const date = import_date(j.timestamp, last);
+  if (j.type === "session_meta") {
+    s.where = p.source?.subagent ?? p.source?.internal ? "" : "session in " + String(p.cwd ?? "");
+  }
+  return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : [];
+}
+function item_codex(p, date) {
+  switch (p.type) {
+    case "message": {
+      const kind = p.role === "user" ? "user" : p.role === "assistant" ? "unii" : null;
+      const parts = (p.content ?? []).filter((c) => !INJECTED.test(c.text ?? ""));
+      return kind === null ? [] : msgs_of(kind, parts_text(parts), date);
+    }
+    case "function_call": {
+      return msgs_of("tool", p.name + " " + p.arguments, date);
+    }
+    case "custom_tool_call": {
+      return msgs_of("tool", p.name + " " + JSON.stringify({ input: p.input }), date);
+    }
+    case "local_shell_call": {
+      return msgs_of("tool", "shell " + JSON.stringify({ command: p.action?.command }), date);
+    }
+    case "function_call_output":
+    case "custom_tool_call_output": {
+      return msgs_of("echo", parts_text(p.output), date);
+    }
+  }
+  return [];
+}
+
+// src/util/zip.ts
+async function zip_file(zip, name) {
+  const view = async (at, n) => new DataView(await zip.slice(at, at + n).arrayBuffer());
+  const back = Math.min(zip.size, 65577);
+  const tail = await view(zip.size - back, back);
+  let end = tail.byteLength - 22;
+  while (end >= 0 && tail.getUint32(end, true) !== 101010256) {
+    end -= 1;
+  }
+  if (end < 0) {
+    return null;
+  }
+  const wide = end >= 20 && tail.getUint32(end - 20, true) === 117853008;
+  const z64 = wide ? await view(Number(tail.getBigUint64(end - 12, true)), 56) : null;
+  const count = z64 === null ? tail.getUint16(end + 10, true) : Number(z64.getBigUint64(32, true));
+  const size = z64 === null ? tail.getUint32(end + 12, true) : Number(z64.getBigUint64(40, true));
+  const from = z64 === null ? tail.getUint32(end + 16, true) : Number(z64.getBigUint64(48, true));
+  const dir = await view(from, size);
+  for (let p = 0, k = 0;k < count; k++) {
+    const entry = new TextDecoder().decode(new Uint8Array(dir.buffer, p + 46, dir.getUint16(p + 28, true)));
+    const [, packed, at] = zip_sizes(dir, p);
+    if (entry === name || entry.endsWith("/" + name)) {
+      const head = await view(at, 30);
+      const data = zip.slice(at + 30 + head.getUint16(26, true) + head.getUint16(28, true)).slice(0, packed);
+      return dir.getUint16(p + 10, true) === 8 ? new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob() : data;
+    }
+    p += 46 + dir.getUint16(p + 28, true) + dir.getUint16(p + 30, true) + dir.getUint16(p + 32, true);
+  }
+  return null;
+}
+function zip_sizes(dir, p) {
+  const short = [p + 24, p + 20, p + 42].map((at) => dir.getUint32(at, true));
+  const extra = p + 46 + dir.getUint16(p + 28, true);
+  let x = extra;
+  while (x + 4 <= extra + dir.getUint16(p + 30, true) && dir.getUint16(x, true) !== 1) {
+    x += 4 + dir.getUint16(x + 2, true);
+  }
+  let k = 0;
+  return short.map((n) => n === 4294967295 ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n);
+}
+
+// src/import/export.ts
+var NOT_EXPORT = "Not a Claude or ChatGPT export.";
+async function import_export(file) {
+  try {
+    const zip = await file.slice(0, 2).text() === "PK";
+    const json = zip ? await zip_file(file, "conversations.json") : file;
+    if (json === null) {
+      return new Err(new Error("No conversations.json in the zip."));
+    }
+    const chats = await json.text().then(JSON.parse).catch(() => null);
+    if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
+      return new Err(new Error(NOT_EXPORT));
+    }
+    const sessions = await Promise.all(chats.map(chat_session));
+    return new Ok(sessions.filter((s) => s !== null));
+  } catch (e) {
+    return caught(e);
+  }
+}
+function chat_session(chat) {
+  const [app, msgs] = chat.mapping ? ["ChatGPT", chat_openai(chat)] : ["Claude", chat_claude(chat)];
+  const file = new Blob(msgs.map((m) => JSON.stringify(m) + `
+`));
+  return import_session(file, "msgs", app, 'chat "' + String(chat.title ?? chat.name ?? "") + '"');
+}
+function chat_openai(chat) {
+  const nodes = [];
+  for (let id = chat.current_node;id; id = chat.mapping[id]?.parent) {
+    nodes.unshift(chat.mapping[id]?.message);
+  }
+  let date = import_date(chat.create_time, "");
+  return nodes.flatMap((m) => {
+    const role = m?.author?.role;
+    const type = String(m?.content?.content_type);
+    const kind = role === "user" ? "user" : role === "assistant" ? m.recipient === "all" ? "unii" : "tool" : role === "tool" ? "echo" : null;
+    const skip = kind === null || m.metadata?.is_visually_hidden_from_conversation === true || type === "thoughts" || type === "reasoning_recap";
+    date = import_date(m?.create_time, date);
+    return skip ? [] : msgs_of(kind, (kind === "tool" ? m.recipient + " " : "") + parts_text(m.content.parts ?? [m.content.text]), date);
   });
 }
-async function lost(_up) {
-  draw(true);
-  return true;
+function chat_claude(chat) {
+  let date = import_date(chat.created_at, "");
+  return (chat.chat_messages ?? []).flatMap((m) => {
+    date = import_date(m.created_at, date);
+    const kind = m.sender === "human" ? "user" : "unii";
+    const blocks = Array.isArray(m.content) ? m.content : [{ type: "text", text: String(m.text ?? "") }];
+    const files = [...m.attachments ?? [], ...m.files ?? []].map((f) => ({ type: "text", text: "[file " + f.file_name + "]" }));
+    return blocks_msgs(kind, [...blocks, ...files], date);
+  });
 }
-function hear(msg) {
-  const was = view_pick(v);
-  const agents = v.agents.join();
-  for (const out of view_hear(v, msg)) {
-    link_send(v, out);
-  }
-  const now = view_pick(v).filter((k) => was.length > 0 && !was.some((w) => w.text === k.text));
-  if (now.length > 0) {
-    toast("Now " + now.map((k) => k.hint).join("; ") + ".");
-  }
-  P.rows ||= msg.$ === "state" ? v.agents.join() !== agents : msg.$ !== "delta" && msg.$ !== "live";
-  import_welcome();
-  draw(true);
+
+// src/import/import.ts
+var NODE = 512;
+var LINE = 480;
+var PRICE = { base: 187, byte: 735, depth: 628 };
+var PART = 2 ** 20;
+var OLD = "Nothing new: these chats are in Kazuki's memory already.";
+var MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
+var DONE = "Your past chats are in Kazuki's memory: ask about them any time.";
+var DAY = new Intl.DateTimeFormat("en-US", { month: "short", day: "2-digit", year: "numeric" });
+var COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 0 });
+var EXPORTS = { Claude: "Settings › Privacy › Export data", ChatGPT: "Settings › Data controls › Export data" };
+function import_file(path) {
+  const session = /(^|\/)(projects|sessions|archived_sessions)\//.test(path);
+  return session && path.endsWith(".jsonl") && !path.includes("subagents/");
 }
+async function import_session(file, form, app = "", where = "") {
+  const s = { app, form, where, start: "", file, heads: [] };
+  for await (const m of import_read(s)) {
+    s.heads.push({ kind: m.kind, date: m.date, size: import_size(m), n: s.heads.length });
+  }
+  s.start = s.heads[0]?.date ?? "";
+  return s.heads.length > 0 ? s : null;
+}
+async function* import_read(s) {
+  let date = "";
+  for await (const lines of stream_lines(s.file.stream())) {
+    for (const line of lines) {
+      const msgs = line_msgs(s, line, date);
+      date = msgs.at(-1)?.date ?? date;
+      yield* msgs;
+    }
+  }
+}
+function line_log(s, j, last) {
+  s.app ||= j.type === "session_meta" ? "ChatGPT" : "Claude";
+  return s.app === "ChatGPT" ? line_codex(s, j, last) : line_claude(s, j, last);
+}
+function line_msgs(s, line, last) {
+  try {
+    const j = JSON.parse(line);
+    return s.form === "msgs" ? [j] : line_log(s, j, last);
+  } catch {
+    return [];
+  }
+}
+function import_pick2(sessions, want, done) {
+  const old = [...sessions].sort((a, b) => a.start.localeCompare(b.start));
+  const keep = (m, last) => (want.tools || m.kind === "user" || m.kind === "unii") && m.date >= want.since && import_new(m, last);
+  const kept = (s, last) => s.heads.filter((m) => keep(m, last));
+  return old.map((s) => ({ ...s, heads: kept(s, done[import_id(s)]) })).filter((s) => s.heads.length > 0);
+}
+function import_plan(sessions, want, done, count) {
+  const all = import_pick2(sessions, { ...want, since: "" }, done);
+  const shown = import_pick2(all, want, {});
+  const picked = shown.filter((s) => !want.off.includes(import_id(s)));
+  const first = all.map((s) => s.heads[0].date).sort()[0] ?? "";
+  const sizes = picked.flatMap((s) => [import_size(import_note(s)), ...s.heads.map((m) => m.size)]);
+  return { sessions: shown, picked, msgs: sizes.length - picked.length, first: first.slice(0, 10), guess: import_usd(count, sizes) };
+}
+function import_new(m, last) {
+  return last === undefined || (m.date ?? "") > last;
+}
+function import_name(s) {
+  return s.app + " " + s.where + ", from " + new Date(s.start).toLocaleString("sv-SE").slice(0, 16);
+}
+function import_cells(s) {
+  const day = DAY.format(new Date(s.start));
+  const where = s.where.startsWith("session in ") ? path_short(s.where.slice(11)) : s.where.replace(/^chat "(.*)"$/, "$1") || "untitled";
+  return [day, count_short(s.heads.length), where];
+}
+function count_short(n) {
+  return COUNT.format(n).toLowerCase();
+}
+function path_short(path) {
+  const parts = path.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~").split("/");
+  const head = parts[0] === "" ? 2 : 1;
+  return parts.length - head > 3 ? [...parts.slice(0, head + 1), "…", ...parts.slice(-2)].join("/") : parts.join("/");
+}
+function import_note(s) {
+  return { kind: "note", text: import_name(s) + " (imported)", date: s.start };
+}
+function import_id(s) {
+  return import_key(import_note(s));
+}
+function import_key(note) {
+  return note.date + " " + note.text.replace(/^.*?(?= session in | chat ")/, "").replace(/, from [^,]*$/, "");
+}
+async function* import_body(picked) {
+  let part = "";
+  for (const s of picked) {
+    const kept = new Set(s.heads.map((m) => m.n));
+    let n = 0;
+    part += JSON.stringify(import_note(s)) + `
+`;
+    for await (const m of import_read(s)) {
+      part += kept.has(n++) ? JSON.stringify(m) + `
+` : "";
+      if (part.length >= PART) {
+        yield part;
+        part = "";
+      }
+    }
+  }
+  yield part;
+}
+function import_guess(a, sizes) {
+  const usd = [];
+  let nodes = sizes.map((bytes) => ({ bytes, depth: 0 }));
+  for (let l = 0, i = a;nodes.length > 0; l++, i = Math.floor(i / 2)) {
+    usd.push(nodes.map(node_usd));
+    const line = (k) => k < 0 ? { bytes: LINE, depth: l } : node_line(nodes[k]);
+    const from = Math.floor(i / 2);
+    nodes = Array.from({ length: Math.floor((i + nodes.length) / 2) - from }, (_, j) => node_merge(line(2 * (from + j) - i), line(2 * (from + j) + 1 - i)));
+  }
+  return usd;
+}
+function import_usd(a, sizes) {
+  return import_guess(a, sizes).flat().reduce((x, y) => x + y, 0) / 1e6;
+}
+function import_size(m) {
+  return new TextEncoder().encode(m.kind + ": " + m.text).length;
+}
+function import_count(n, what) {
+  return n.toLocaleString("en-US") + " " + what + (n === 1 ? "message" : "messages");
+}
+function guess_usd(usd) {
+  return "$" + Math.max(0.01, usd).toFixed(2);
+}
+function node_usd(node) {
+  if (node.bytes <= NODE) {
+    return 0;
+  }
+  const { base, byte, depth } = PRICE;
+  return Math.round(base + byte * Math.log2(node.bytes / NODE) + depth * (node.depth + 1));
+}
+function node_line(node) {
+  return node.bytes > NODE ? { bytes: LINE, depth: node.depth + 1 } : { bytes: node.bytes, depth: 0 };
+}
+function node_merge(a, b) {
+  return { bytes: a.bytes + 1 + b.bytes, depth: Math.max(a.depth, b.depth) };
+}
+function import_date(at, last) {
+  const ms = typeof at === "number" ? at * 1000 : Date.parse(String(at));
+  return Number.isNaN(ms) ? last : new Date(ms).toISOString();
+}
+function msgs_of(kind, text, date) {
+  const pages = text.trim() === "" ? [] : clip_pages(text);
+  return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1 }));
+}
+function parts_text(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+  const parts = Array.isArray(content) ? content : [];
+  return parts.map((c) => typeof c === "string" ? c : typeof c.text === "string" ? c.text : String(c.type ?? c.content_type).includes("image") ? "[image]" : "").join(`
+`);
+}
+
+// web/src/import.ts
+var NONE = "No Claude or ChatGPT chats in that folder. Choose ~/.claude or ~/.codex.";
 function importer() {
   const form = $("#import form");
   const dir = $("#import [name=dir]");
@@ -1976,6 +1772,281 @@ async function import_copy(file) {
     return caught(e);
   }
 }
+
+// web/src/voice.ts
+async function mic() {
+  if (P.rec !== null) {
+    P.rec.stop();
+    return;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+  if (stream === null) {
+    toast("Kazuki can't use the microphone.");
+    return;
+  }
+  const mimeType = ["audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+  const rec = new MediaRecorder(stream, { mimeType });
+  const parts = [];
+  rec.ondataavailable = (ev) => parts.push(ev.data);
+  rec.onstop = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    P.rec = null;
+    words(new Blob(parts, { type: rec.mimeType }));
+  };
+  rec.start();
+  P.rec = rec;
+  draw(false);
+  meter(stream, rec);
+}
+function meter(stream, rec) {
+  const audio = new AudioContext;
+  const probe = audio.createAnalyser();
+  audio.createMediaStreamSource(stream).connect(probe);
+  const buf = new Uint8Array(probe.fftSize);
+  const canvas = $(".voice canvas");
+  const pen = canvas.getContext("2d");
+  const levels = [];
+  const start = performance.now();
+  const frame = (now) => {
+    if (P.rec !== rec) {
+      audio.close();
+      return;
+    }
+    probe.getByteTimeDomainData(buf);
+    const power = buf.reduce((sum, b) => sum + ((b - 128) / 128) ** 2, 0) / buf.length;
+    const level = Math.min(1, Math.sqrt(power) * 5);
+    const slot = Math.floor((now - start) / 50);
+    levels[slot] = Math.max(levels[slot] ?? 0, level);
+    const secs = Math.floor((now - start) / 1000);
+    $(".voice span").textContent = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
+    const dpr = devicePixelRatio;
+    const w = canvas.width = canvas.clientWidth * dpr;
+    const h = canvas.height = canvas.clientHeight * dpr;
+    pen.fillStyle = getComputedStyle(canvas).color;
+    const step = 5 * dpr;
+    for (let i = 0;i * step < w && slot - i >= 0; i++) {
+      const bar = Math.max(2 * dpr, (levels[slot - i] ?? 0) * h);
+      pen.fillRect(w - (i + 1) * step, (h - bar) / 2, 3 * dpr, bar);
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+function words(audio) {
+  const act = { $: "voice", type: audio.type, body: () => audio };
+  link_send(v, act, heard);
+  draw(false);
+}
+function heard(out) {
+  draw(false);
+  const text = out.ok ? out.value().text?.trim() ?? "" : "";
+  if (text === "") {
+    toast(out.ok ? "No words heard." : out.error().message);
+    return;
+  }
+  const gap = /\S$/.test(BOX.value.slice(0, BOX.selectionStart)) ? " " : "";
+  BOX.setRangeText(gap + text, BOX.selectionStart, BOX.selectionEnd, "end");
+  BOX.dispatchEvent(new Event("input"));
+  BOX.focus();
+}
+
+// web/src/main.ts
+var DESK = matchMedia("(hover: hover)");
+var SCENES = `
+  <div class="scene"><p>Your entire life.</p><p>One single chat.</p></div>
+  <div class="scene"><i class="mark"></i><h1>Kazuki</h1></div>`;
+var v = view_new();
+var BOX = $("textarea");
+var BACK = $("#import [name=back]");
+var P = {
+  id: "",
+  imgs: [],
+  rec: null,
+  shown: "",
+  end: true,
+  stick: true,
+  frame: 0,
+  rows: true,
+  toast: 0,
+  found: new Map,
+  done: {},
+  off: new Set,
+  step: ""
+};
+function $(sel) {
+  return document.querySelector(sel);
+}
+function kept(fact) {
+  return "kazuki." + fact + "." + P.id;
+}
+async function boot() {
+  document.head.insertAdjacentHTML("beforeend", `<style>${theme_css()}</style>`);
+  const q = new URLSearchParams(location.search);
+  history.replaceState(null, "", location.pathname === "/account" ? "/account" : "/");
+  if (q.has("deleted")) {
+    solo("Your local chat was deleted.", `<a href="/">Start a new chat</a>`);
+    return;
+  }
+  const me = await boot_me();
+  P.id = me.id;
+  chat();
+  document.body.className = "";
+  BOX.placeholder = HINT;
+  BOX.removeAttribute("inputmode");
+  BOX.removeAttribute("enterkeyhint");
+  BOX.removeAttribute("autocomplete");
+  BOX.value = sessionStorage.getItem(kept("draft")) ?? "";
+  BOX.dispatchEvent(new Event("input"));
+  route();
+  connect();
+}
+async function boot_me() {
+  for (;; ) {
+    const res = await fetch("/api/me").catch(() => null);
+    if (res?.ok)
+      return res.json();
+    await new Promise((ok) => setTimeout(ok, RETRY));
+  }
+}
+function solo(title, sub) {
+  document.body.className = "solo";
+  document.body.innerHTML = `<main><h1>${title}</h1><p class="sub">${sub}</p></main>`;
+}
+function chat() {
+  const file = $("input[type=file]");
+  BOX.oninput = () => {
+    sessionStorage.setItem(kept("draft"), BOX.value);
+    BOX.style.height = "auto";
+    BOX.style.height = Math.min(BOX.scrollHeight, innerHeight * 0.4) + "px";
+    draw(true);
+  };
+  BOX.onkeydown = (ev) => {
+    if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229 && DESK.matches) {
+      ev.preventDefault();
+      submit();
+    }
+  };
+  BOX.onpaste = (ev) => attach([...ev.clipboardData?.files ?? []]);
+  $("form").onsubmit = (ev) => {
+    ev.preventDefault();
+    submit();
+  };
+  $(".attach").onclick = () => file.click();
+  $(".mic").onclick = mic;
+  file.onchange = () => {
+    attach([...file.files ?? []]);
+    file.value = "";
+  };
+  onpopstate = route;
+  importer();
+  document.ondragover = (ev) => ev.preventDefault();
+  document.ondrop = (ev) => {
+    ev.preventDefault();
+    attach([...ev.dataTransfer?.files ?? []]);
+  };
+  document.onclick = click;
+  visualViewport.onresize = () => draw(true);
+  document.onscroll = () => {
+    P.end = innerHeight + scrollY >= document.documentElement.scrollHeight - 1;
+  };
+  draw(true);
+}
+function submit() {
+  const text = BOX.value.trim();
+  act({ $: "Send", text, images: P.imgs });
+  pics([]);
+  BOX.value = "";
+  BOX.dispatchEvent(new Event("input"));
+}
+function back(sent, out) {
+  if (out.ok) {
+    return;
+  }
+  if (BOX.value.trim() === "" && P.imgs.length === 0) {
+    BOX.value = sent.text;
+    BOX.dispatchEvent(new Event("input"));
+    pics(sent.images ?? []);
+  }
+  toast(out.error().message);
+}
+function attach(files) {
+  if (files.length > 0) {
+    pics([...P.imgs, ...files]);
+  }
+}
+function pics(imgs) {
+  const els = imgs.map((img) => {
+    const el = new Image;
+    el.src = URL.createObjectURL(img);
+    el.title = "Remove";
+    el.onclick = () => pics(imgs.filter((x) => x !== img));
+    return el;
+  });
+  P.imgs = imgs;
+  $("#pics").replaceChildren(...els);
+  draw(true);
+}
+function act(a) {
+  const said = a.$ === "Send" ? a.text.trim() : "";
+  P.end = P.end || a.$ === "Send";
+  P.rows = true;
+  for (const msg of view_act(v, a)) {
+    link_send(v, msg, a.$ === "Send" ? (out) => back(a, out) : undefined, said);
+  }
+  draw(a.$ === "Send");
+}
+function click(ev) {
+  const el = ev.target.closest("[data-act], [data-copy], [data-go]");
+  const sel = getSelection();
+  if (el === null || sel !== null && !sel.isCollapsed && el.contains(sel.focusNode)) {
+    return;
+  }
+  const { act: a, copy: text, go: path } = el.dataset;
+  const menu = el.closest("#menu") !== null;
+  if (menu) {
+    $("#menu").hidePopover();
+  }
+  if (path !== undefined || a !== undefined && menu) {
+    ev.preventDefault();
+    go(path ?? "/");
+  }
+  if (a !== undefined) {
+    act(JSON.parse(a));
+  }
+  if (text !== undefined) {
+    navigator.clipboard.writeText(text).then(() => copied(el), () => toast("Could not copy."));
+  }
+}
+function copied(button) {
+  button.innerHTML = CHECK;
+  setTimeout(() => button.innerHTML = SHEETS, 1200);
+}
+function connect() {
+  link_open(v, {
+    open: (query) => new WebSocket(location.origin.replace(/^http/, "ws") + "/ws" + query),
+    post: (path, body) => fetch(path, { method: "POST", body }),
+    hear,
+    lost
+  });
+}
+async function lost(_up) {
+  draw(true);
+  return true;
+}
+function hear(msg) {
+  const was = view_pick(v);
+  const agents = v.agents.join();
+  for (const out of view_hear(v, msg)) {
+    link_send(v, out);
+  }
+  const now = view_pick(v).filter((k) => was.length > 0 && !was.some((w) => w.text === k.text));
+  if (now.length > 0) {
+    toast("Now " + now.map((k) => k.hint).join("; ") + ".");
+  }
+  P.rows ||= msg.$ === "state" ? v.agents.join() !== agents : msg.$ !== "delta" && msg.$ !== "live";
+  import_welcome();
+  draw(true);
+}
 var MARKUP = new WeakMap;
 function markup(el, htmls) {
   const had = new Map;
@@ -2078,59 +2149,6 @@ function anchor() {
   }
   return null;
 }
-function go(path) {
-  if (location.pathname !== path) {
-    history.pushState(null, "", path);
-  }
-  route();
-}
-function route() {
-  const page = location.pathname === "/account";
-  $("#log").hidden = page;
-  document.body.classList.toggle("account", page);
-  $("#account").hidden = !page;
-  P.shown = location.pathname;
-  if (page) {
-    account();
-  }
-  draw(false);
-}
-async function account() {
-  const el = $("#account");
-  const res = await fetch("/api/account").catch(() => null);
-  const a = res !== null && res.ok ? await res.json() : null;
-  if (a === null) {
-    el.innerHTML = `<p class="sub">Could not read your account. Try again in a moment.</p>`;
-    return;
-  }
-  el.innerHTML = account_html(a);
-  const kill = $("#account .kill");
-  const del = $("#account .del");
-  const name = kill.querySelector("input");
-  const sure = (open) => {
-    kill.hidden = !open;
-    del.hidden = open;
-  };
-  del.onclick = () => {
-    sure(true);
-    name.focus();
-  };
-  $("#account .keep").onclick = () => sure(false);
-  name.oninput = () => kill.querySelector(".red").disabled = name.value.trim().toLowerCase() !== a.name.toLowerCase();
-  kill.onsubmit = (ev) => {
-    ev.preventDefault();
-    account_delete(kill);
-  };
-}
-async function account_delete(kill) {
-  const name = kill.querySelector("input").value;
-  const out = await post("/api/delete", { confirm: name });
-  if (out.ok) {
-    location.href = "/?deleted";
-    return;
-  }
-  kill.querySelector(".why").textContent = out.error().message;
-}
 function toast(text) {
   const el = $("#toast");
   el.textContent = text;
@@ -2171,3 +2189,16 @@ function intro_play() {
 }
 var INTRO = intro_play();
 boot();
+export {
+  $,
+  BACK,
+  BOX,
+  DESK,
+  INTRO,
+  P,
+  draw,
+  kept,
+  markup,
+  toast,
+  v
+};
