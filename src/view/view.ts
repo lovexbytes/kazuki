@@ -373,6 +373,7 @@ export function view_act(v: View, act: Act): Client[] {
       // from the last pick asked for and not acked, else the chat's
       const from = v.out.flatMap((p) => (p.msg.$ === "pick" ? [p.msg.to] : [])).at(-1) ?? v.pick;
       if (from === null) {
+        v.notes.push("The chat has not loaded yet.");
         return [];
       }
       const to = Pick.move(from, act.move, v.providers, act.to);

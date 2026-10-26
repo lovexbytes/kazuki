@@ -98,9 +98,13 @@ test("the compiled terminal manages its local server separately from its TUI", a
     expect(update.exitCode).toBe(7);
     expect(update_err).toContain("raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh");
     tui = Bun.spawn([bin, "tui"], { cwd: dir, env, stdin: "pipe", stdout: "ignore", stderr: "pipe" });
-    tui.stdin.write("/quit\n");
+    // a command as the first line waits for the chat it reads
+    tui.stdin.write("/model\n/quit\n");
+    // read as it runs: a full stderr pipe would block its exit
+    const tui_err = new Response(tui.stderr).text();
     await Promise.race([tui.exited, Bun.sleep(5000).then(() => { throw new Error("TUI did not exit"); })]);
     expect(tui.exitCode).toBe(0);
+    expect(await tui_err).toContain("/model <model> picks one.");
     expect((await fetch(site + "/api/me")).status).toBe(200);
     v6 = Bun.spawn([bin, "server"], { cwd: dir, env: { ...env, KAZUKI_URL: "http://[::1]:" + port }, stdout: "ignore", stderr: "pipe" });
     await Promise.race([v6.exited, Bun.sleep(3000).then(() => { throw new Error("IPv6 alias server command did not return"); })]);
