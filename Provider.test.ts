@@ -5,6 +5,7 @@
 // models.dev prices them, a pick not set is the first connected model
 // (the compactor: that provider's cheapest),
 // one set whose provider isn't connected gives way to it and is told,
+// the picks follow the providers connected now,
 // one naming no model is an error, a sign-in file without its tokens
 // connects nothing, the keys leave the environment, with none connected
 // the server doesn't start, a call names its model as the method
@@ -60,31 +61,38 @@ test("a key's models are priced as models.dev prices them; a sign-in's are not",
 });
 
 test("no pick set: the first connected model", () => {
-  picks();
-  expect(config.PICK).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "medium", speed: "slow" });
-  expect(config.COMPACTOR).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "high", speed: "slow" });
-  expect(config.AGENTS).toBeNull();
-  expect(config.LOST).toEqual([]);
+  expect(Providers.picks().pick).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "medium", speed: "slow" });
+  expect(Providers.picks().compactor).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "high", speed: "slow" });
+  expect(Providers.picks().agents).toBeNull();
+  expect(Providers.picks().lost).toEqual([]);
 });
 
 test("no compactor set: the first connected provider's cheapest priced model", () => {
   config.SECRETS.set("ANTHROPIC_API_KEY", "test");
-  picks();
-  expect(config.PICK.model).toBe("opus-5.5");
-  expect(config.COMPACTOR).toEqual({ vendor: "anthropic", model: "haiku-5.5", effort: "high" });
+  expect(Providers.picks().pick.model).toBe("opus-5.5");
+  expect(Providers.picks().compactor).toEqual({ vendor: "anthropic", model: "haiku-5.5", effort: "high" });
   config.SECRETS.set("ANTHROPIC_API_KEY", "");
-  picks();
+});
+
+test("the picks follow the providers connected now; with none, the last made stay", () => {
+  config.SECRETS.set("ANTHROPIC_API_KEY", "test");
+  expect(Providers.picks().compactor.vendor).toBe("anthropic");
+  config.SECRETS.set("ANTHROPIC_API_KEY", "");
+  expect(Providers.picks().pick.vendor).toBe("openai");
+  expect(Providers.picks().compactor.vendor).toBe("openai");
+  config.SECRETS.set("OPENAI_API_KEY", "");
+  expect(Providers.picks().pick.vendor).toBe("openai");
+  config.SECRETS.set("OPENAI_API_KEY", "test");
 });
 
 test("picks set but not connected give way, and each is told", () => {
   process.env.KAZUKI_PICK      = "anthropic:sonnet-5.5:medium:slow";
   process.env.KAZUKI_COMPACTOR = "anthropic:haiku-5.5:high:slow";
   process.env.KAZUKI_AGENTS    = "anthropic:opus-5.5:high:slow";
-  picks();
-  expect(config.PICK.vendor).toBe("openai");
-  expect(config.COMPACTOR.vendor).toBe("openai");
-  expect(config.AGENTS).toBeNull();
-  expect(config.LOST).toEqual([
+  expect(Providers.picks().pick.vendor).toBe("openai");
+  expect(Providers.picks().compactor.vendor).toBe("openai");
+  expect(Providers.picks().agents).toBeNull();
+  expect(Providers.picks().lost).toEqual([
     "pick anthropic:sonnet-5.5:medium:slow isn't connected, so new chats run on openai:gpt-6-luna:medium:slow.",
     "compactor anthropic:haiku-5.5:high:slow isn't connected, so summaries run on openai:gpt-6-luna:high:slow.",
     "agents anthropic:opus-5.5:high:slow isn't connected, so agents run on the chat's pick.",
@@ -92,8 +100,7 @@ test("picks set but not connected give way, and each is told", () => {
   delete process.env.KAZUKI_PICK;
   delete process.env.KAZUKI_COMPACTOR;
   delete process.env.KAZUKI_AGENTS;
-  picks();
-  expect(config.LOST).toEqual([]);
+  expect(Providers.picks().lost).toEqual([]);
 });
 
 test("a pick naming no model is an error", () => {
@@ -118,15 +125,12 @@ test("config models naming no connected model is its own error", () => {
 
 test("a pick's effort and speed may be left out, in either order", () => {
   process.env.KAZUKI_PICK = "openai:gpt-6-luna";
-  picks();
-  expect(config.PICK).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "medium", speed: "slow" });
+  expect(Providers.picks().pick).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "medium", speed: "slow" });
   process.env.KAZUKI_PICK = "openai:gpt-6-luna:fast:high";
-  picks();
-  expect(config.PICK).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "high", speed: "fast" });
+  expect(Providers.picks().pick).toEqual({ vendor: "openai", model: "gpt-6-luna", effort: "high", speed: "fast" });
   process.env.KAZUKI_PICK = "openai:gpt-6-luna:high:ultrafast";
-  picks();
-  expect(config.PICK.speed).toBe("fast");
-  expect(config.LOST).toEqual([]);
+  expect(Providers.picks().pick.speed).toBe("fast");
+  expect(Providers.picks().lost).toEqual([]);
   delete process.env.KAZUKI_PICK;
 });
 

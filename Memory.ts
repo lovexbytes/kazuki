@@ -783,7 +783,7 @@ export namespace Memory {
 
   // a call of node (l,i)'s summary, on the compactor
   export function ask(mem: Memory, l: number, i: number, text: string, blocks: Block[]): Call {
-    return AskAI.ask({ ...mem.share(), ...Providers.ask(config.COMPACTOR), blocks, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
+    return AskAI.ask({ ...mem.share(), ...Providers.ask(Providers.picks().compactor), blocks, patient: true, yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined }, () => {});
   }
 
   // a summary's try: its call's end, the call held in `calls` till then

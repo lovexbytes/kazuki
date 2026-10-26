@@ -122,6 +122,11 @@ export namespace Providers {
     return new Ok();
   }
 
+  // the picks, as the providers connected now make them (config_live)
+  export function picks(): config.Picks {
+    return config.config_live(Providers.offer(), Providers.catalog());
+  }
+
   export function connected(p: Provider): boolean {
     return Providers.active(p) !== undefined;
   }

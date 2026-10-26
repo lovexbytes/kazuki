@@ -38,11 +38,9 @@ process.env.KAZUKI_DIR = DIR;
 const config = await import("./Config.ts");
 config.SECRETS.set("ANTHROPIC_API_KEY", "test");
 
-// the providers, and the picks from them
+// the providers
 const { Plugin } = await import("./Plugin.ts");
-const { Providers } = await import("./Provider.ts");
 Plugin.load();
-config.config_picks(Providers.offer(), Providers.catalog());
 
 const { AskAI } = await import("./AskAI.ts");
 const { Memory } = await import("./Memory.ts");

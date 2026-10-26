@@ -200,11 +200,8 @@ const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")})
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
 const { Memory } = await import(${JSON.stringify(import.meta.dir + "/Memory.ts")});
-const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
 const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
-const { Providers } = await import(${JSON.stringify(import.meta.dir + "/Provider.ts")});
 Plugin.load();
-config.config_picks(Providers.offer(), Providers.catalog());
 Chat.cloud = Cloud.open(() => {});
 const chat = Chat.open({ id: "u1", name: "a@b.c" });
 AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
@@ -241,11 +238,8 @@ const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")})
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/AskAI.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
 const { Memory } = await import(${JSON.stringify(import.meta.dir + "/Memory.ts")});
-const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
 const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
-const { Providers } = await import(${JSON.stringify(import.meta.dir + "/Provider.ts")});
 Plugin.load();
-config.config_picks(Providers.offer(), Providers.catalog());
 Chat.cloud = Cloud.open(() => {});
 AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
 const file = (id) => process.env.KAZUKI_DIR + "/users/" + id + "/import.json";
@@ -292,3 +286,31 @@ test("a worker that dies starts again; one that fails in its place, after a paus
   await Bun.sleep(5100);
   expect(starts.n).toBe(2);
 }, 15e3);
+
+// a chat open as its provider disconnects runs, from its next turn, on
+// a model connected now, and says so
+const MOVED = `
+const { Chat } = await import(${JSON.stringify(import.meta.dir + "/Server.ts")});
+const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/Cloud.ts")});
+const config = await import(${JSON.stringify(import.meta.dir + "/Config.ts")});
+const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/Plugin.ts")});
+Plugin.load();
+Chat.cloud = Cloud.open(() => {});
+config.SECRETS.set("ANTHROPIC_API_KEY", "test");
+config.SECRETS.set("OPENAI_API_KEY", "test");
+const chat = Chat.open({ id: "u1", name: "a" });
+const was = chat.pick.vendor;
+config.SECRETS.set("ANTHROPIC_API_KEY", "");
+Chat.repick(chat);
+const notes = chat.mem.count;
+console.log(JSON.stringify({ was, now: chat.pick.vendor, saved: chat.mem.pick.vendor, told: notes > 2 }));
+process.exit(0);
+`;
+
+test("a chat whose provider disconnects runs on one connected now", async () => {
+  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-");
+  fs.writeFileSync(dir + "/moved.ts", MOVED);
+  const proc = Bun.spawn([process.execPath, dir + "/moved.ts"], { env: { ...process.env, KAZUKI_DIR: dir }, stdout: "pipe", stderr: "inherit" });
+  const out = JSON.parse((await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}");
+  expect(out).toEqual({ was: "anthropic", now: "openai", saved: "openai", told: true });
+});

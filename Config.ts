@@ -3,10 +3,13 @@
 // The server's settings. Its DIR ($KAZUKI_DIR, default ~/.kazuki) holds
 // config.json, the lock and users/<id>. Each key of config.json (README)
 // may be set as KAZUKI_<KEY> instead; a path may start with "~/". The
-// picks are read once the plugins are loaded (config_picks): one not set
-// is the first connected model (the compactor: that provider's cheapest); one naming no model a provider has is an
-// error; one whose provider isn't connected gives way to the first
-// connected model, and every view is told (LOST). The secrets (API keys,
+// picks are made from the providers connected, again each time they are
+// used (config_live: a provider that disconnects while the server runs
+// gives way at once): one not set is the first connected model (the
+// compactor: that provider's cheapest); one naming no model a provider
+// has is an error, which stops the server as it starts; one whose
+// provider isn't connected gives way to the first connected model, and
+// every view is told (Picks.lost). The secrets (API keys,
 // APNS_KEY) are read from the environment then too (config_hide) and
 // removed from it, so no program an agent runs inherits them, and put
 // back for the workers.
@@ -46,16 +49,15 @@ export const AUTH       = DIR + "/auth.json";
 export const APPLE      = config_get("apple", "");
 export const APNS       = config_get("apns", "");
 
-// what a chat runs on until it picks another; what every compaction runs
-// on, a chat's and an import's alike, whatever the chat's pick; what
-// agents run on (null: the chat's pick). Set by config_picks
-export let PICK      : Pick;
-export let COMPACTOR : Pick;
-export let AGENTS    : Pick | null = null;
+// the picks: what a chat runs on until it picks another; what every
+// compaction runs on, a chat's and an import's alike, whatever the
+// chat's pick; what agents run on (null: the chat's pick); what the
+// config set that isn't connected, and what runs in its place, told to
+// every view (Server.ts)
+export type Picks = { pick: Pick; compactor: Pick; agents: Pick | null; lost: string[] };
 
-// what the config set that isn't connected, and what runs in its place,
-// told to every view that opens (Server.ts)
-export let LOST: string[] = [];
+// the picks made last (config_live)
+let LAST: Picks | null = null;
 
 // the secrets read from the environment, by variable (config_hide)
 export const SECRETS = new Map<string, string>();
@@ -73,7 +75,7 @@ function config_path(path: string): string {
 
 // the picks, from the offer (the connected providers) and the catalog
 // (every provider): one naming no model of the catalog fails
-export function config_picks(offer: Offer, catalog: Offer): Result<void, Error> {
+export function config_picks(offer: Offer, catalog: Offer): Result<Picks, Error> {
   const models = Pick.models(offer);
   if (models.length === 0 && MODELS !== null) {
     return new Err(new Error("Model not found: " + MODELS.join(", ") + ". Check your config (models) model names: no connected provider has them."));
@@ -81,28 +83,39 @@ export function config_picks(offer: Offer, catalog: Offer): Result<void, Error> 
   if (models.length === 0) {
     return new Err(new Error("config: no provider is connected"));
   }
-  const picks = (["pick", "compactor", "agents"] as const).map((key) => config_pick(key, offer, catalog));
-  const failed = picks.find((p) => !p.ok);
+  const set = (["pick", "compactor", "agents"] as const).map((key) => config_pick(key, offer, catalog));
+  const failed = set.find((p) => !p.ok);
   if (failed !== undefined && !failed.ok) {
     return new Err(failed.error());
   }
-  const [pick, compactor, agents] = picks.map((p) => (p.ok ? p.value() : null));
+  const [pick, compactor, agents] = set.map((p) => (p.ok ? p.value() : null));
   const vendor = models[0][0];
   const cheapest = Pick.cheapest(models.filter(([v]) => v === vendor).map(([, m]) => m));
   const on = (model: Model, effort: string): Pick => Pick.on({ vendor, model: model.label, effort }, vendor, model);
-  PICK      = pick ?? on(models[0][1], "medium");
-  COMPACTOR = compactor ?? on(cheapest, "high");
-  AGENTS    = agents;
-  LOST      = [];
+  const picks: Picks = { pick: pick ?? on(models[0][1], "medium"), compactor: compactor ?? on(cheapest, "high"), agents, lost: [] };
   const lost = (key: string, got: Pick | null, runs: string) => {
     if (config_get(key, "") !== "" && got === null) {
-      LOST.push(key + " " + config_get(key, "") + " isn't connected, so " + runs + ".");
+      picks.lost.push(key + " " + config_get(key, "") + " isn't connected, so " + runs + ".");
     }
   };
-  lost("pick", pick, "new chats run on " + Pick.label(PICK));
-  lost("compactor", compactor, "summaries run on " + Pick.label(COMPACTOR));
-  lost("agents", AGENTS, "agents run on the chat's pick");
-  return new Ok();
+  lost("pick", pick, "new chats run on " + Pick.label(picks.pick));
+  lost("compactor", compactor, "summaries run on " + Pick.label(picks.compactor));
+  lost("agents", agents, "agents run on the chat's pick");
+  return new Ok(picks);
+}
+
+// the picks the providers connected now make; with none connected, the
+// last made (a call on them says it isn't connected). The server made
+// some as it started (Server.ts serve), else it wouldn't have
+export function config_live(offer: Offer, catalog: Offer): Picks {
+  const now = config_picks(offer, catalog);
+  if (now.ok) {
+    LAST = now.value();
+  }
+  if (LAST === null) {
+    throw new Error("config: picks used before any were made");
+  }
+  return LAST;
 }
 
 // a pick set as vendor:model[:effort][:speed], if offered (null: none

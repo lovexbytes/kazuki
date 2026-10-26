@@ -153,6 +153,8 @@ type Limit = { rate: number; most: number; keys: Map<string, { n: number; at: nu
 // =========
 
 const LOCK       = config.DIR + "/lock";
+// what the config set and lost, as last told (Chat.lost)
+const LOST: { told: string[] } = { told: [] };
 // how long the supervisor waits to start again a worker whose start failed
 const RETRY      = 5e3;
 // where worker k's successor reaches it, HAND + k (Main.listen); how
@@ -281,7 +283,7 @@ export namespace Chat {
       pick   : () => chat.pick,
       halt   : () => chat.halt.signal,
     }, moved?.tools.key);
-    const pick = Pick.load(mem.pick, Providers.offer(), config.PICK);
+    const pick = Pick.load(mem.pick, Providers.offer(), Providers.picks().pick);
     const chat: Chat = {
       acct, mem, tools, pick, socks: new Set(), acts: new Map(), busy: false, posts: 1, call: null, model: "", check: null, asked: false, open: 0, sent: [], wait: [],
       halt: new AbortController(), live: [], calls: {}, eye: { parts: [], from: 0 }, after: Promise.resolve(), batch: null, ending: null,
@@ -317,6 +319,36 @@ export namespace Chat {
       Chat.change(chat);
     }).catch((err) => console.error("chat " + acct.user + ": open: " + (err?.message ?? err)));
     return chat;
+  }
+
+  // the chat's pick, if offered, else the default the providers connected
+  // now make, told (one whose provider disconnected while the server ran
+  // gives way here, as a turn starts); with none connected it stays, its
+  // call saying so. What the config set and lost since last told, every
+  // open view is told too
+  export function repick(chat: Chat): void {
+    if (Providers.offer().length === 0) {
+      return;
+    }
+    const picks = Providers.picks();
+    Chat.lost(picks.lost);
+    const pick = Pick.load(chat.pick, Providers.offer(), picks.pick);
+    const was = Pick.label(chat.pick);
+    if (was === Pick.label(pick)) {
+      return;
+    }
+    chat.pick = chat.mem.pick = pick;
+    Memory.save(chat.mem);
+    Chat.note(chat, was + " isn't offered here, so the chat now runs on " + Pick.label(pick) + ".");
+    Chat.change(chat);
+  }
+
+  // what the config lost, each new one told to every open view (each
+  // view that opens is told all: Main's socket open)
+  export function lost(now: string[]): void {
+    const told = LOST.told;
+    LOST.told = now;
+    now.filter((text) => !told.includes(text)).forEach((text) => Chat.chats.forEach((chat) => Chat.all(chat, { $: "note", text })));
   }
 
   // what every call of the chat starts with, a summary's too: its system
@@ -506,6 +538,7 @@ export namespace Chat {
   // false: the turn ends
   export async function call(chat: Chat): Promise<boolean> {
     const mem = chat.mem;
+    Chat.repick(chat);
     const halt = (chat.halt = new AbortController());
     Chat.change(chat);
     let from = -1;
@@ -1646,7 +1679,7 @@ export namespace Main {
             } else {
               Chat.join(chat, ws);
               // what the config set but lost, each time a view opens
-              config.LOST.forEach((text) => Chat.send(ws, { $: "note", text }));
+              Providers.picks().lost.forEach((text) => Chat.send(ws, { $: "note", text }));
             }
           }, () => ws.close(1011));
         },
@@ -2075,7 +2108,8 @@ export async function serve(port: number, run: string[] | null): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  config.LOST.forEach((text) => console.error("kazuki: config: " + text));
+  LOST.told = Providers.picks().lost;
+  LOST.told.forEach((text) => console.error("kazuki: config: " + text));
   config.config_hide(Providers.envs());
   const worker = process.env.KAZUKI_WORKER;
   Main.count = run === null ? 1 : config.WORKERS;

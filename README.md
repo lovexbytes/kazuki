@@ -127,6 +127,10 @@ key may also be set as `KAZUKI_<KEY>`:
   the first connected provider, by models.dev's output price; for
   Anthropic, Haiku).
 - `agents`: what subagents run on (default: the chat's pick).
+
+These follow the providers connected now: if one disconnects while the
+server runs, the defaults move to a connected model at once, a chat on
+it moves at its next turn and says so, and every open view is told.
 - `work`: the agents' working directories on each device (default
   `~/.kazuki/work`).
 - `rules`: a file appended to every system prompt.

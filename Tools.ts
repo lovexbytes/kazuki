@@ -570,12 +570,12 @@ export namespace Tools {
     tools.hooks.report(agent, report_text(agent.name, agent.replies.join("\n\n")), agent.stop);
   }
 
-  // a call of an agent, on config.AGENTS or else the chat's pick (a
+  // a call of an agent, on the agents pick or else the chat's pick (a
   // computer task's sees no view, and only its computer tool)
   export function ask(tools: Tools, agent: Agent): Ask {
     const log = { text: Memory.agent_show(tools.mem, agent.name), mark: true };
     const server = Tools.at(tools, agent.name);
-    const pick = config.AGENTS ?? tools.hooks.pick();
+    const pick = Providers.picks().agents ?? tools.hooks.pick();
     const run = Providers.ask(pick);
     const role = agent.role;
     switch (role.$) {
