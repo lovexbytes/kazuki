@@ -30,3 +30,10 @@ test("a model with no effort has no effort knob, and a move to it is a note", ()
   expect(View.view_act(v, { $: "Move", move: "speed" })).toEqual([]);
   expect(v.notes).toEqual(["plain does not support effort.", "plain does not support speed."]);
 });
+
+// a move before the chat's pick came is told, not dropped
+test("a move before the chat loaded is a note", () => {
+  const v = View.view_new();
+  expect(View.view_act(v, { $: "Move", move: "model" })).toEqual([]);
+  expect(v.notes).toEqual(["The chat has not loaded yet."]);
+});

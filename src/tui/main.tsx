@@ -93,9 +93,15 @@ async function pipe_run(c: Client): Promise<void> {
     idle();
   };
   c.hooks.pick  = (move) => console.error("/" + move + " <" + move + "> picks one.");
+  // a command reads the chat (its pick, its blocks): no line is taken
+  // before both came; a server never reached keeps the pipe waiting
+  const view = Promise.withResolvers<void>();
   c.heard.push((msg) => {
     if (msg.$ === "view" && last < 0) {
       last = View.view_count(c.v) - 1;
+    }
+    if (last >= 0 && c.v.pick !== null) {
+      view.resolve();
     }
     if (msg.$ === "entry" && msg.agent === undefined && msg.id !== undefined && msg.id > last) {
       last = msg.id;
@@ -118,6 +124,7 @@ async function pipe_run(c: Client): Promise<void> {
   // a character cut between chunks waits for its rest
   const dec = new TextDecoder();
   let buf = "";
+  await view.promise;
   for await (const chunk of process.stdin) {
     buf += dec.decode(chunk, { stream: true });
     const lines = buf.split("\n");
