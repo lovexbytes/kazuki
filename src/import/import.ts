@@ -17,7 +17,10 @@
 
 import type { Kind } from "../ai/ask-ai.ts";
 import { clip_pages, stream_lines } from "../util/clip.ts";
-import { caught, Err, Ok, type Result } from "../util/result.ts";
+import { line_claude } from "./claude-code.ts";
+import { line_codex } from "./codex.ts";
+
+export { import_export } from "./export.ts";
 
 // Types
 // =====
@@ -81,9 +84,6 @@ export const APPS = ["Claude", "ChatGPT"];
 // sessions all imported before
 export const OLD = "Nothing new: these chats are in Kazuki's memory already.";
 
-// a file given as a site's export that is none (import_export)
-const NOT_EXPORT = "Not a Claude or ChatGPT export.";
-
 // what a message sent while an import runs does (Memory.settle)
 export const MIDWAY = "Meanwhile, Kazuki can answer with a partial tree.";
 
@@ -97,10 +97,6 @@ const COUNT = new Intl.NumberFormat("en-US", { notation: "compact", maximumFract
 // where each app's website gives its export, a zip it emails (said where
 // one is taken)
 export const EXPORTS: Record<string, string> = { Claude: "Settings › Privacy › Export data", ChatGPT: "Settings › Data controls › Export data" };
-
-const INJECTED = /^(<[a-z_]+[ >]|# AGENTS\.md)/;
-
-const SKIP = /^(<command-|<local-command|\[Request interrupted)/;
 
 // Import
 // ======
@@ -305,205 +301,24 @@ function node_merge(a: Node, b: Node): Node {
   return { bytes: a.bytes + 1 + b.bytes, depth: Math.max(a.depth, b.depth) };
 }
 
-// Export
-// ======
-
-// a site's export, its zip (conversations.json in it) or that file alone,
-// as sessions, one a chat: ChatGPT's (a tree, `mapping`) or Claude's
-// (`chat_messages`); a file not a list of those is no export
-export async function import_export(file: Blob): Promise<Result<Session[], Error>> {
-  try {
-    const zip  = (await file.slice(0, 2).text()) === "PK";
-    const json = zip ? await zip_file(file, "conversations.json") : file;
-    if (json === null) {
-      return new Err(new Error("No conversations.json in the zip."));
-    }
-    const chats = await json.text().then(JSON.parse).catch(() => null);
-    if (!Array.isArray(chats) || !chats.every((chat) => chat?.mapping !== undefined || Array.isArray(chat?.chat_messages))) {
-      return new Err(new Error(NOT_EXPORT));
-    }
-    const sessions = await Promise.all(chats.map(chat_session));
-    return new Ok(sessions.filter((s) => s !== null));
-  } catch (e) {
-    return caught(e);
-  }
-}
-
-// a chat as a session: its messages as JSON lines, its title as where
-function chat_session(chat: any): Promise<Session | null> {
-  const [app, msgs] = chat.mapping ? ["ChatGPT", chat_openai(chat)] : ["Claude", chat_claude(chat)];
-  const file = new Blob(msgs.map((m) => JSON.stringify(m) + "\n"));
-  return import_session(file, "msgs", app, 'chat "' + String(chat.title ?? chat.name ?? "") + '"');
-}
-
-// a ChatGPT chat's messages: its thread shown, current_node up to the
-// root (an edit or a retry leaves its old branch); a person's say,
-// ChatGPT's, what it sent a tool (recipient) as a call, a tool's output
-// as an echo; never thoughts, nor a hidden one
-function chat_openai(chat: any): Msg[] {
-  const nodes: any[] = [];
-  for (let id = chat.current_node; id; id = chat.mapping[id]?.parent) {
-    nodes.unshift(chat.mapping[id]?.message);
-  }
-  let date = import_date(chat.create_time, "");
-  return nodes.flatMap((m) => {
-    const role = m?.author?.role;
-    const type = String(m?.content?.content_type);
-    const kind = role === "user" ? "user" : role === "assistant" ? (m.recipient === "all" ? "unii" : "tool") : role === "tool" ? "echo" : null;
-    const skip = kind === null || m.metadata?.is_visually_hidden_from_conversation === true || type === "thoughts" || type === "reasoning_recap";
-    date = import_date(m?.create_time, date);
-    return skip ? [] : msgs_of(kind, (kind === "tool" ? m.recipient + " " : "") + parts_text(m.content.parts ?? [m.content.text]), date);
-  });
-}
-
-// a Claude website chat's messages, in order: a person's say (its texts and
-// its files' names), Claude's, their tool calls and results (Claude's
-// blocks, as Claude Code's); never thinking
-function chat_claude(chat: any): Msg[] {
-  let date = import_date(chat.created_at, "");
-  return (chat.chat_messages ?? []).flatMap((m: any) => {
-    date = import_date(m.created_at, date);
-    const kind   = m.sender === "human" ? "user" : "unii";
-    const blocks = Array.isArray(m.content) ? m.content : [{ type: "text", text: String(m.text ?? "") }];
-    const files  = [...(m.attachments ?? []), ...(m.files ?? [])].map((f: any) => ({ type: "text", text: "[file " + f.file_name + "]" }));
-    return blocks_msgs(kind, [...blocks, ...files], date);
-  });
-}
-
-// Zip
-// ===
-
-// a zip's file by name (at any depth), read without the rest: its entry
-// in the central directory at the zip's end, then its data, inflated
-// (DecompressionStream) if deflated; null: none such. A ZIP64 (over 4 GB,
-// or 65,535 files) says where its directory is in its own end record,
-// found by the locator right before the classic one
-export async function zip_file(zip: Blob, name: string): Promise<Blob | null> {
-  const view = async (at: number, n: number) => new DataView(await zip.slice(at, at + n).arrayBuffer());
-  const back = Math.min(zip.size, 65577);
-  const tail = await view(zip.size - back, back);
-  let end = tail.byteLength - 22;
-  while (end >= 0 && tail.getUint32(end, true) !== 0x06054b50) {
-    end -= 1;
-  }
-  if (end < 0) {
-    return null;
-  }
-  const wide = end >= 20 && tail.getUint32(end - 20, true) === 0x07064b50;
-  const z64  = wide ? await view(Number(tail.getBigUint64(end - 12, true)), 56) : null;
-  const count = z64 === null ? tail.getUint16(end + 10, true) : Number(z64.getBigUint64(32, true));
-  const size  = z64 === null ? tail.getUint32(end + 12, true) : Number(z64.getBigUint64(40, true));
-  const from  = z64 === null ? tail.getUint32(end + 16, true) : Number(z64.getBigUint64(48, true));
-  const dir   = await view(from, size);
-  for (let p = 0, k = 0; k < count; k++) {
-    const entry = new TextDecoder().decode(new Uint8Array(dir.buffer, p + 46, dir.getUint16(p + 28, true)));
-    const [, packed, at] = zip_sizes(dir, p);
-    if (entry === name || entry.endsWith("/" + name)) {
-      const head = await view(at, 30);
-      const data = zip.slice(at + 30 + head.getUint16(26, true) + head.getUint16(28, true)).slice(0, packed);
-      return dir.getUint16(p + 10, true) === 8 ? new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob() : data;
-    }
-    p += 46 + dir.getUint16(p + 28, true) + dir.getUint16(p + 30, true) + dir.getUint16(p + 32, true);
-  }
-  return null;
-}
-
-// a directory entry's size, size packed and local header's place, each
-// as its 32 bits say; one too large for them reads 0xFFFFFFFF, its value
-// in the entry's ZIP64 extra field (id 1), which holds only those, in
-// this order
-function zip_sizes(dir: DataView, p: number): number[] {
-  const short = [p + 24, p + 20, p + 42].map((at) => dir.getUint32(at, true));
-  const extra = p + 46 + dir.getUint16(p + 28, true);
-  let x = extra;
-  while (x + 4 <= extra + dir.getUint16(p + 30, true) && dir.getUint16(x, true) !== 1) {
-    x += 4 + dir.getUint16(x + 2, true);
-  }
-  let k = 0;
-  return short.map((n) => (n === 0xffffffff ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n));
-}
-
-// Claude Code
-// ===========
-
-// a line's say (its texts and images) is one message; then its tools;
-// a line without a timestamp is of the last message's date
-function line_claude(s: Session, j: any, last: string): Msg[] {
-  const date = import_date(j.timestamp, last);
-  const own  = (j.type === "user" || j.type === "assistant") && !j.isMeta && !j.isSidechain && !j.isCompactSummary;
-  const content = j.message?.content;
-  const blocks = !own ? [] : typeof content === "string" ? [{ type: "text", text: content }] : Array.isArray(content) ? content : [];
-  s.where ||= j.cwd ? "session in " + j.cwd : "";
-  if (j.type === "attachment" && j.attachment?.type === "queued_command") {
-    return msgs_of("user", String(j.attachment.prompt ?? ""), date);
-  }
-  return blocks_msgs(j.type === "user" ? "user" : "unii", blocks, date);
-}
-
-// a say's blocks (Claude's shape: texts, images, tool calls and their
-// results) as a message, its texts and images; then its calls, each its
-// name and input, and their results
-function blocks_msgs(kind: Kind, blocks: any[], date: string): Msg[] {
-  const say   = blocks.filter((b) => b.type === "image" || (b.type === "text" && !SKIP.test(b.text)));
-  const tools = blocks.flatMap((b) => b.type === "tool_use" ? msgs_of("tool", b.name + " " + JSON.stringify(b.input), date) : b.type === "tool_result" ? msgs_of("echo", parts_text(b.content), date) : []);
-  return [...msgs_of(kind, parts_text(say), date), ...tools];
-}
-
-// Codex
-// =====
-
-// an agent's rollout (source subagent, internal) is no person's chat
-function line_codex(s: Session, j: any, last: string): Msg[] {
-  const p    = j.payload ?? {};
-  const date = import_date(j.timestamp, last);
-  if (j.type === "session_meta") {
-    s.where = p.source?.subagent ?? p.source?.internal ? "" : "session in " + String(p.cwd ?? "");
-  }
-  return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : [];
-}
-
-function item_codex(p: any, date: string): Msg[] {
-  switch (p.type) {
-    case "message": {
-      const kind  = p.role === "user" ? "user" : p.role === "assistant" ? "unii" : null;
-      const parts = (p.content ?? []).filter((c: any) => !INJECTED.test(c.text ?? ""));
-      return kind === null ? [] : msgs_of(kind, parts_text(parts), date);
-    }
-    case "function_call": {
-      return msgs_of("tool", p.name + " " + p.arguments, date);
-    }
-    case "custom_tool_call": {
-      return msgs_of("tool", p.name + " " + JSON.stringify({ input: p.input }), date);
-    }
-    case "local_shell_call": {
-      return msgs_of("tool", "shell " + JSON.stringify({ command: p.action?.command }), date);
-    }
-    case "function_call_output":
-    case "custom_tool_call_output": {
-      return msgs_of("echo", parts_text(p.output), date);
-    }
-  }
-  return [];
-}
-
 // Msgs
 // ====
 
 // a time as ISO (as the server logs it): a log's or Claude's site's
 // string, ChatGPT's seconds; none or bad: `last`
-function import_date(at: unknown, last: string): string {
+export function import_date(at: unknown, last: string): string {
   const ms = typeof at === "number" ? at * 1000 : Date.parse(String(at));
   return Number.isNaN(ms) ? last : new Date(ms).toISOString();
 }
 
 // a message in its pages
-function msgs_of(kind: Kind, text: string, date: string): Msg[] {
+export function msgs_of(kind: Kind, text: string, date: string): Msg[] {
   const pages = text.trim() === "" ? [] : clip_pages(text);
   return pages.map((page, k) => ({ kind, text: page, date, more: k < pages.length - 1 }));
 }
 
 // content as text: a string, or parts (texts, images)
-function parts_text(content: any): string {
+export function parts_text(content: any): string {
   if (typeof content === "string") {
     return content;
   }

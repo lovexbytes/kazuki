@@ -5,7 +5,7 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import * as Import from "../core/import.ts";
+import * as Import from "../import/import.ts";
 import { Pick, type Move } from "../ai/pick.ts";
 import * as View from "../view/view.ts";
 import { browse } from "../util/browse.ts";

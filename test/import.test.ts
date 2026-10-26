@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import * as Import from "../src/core/import.ts";
+import * as Import from "../src/import/import.ts";
 import { Memory } from "../src/core/memory.ts";
 
 // a log's odd lines (no object, a null block, a date past JS's) are no

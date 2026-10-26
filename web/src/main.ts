@@ -11,7 +11,7 @@
 // (/account), and the footer as the terminal's. A tab is no device; a
 // every local browser opens the same chat.
 
-import * as Import from "../../src/core/import.ts";
+import * as Import from "../../src/import/import.ts";
 import { caught, Ok, type Result } from "../../src/util/result.ts";
 import { theme_css } from "../../src/view/theme.ts";
 import * as View from "../../src/view/view.ts";

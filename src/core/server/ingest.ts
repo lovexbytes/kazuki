@@ -4,7 +4,7 @@
 
 import * as fs from "node:fs";
 import { type Kind } from "../../ai/ask-ai.ts";
-import * as Import from "../import.ts";
+import * as Import from "../../import/import.ts";
 import { JOBS, Memory, type Msg as Log } from "../memory.ts";
 import { type Done } from "../../view/view.ts";
 import { Err, Ok } from "../../util/result.ts";
