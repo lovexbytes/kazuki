@@ -7,7 +7,7 @@
 // function that can't fail gives its value plain, and none (null) is
 // no failure. Only a bug throws (a plugin loaded twice, a field of
 // undefined), to the catch of what runs it: an act's answer (server.ts
-// Chat.fail), a call's end (ask-ai.ts), the process's log. Between
+// Views.fail), a call's end (ask-ai.ts), the process's log. Between
 // processes a Result is plain JSON, made again on arrival: an act's
 // answer `{ error? }` (view.ts), a call's end (AskAI.End).
 

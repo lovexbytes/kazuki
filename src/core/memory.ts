@@ -35,7 +35,7 @@
 // Files: main/ (messages) and tree/ (nodes), JSON lines in a file per
 // day, flushed (disk.ts); main.index and tree.index give each line's
 // place by slot; view.json keeps the view, the chat's pick and goal,
-// written over. main/ is also the act log: an act recorded (server.ts Chat.act)
+// written over. main/ is also the act log: an act recorded (views.ts Views.act)
 // is done once its record is, a line naming it (`act`; its answer
 // `ans`; an older one's `pick` is in view.json too): the last page of
 // what it logs, or a line of its own. Each record indexed (as logged, or
@@ -707,8 +707,8 @@ export namespace Memory {
     mem.fds.clear();
   }
 
-  // the summaries running, as the chat moves to another process (server.ts
-  // Chat.move): each node and its call, which runs on here as `far` moves
+  // the summaries running, as the chat moves to another process (move.ts
+  // Move.move): each node and its call, which runs on here as `far` moves
   // it (its id); none is cut, nor asked again there
   export function give(mem: Memory, far: (call: Call) => string): Given[] {
     const given = [...mem.calls].map(([call, { l, i }]): Given => [l, i, far(call)]);

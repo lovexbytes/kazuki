@@ -34,7 +34,7 @@ export type Live = { kind: Kind; text: string };
 // log: null while it loads
 export type Page = { name: string; log: Entry[] | null; live: Live[] };
 
-// an import's time done and in all (server.ts Chat.time), why paused, its
+// an import's time done and in all (ingest.ts Ingest.time), why paused, its
 // messages, its nodes not built by level
 export type Progress = { done: number; total: number; why: string | null; msgs: number; open: number[] };
 
@@ -561,7 +561,7 @@ function view_live(v: View, agent: string | undefined): Live[] | null {
 // they can't. A socket that dies loses what was in flight: each act has
 // an id and is kept until answered (its ack, or its post's answer); those
 // not answered go again once the next socket shows the chat (none on a
-// live one); the server does each once (server.ts Chat.apply). An act
+// live one); the server does each once (views.ts Views.apply). An act
 // with a body is a post of its own; one unanswered means the link is
 // lost. A page sees no pings: the server ticks each PING / 2, and a view
 // drops a socket silent for a PING. A socket closed as MOVE opens again

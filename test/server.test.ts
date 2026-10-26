@@ -196,7 +196,7 @@ test("the local user needs no session and hostile origins are refused", async ()
 // names the model the running one asked. Its own process, as config is
 // read once a process (another test file's dir is not this one's)
 const TURN = `
-const { Chat } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
+const { Chat, Views } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/../src/ai/ask-ai.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
 const { Memory } = await import(${JSON.stringify(import.meta.dir + "/../src/core/memory.ts")});
@@ -208,10 +208,10 @@ AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
 Chat.take(chat, Chat.push(chat, null, "user", "hi"));
 await Bun.sleep(10);
 const model = chat.pick.model;
-const waited = Chat.waits(chat);
+const waited = Views.waits(chat);
 const to = { ...chat.pick, model: model === "opus-5.5" ? "haiku-5.5" : "opus-5.5" };
-const acted = (await Chat.act(chat, "pick", { $: "pick", to }, "")).ok;
-console.log(JSON.stringify({ model, waited, acted, picked: chat.pick.model, to: to.model, after: Chat.waits(chat) }));
+const acted = (await Views.act(chat, "pick", { $: "pick", to }, "")).ok;
+console.log(JSON.stringify({ model, waited, acted, picked: chat.pick.model, to: to.model, after: Views.waits(chat) }));
 process.exit(0);
 `;
 
@@ -234,7 +234,7 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
 // with no call, its calls never ending, so it still runs at the reads
 const RESUME = `
 const fs = await import("node:fs");
-const { Chat } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
+const { Chat, Ingest, Views } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
 const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/../src/ai/ask-ai.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
 const { Memory } = await import(${JSON.stringify(import.meta.dir + "/../src/core/memory.ts")});
@@ -251,10 +251,10 @@ for (const [id, saved] of [["u1", "paused"], ["u2", null]]) {
 }
 const [held, goes] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
 await Bun.sleep(10);
-const out = { held: Chat.state(held).importing?.why, goes: Chat.state(goes).importing?.why, paused: [held.mem.paused, goes.mem.paused] };
-out.on = Chat.go(held, true).ok;
+const out = { held: Views.state(held).importing?.why, goes: Views.state(goes).importing?.why, paused: [held.mem.paused, goes.mem.paused] };
+out.on = Ingest.go(held, true).ok;
 out.went = why("u1");
-out.off = Chat.go(held, false).ok;
+out.off = Ingest.go(held, false).ok;
 out.kept = why("u1");
 console.log(JSON.stringify(out));
 process.exit(0);
