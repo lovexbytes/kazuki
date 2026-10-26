@@ -9,6 +9,7 @@
 // agent's page is its log, kept live. The AI notice (AI) opens the chat
 // and comes again before a message in another 3-hour window.
 
+import { live_push, type Live } from "../ai/live.ts";
 import type { Kind } from "../ai/ask-ai.ts";
 import * as Call from "./call.ts";
 import * as Md from "./md.ts";
@@ -28,8 +29,6 @@ export type Entry = { kind: Kind; text: string; date?: string; images?: string[]
 
 // a summary: its text, its last message's date
 export type Node = { text: string; to: string };
-
-export type Live = { kind: Kind; text: string };
 
 // log: null while it loads
 export type Page = { name: string; log: Entry[] | null; live: Live[] };
@@ -741,17 +740,6 @@ export function page_rows(v: View, page: Page, from = 0): Row[] {
 
 // Live
 // ====
-
-// a piece joins the message streaming, if of its kind, unless it starts
-// one (fresh: a tool call, as two calls never join)
-export function live_push(live: Live[], kind: Kind, text: string, fresh = false): void {
-  const top = live[live.length - 1];
-  if (top !== undefined && top.kind === kind && !fresh) {
-    top.text += text;
-  } else {
-    live.push({ kind, text });
-  }
-}
 
 // the whole stream, told anew (a view joining, a call's entry): one that
 // goes on with the stream held extends it in place, each message staying

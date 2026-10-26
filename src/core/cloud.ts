@@ -7,7 +7,7 @@ import type { Database } from "bun:sqlite";
 import * as crypto from "node:crypto";
 import * as http2 from "node:http2";
 import * as path from "node:path";
-import * as config from "./config.ts";
+import * as config from "../config.ts";
 import { Disk } from "./disk.ts";
 
 export type User = { id: string; name: string };

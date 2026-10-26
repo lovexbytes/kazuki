@@ -146,7 +146,7 @@ async function local_start(url: string): Promise<boolean> {
     return false;
   }
   const { Providers } = await import("./ai/provider.ts");
-  const config = await import("./core/config.ts");
+  const config = await import("./config.ts");
   const picks = config.config_picks(Providers.offer(), Providers.catalog());
   if (!picks.ok) {
     cli_error(picks.error().message);

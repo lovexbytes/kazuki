@@ -35,7 +35,7 @@ process.env.KAZUKI_DIR = DIR;
 
 // a process reads Config once (maybe for another test): the fake key goes
 // in it, not in the environment
-const config = await import("../src/core/config.ts");
+const config = await import("../src/config.ts");
 config.SECRETS.set("ANTHROPIC_API_KEY", "test");
 
 // the providers

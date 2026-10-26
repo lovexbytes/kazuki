@@ -8,6 +8,7 @@
 
 import * as Call from "../view/call.ts";
 import type { Kind } from "../ai/ask-ai.ts";
+import type { Live } from "../ai/live.ts";
 import { WHO } from "../view/theme.ts";
 import * as View from "../view/view.ts";
 
@@ -102,7 +103,7 @@ function opened_of(made: Item, ids: number[]): Item {
 
 
 // what streams, as items: a call without its result runs
-export function items_live(live: View.Live[]): Item[] {
+export function items_live(live: Live[]): Item[] {
   return live.flatMap((l): Item[] => {
     if (l.kind === "tool") {
       return [tool_of(null, l.text, null, true)];

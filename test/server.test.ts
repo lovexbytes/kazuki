@@ -292,7 +292,7 @@ test("a worker that dies starts again; one that fails in its place, after a paus
 const MOVED = `
 const { Chat } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
 const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
-const config = await import(${JSON.stringify(import.meta.dir + "/../src/core/config.ts")});
+const config = await import(${JSON.stringify(import.meta.dir + "/../src/config.ts")});
 const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/../src/core/plugin.ts")});
 Plugin.load();
 Chat.cloud = Cloud.open(() => {});

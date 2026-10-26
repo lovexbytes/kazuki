@@ -10,7 +10,7 @@ import { Pick } from "../../ai/pick.ts";
 import { Providers } from "../../ai/provider.ts";
 import { Tools } from "../tools.ts";
 import { SUMMARIES, TURN, answer_json, answer_read, type Done, type Part, type Server as Out, type Wait } from "../../view/view.ts";
-import * as config from "../config.ts";
+import * as config from "../../config.ts";
 import { caught, Err, Ok, type Result } from "../../util/result.ts";
 import { Sock, Eye, FULL, SPARE, BODIES } from "./shared.ts";
 import { Chat } from "./chat.ts";

@@ -11,7 +11,7 @@ import { Memory } from "../memory.ts";
 import { Providers } from "../../ai/provider.ts";
 import { Tools } from "../tools.ts";
 import { FRAME, MOVE, PING, QUIT, TICK, WIRE, answer_json } from "../../view/view.ts";
-import * as config from "../config.ts";
+import * as config from "../../config.ts";
 import { Sock, Moved, Peer, Away, Gate, Limit, LOCK, RETRY, HAND, LEAVE, ENDED, BUFFER, PIECE, USERS, UNIT, FLOOD, SOCKETS, NETS, FETCHES, OWN, local_request, WEB } from "./shared.ts";
 import { Chat } from "./chat.ts";
 import { Ingest } from "./ingest.ts";

@@ -11,7 +11,7 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import type { FileSink } from "bun";
-import * as config from "./config.ts";
+import * as config from "../config.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 
 // Types

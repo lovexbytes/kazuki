@@ -26,7 +26,7 @@
 
 import { Agent } from "./agent.ts";
 import { stream_lines } from "../util/clip.ts";
-import { Machine } from "../device/machine.ts";
+import { nap } from "../util/nap.ts";
 import type { Pick } from "./pick.ts";
 import { Providers } from "./provider.ts";
 
@@ -139,7 +139,7 @@ export namespace AskAI {
       for (;;) {
         const wait = ask.patient === true && !end.ok && end.stop !== "fail" && end.stop !== "lost";
         if (wait) {
-          await Machine.nap(Math.min(WEEK, Math.max(AGAIN, (end.until ?? 0) - Date.now())), halt.signal);
+          await nap(Math.min(WEEK, Math.max(AGAIN, (end.until ?? 0) - Date.now())), halt.signal);
         }
         if (halt.signal.aborted || !wait) {
           return end;

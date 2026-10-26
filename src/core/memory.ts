@@ -49,11 +49,11 @@
 import * as fs from "node:fs";
 import { AskAI, type Ask, type Block, type Call, type Img, type Kind, type Say, type Served } from "../ai/ask-ai.ts";
 import { clip_page, clip_pages } from "../util/clip.ts";
-import * as config from "./config.ts";
+import * as config from "../config.ts";
 import { Disk } from "./disk.ts";
 import { Err, Ok, type Result } from "../util/result.ts";
 import { Providers } from "../ai/provider.ts";
-import * as names from "./names.ts";
+import * as names from "../util/names.ts";
 import { image_kind } from "../view/view.ts";
 
 // Types

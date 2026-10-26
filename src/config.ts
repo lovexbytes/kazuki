@@ -16,8 +16,8 @@
 
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { EFFORTS, Pick, SPEEDS, type Model, type Offer } from "../ai/pick.ts";
-import { Err, Ok, type Result } from "../util/result.ts";
+import { EFFORTS, Pick, SPEEDS, type Model, type Offer } from "./ai/pick.ts";
+import { Err, Ok, type Result } from "./util/result.ts";
 
 // Constants
 // =========

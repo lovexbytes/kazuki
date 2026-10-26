@@ -10,7 +10,7 @@
 // `models_fetch` "off": no fetch, the copy or the snapshot only.
 
 import * as fs from "node:fs";
-import * as config from "../core/config.ts";
+import * as config from "../config.ts";
 import type { Rate } from "./price.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 import SNAPSHOT from "./models.txt" with { type: "text" };

@@ -27,17 +27,21 @@
 // the AI service is busy. A stop ends the call at once. A
 // request takes its place in single flight (AskAI.wait).
 
+import { live_push } from "./live.ts";
 import { AskAI, type Ask, type Block, type Flight, type Try, type End, type Event, type Img, type Kind, type Say } from "./ask-ai.ts";
 import { Providers, type Provider } from "./provider.ts";
-import { live_push } from "../view/view.ts";
-import { Machine, type Spec } from "../device/machine.ts";
-import * as config from "../core/config.ts";
+import { nap } from "../util/nap.ts";
+import * as config from "../config.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 
 // Types
 // =====
 
 export type Out = { text: string; fail: boolean; imgs?: Img[] };
+
+// a tool as the vendors see it: its name, what it does, its input's
+// JSON Schema
+export type Spec = { name: string; info: string; schema: object };
 
 export type Tool = Spec;
 
@@ -276,7 +280,7 @@ export namespace Agent {
         const after = Number(res?.headers.get("retry-after") ?? "");
         const wait = after > 0 ? after : 2 ** k;
         run.on({ $: "Entry", kind: "mind", text: "The AI service is busy: asking again in " + wait + " s." });
-        await Machine.nap(wait * 1000, signal);
+        await nap(wait * 1000, signal);
       }
       return new Ok(Agent.fail("stopped", []));
     } finally {

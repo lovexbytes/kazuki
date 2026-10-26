@@ -13,7 +13,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import type { Out } from "../ai/agent.ts";
 import SOURCE from "./computer.swift" with { type: "text" };
-import { Machine, WAIT } from "./machine.ts";
+import { WAIT } from "./machine.ts";
+import { nap } from "../util/nap.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 
 // Types
@@ -58,7 +59,7 @@ export namespace Computer {
     const ms = Math.max(0, Math.min(WAIT, Number(input.duration) || 0)) * 1000;
     switch (name) {
       case "wait": {
-        await Machine.nap(ms, signal);
+        await nap(ms, signal);
         return Computer.hands(name, input);
       }
       case "hold_key": {
@@ -66,7 +67,7 @@ export namespace Computer {
         if (!done.ok) {
           return done;
         }
-        await Machine.nap(ms, signal);
+        await nap(ms, signal);
         const released = await Computer.hands("release", input);
         return released.ok ? done : released;
       }

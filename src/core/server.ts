@@ -31,7 +31,7 @@
 import { NONE, Plugin } from "./plugin.ts";
 import { Providers } from "../ai/provider.ts";
 import { ModelsDev } from "../ai/models-dev.ts";
-import * as config from "./config.ts";
+import * as config from "../config.ts";
 import { LOST } from "./server/shared.ts";
 import { Main } from "./server/main.ts";
 

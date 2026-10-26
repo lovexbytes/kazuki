@@ -24,16 +24,16 @@
 
 import * as fs from "node:fs";
 import { AskAI, type Ask, type Block, type Call, type Event, type Kind } from "../ai/ask-ai.ts";
-import type { Out } from "../ai/agent.ts";
+import type { Live } from "../ai/live.ts";
+import type { Out, Spec } from "../ai/agent.ts";
 import { report_text } from "../view/call.ts";
 import { clip_page } from "../util/clip.ts";
-import * as config from "./config.ts";
-import { COMPUTER, INT, STR, TOOLS, spec, type Job, type Spec } from "../device/machine.ts";
+import * as config from "../config.ts";
+import { COMPUTER, INT, STR, TOOLS, spec, type Job } from "../device/machine.ts";
 import { Memory } from "./memory.ts";
 import PROMPT from "./prompt.txt" with { type: "text" };
 import { EFFORTS, Pick } from "../ai/pick.ts";
 import { Providers } from "../ai/provider.ts";
-import type { Live } from "../view/view.ts";
 
 export type { Live };
 

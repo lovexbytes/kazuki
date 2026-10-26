@@ -12,7 +12,7 @@
 // and runs while the next pass its test. A span is the first mark at its
 // point.
 
-import * as Names from "../core/names.ts";
+import * as Names from "../util/names.ts";
 
 // Types
 // =====

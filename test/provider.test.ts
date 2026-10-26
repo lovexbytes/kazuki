@@ -32,7 +32,7 @@ fs.writeFileSync(DIR + "/models.json", JSON.stringify({ at: Date.now(), body: {
   anthropic : { models: { "claude-opus-5-5": { cost: { output: 25 } }, "claude-haiku-5-5": { cost: { output: 5 } } } },
 } }));
 
-const config = await import("../src/core/config.ts");
+const config = await import("../src/config.ts");
 const { Plugin } = await import("../src/core/plugin.ts");
 const { Providers } = await import("../src/ai/provider.ts");
 const { Pick } = await import("../src/ai/pick.ts");
@@ -113,7 +113,7 @@ test("a pick naming no model is an error", () => {
 
 test("config models naming no connected model is its own error", () => {
   const run = Bun.spawnSync([process.execPath, "-e", `
-    const config = await import("../src/core/config.ts");
+    const config = await import("../src/config.ts");
     const { Plugin } = await import("../src/core/plugin.ts");
     const { Providers } = await import("../src/ai/provider.ts");
     Plugin.load();

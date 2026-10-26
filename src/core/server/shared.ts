@@ -9,7 +9,7 @@ import { type User } from "../cloud.ts";
 import { type Given } from "../memory.ts";
 import { type Live, type Moved as Kit } from "../tools.ts";
 import { type Part } from "../../view/view.ts";
-import * as config from "../config.ts";
+import * as config from "../../config.ts";
 import hello_md from "../hello.md" with { type: "text" };
 import app_js from "../../../web/app.js" with { type: "file" };
 import index_page from "../../../web/index.html" with { type: "file" };

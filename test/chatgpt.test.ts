@@ -150,10 +150,10 @@ process.env.KAZUKI_DIR = DIR;
 process.env.KAZUKI_CHATGPT_ISSUER = "http://127.0.0.1:" + server.port;
 process.env.KAZUKI_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex";
 
-const config = await import("../src/core/config.ts");
+const config = await import("../src/config.ts");
 const { ChatGPT } = await import("../src/ai/chatgpt.ts");
 const { AskAI } = await import("../src/ai/ask-ai.ts");
-const { Machine } = await import("../src/device/machine.ts");
+const Nap = await import("../src/util/nap.ts");
 const { Plugin } = await import("../src/core/plugin.ts");
 const { OpenAI } = await import("../src/ai/openai.ts");
 const { Providers } = await import("../src/ai/provider.ts");
@@ -339,7 +339,7 @@ test("a patient call (a summary's) at a usage limit waits for the reset, not ask
   fake.limited = true;
   fake.resets = now() + 7200;
   const naps: number[] = [];
-  const nap = spyOn(Machine, "nap").mockImplementation((ms: number, signal: AbortSignal) => {
+  const nap = spyOn(Nap, "nap").mockImplementation((ms: number, signal: AbortSignal) => {
     naps.push(ms);
     return new Promise<void>((ok) => signal.addEventListener("abort", () => ok(), { once: true }));
   });

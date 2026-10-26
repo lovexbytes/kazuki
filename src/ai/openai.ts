@@ -13,7 +13,7 @@ import type { Ask, Img } from "./ask-ai.ts";
 import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./agent.ts";
 import { EFFORTS, type Model } from "./pick.ts";
 import { Providers, type Provider } from "./provider.ts";
-import * as config from "../core/config.ts";
+import * as config from "../config.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 
 // Types

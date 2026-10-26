@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Out } from "../ai/agent.ts";
+import type { Out, Spec } from "../ai/agent.ts";
 import { CAP, clip, clip_end } from "../util/clip.ts";
 import { Computer } from "./computer.ts";
 
@@ -23,10 +23,6 @@ import { Computer } from "./computer.ts";
 // a tool call to run here: its tool, its input, its agent's dir (a name,
 // under the device's work dir)
 export type Job = { name: string; input: any; cwd: string };
-
-// a tool as the vendors see it: its name, what it does, its input's
-// JSON Schema
-export type Spec = { name: string; info: string; schema: object };
 
 // a line of a diff: kept in both texts (" "), only in the old ("-"), only
 // in the new ("+")
@@ -293,18 +289,6 @@ export namespace Machine {
     }
     const diffs = [...files.values()].map((f) => text_diff(f.shown, f.was, f.text));
     return { text: diffs.join("\n"), fail: false };
-  }
-
-  // ms, or till the signal aborts: none, if it already did (an abort
-  // event comes once)
-  export function nap(ms: number, signal: AbortSignal): Promise<void> {
-    return new Promise((ok) => {
-      const timer = setTimeout(ok, signal.aborted ? 0 : ms);
-      signal.addEventListener("abort", () => {
-        clearTimeout(timer);
-        ok();
-      });
-    });
   }
 
 }

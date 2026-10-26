@@ -21,7 +21,7 @@ import type { Wire } from "./agent.ts";
 import type { Vendor } from "./ask-ai.ts";
 import type { Catalog, Model, Offer, Pick } from "./pick.ts";
 import * as fs from "node:fs";
-import * as config from "../core/config.ts";
+import * as config from "../config.ts";
 import { ModelsDev } from "./models-dev.ts";
 import { caught, Ok, type Result } from "../util/result.ts";
 

@@ -25,7 +25,7 @@ import type { Ask } from "./ask-ai.ts";
 import type { Emit, Item, Refusal, Tool, Wire } from "./agent.ts";
 import { MODELS, OpenAI, type State } from "./openai.ts";
 import { Providers, type OAuth } from "./provider.ts";
-import * as config from "../core/config.ts";
+import * as config from "../config.ts";
 import { caught, Err, Ok, type Result } from "../util/result.ts";
 
 // Types
