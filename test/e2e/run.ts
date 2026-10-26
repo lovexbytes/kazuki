@@ -4,8 +4,8 @@
 // isolated environment). It starts the mock vendors (mock.ts) and a
 // Kazuki server from source with preload.ts, drives it as a person would
 // (the pipe client, the terminal app in tmux, the compiled executable),
-// and checks what each saw and what the mock was asked. The site and
-// the iOS app are not tested: they go away. Everything lands in $E2E; nothing else is touched.
+// and checks what each saw and what the mock was asked. Everything lands
+// in $E2E; nothing else is touched.
 // It prints one line per check and exits 1 if any failed.
 
 import * as fs from "node:fs";
@@ -14,6 +14,7 @@ const E2E    = process.env.E2E!;
 const LOG    = process.env.E2E_LOG!;
 const ROOT   = import.meta.dir + "/../..";
 const SERVER = process.env.KAZUKI_URL!;
+const MOCK   = process.env.E2E_MOCK!;
 const PORT   = Number(new URL(SERVER).port);
 
 if (!E2E || !process.env.KAZUKI_DIR?.startsWith(E2E) || PORT === 8788) {
@@ -61,8 +62,8 @@ async function server_start(): Promise<Bun.Subprocess> {
 // one pipe client run: the lines sent, what it printed (stdout+stderr).
 // A command waits for the view first: piped as the first line, it runs
 // before the server's state comes and is dropped (a finding of this run)
-async function say(lines: string[], ms = 60e3, wait = true): Promise<string> {
-  const proc = Bun.spawn(["bun", "src/cli.ts"], { cwd: ROOT, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+async function say(lines: string[], ms = 60e3, wait = true, env: Record<string, string | undefined> = process.env): Promise<string> {
+  const proc = Bun.spawn(["bun", "src/cli.ts"], { cwd: ROOT, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   if (wait && lines.some((l) => l.startsWith("/"))) {
     await Bun.sleep(2000);
   }
@@ -84,12 +85,11 @@ function sh(cmd: string[]): { ok: boolean; out: string; stdout: string } {
 // =========
 
 async function main(): Promise<void> {
-  start("mock", ["bun", "test/e2e/mock.ts", "9711"]);
-  check("mock starts", await until(() => fetch("http://127.0.0.1:9711/").then(() => true, () => false)));
+  start("mock", ["bun", "test/e2e/mock.ts", new URL(MOCK).port]);
+  check("mock starts", await until(() => fetch(MOCK + "/").then(() => true, () => false)));
   let server = await server_start();
 
-  // the server's own route (the site's files are not tested: the web
-  // goes away)
+  // the server's own route
   check("serves /api/me", (await fetch(SERVER + "/api/me")).ok);
 
   // Anthropic: a reply, a tool call run on this device
@@ -101,6 +101,12 @@ async function main(): Promise<void> {
   check("anthropic: shell tool call shown", out.includes("→ shell echo e2e-anthropic-tool"), out);
   check("anthropic: tool result goes back to the model", out.includes("ran: e2e-anthropic-tool"), out);
   check("tool runs in the e2e work dir", fs.existsSync(process.env.KAZUKI_WORK + "/main"), process.env.KAZUKI_WORK + "/main missing");
+
+  // the server's keys stay on the server: a job runs in its terminal's own
+  // environment (machine.ts), so a terminal with no keys gives it none
+  const keyless = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.endsWith("_API_KEY")));
+  out = await say(["RUN: echo keys=$(env | grep -c _API_KEY)"], 60e3, true, keyless);
+  check("a job gets none of the server's keys", out.includes("ran: keys=0"), out);
 
   // a long message: the compactor (the provider's cheapest) summarizes it
   const before = asked().length;
@@ -130,14 +136,14 @@ async function main(): Promise<void> {
   check("after a restart: the view holds the earlier chat", view.includes("hello e2e") && view.includes("hello openai"), view.slice(0, 400));
 
   // the terminal app in tmux, as a person uses it
-  const tmux = (args: string[]) => sh(["tmux", "-L", "kazuki-e2e", ...args]);
+  const tmux = (args: string[]) => sh(["tmux", "-L", "kazuki-e2e-" + PORT, ...args]);
   const pane = () => tmux(["capture-pane", "-p", "-t", "e2e"]).out;
   const keys = (...k: string[]) => tmux(["send-keys", "-t", "e2e", ...k]);
   const type = (text: string) => (tmux(["send-keys", "-t", "e2e", "-l", text]), keys("Enter"));
   const seen = (what: string | RegExp, ms = 20e3) => until(() => (typeof what === "string" ? pane().includes(what) : what.test(pane())), ms);
   const shot = (name: string) => fs.writeFileSync(E2E + "/tui-" + name + ".txt", pane());
   tmux(["kill-server"]);
-  const env = ["HOME", "KAZUKI_DIR", "KAZUKI_WORK", "KAZUKI_URL", "KAZUKI_SITE", "KAZUKI_MODELS_FETCH", "PATH"].map((k) => k + "=" + JSON.stringify(process.env[k]));
+  const env = ["HOME", "KAZUKI_DIR", "KAZUKI_WORK", "KAZUKI_URL", "KAZUKI_MODELS_FETCH", "PATH"].map((k) => k + "=" + JSON.stringify(process.env[k]));
   tmux(["new-session", "-d", "-s", "e2e", "-x", "140", "-y", "45", "env -i TERM=xterm-256color " + env.join(" ") + " bun src/cli.ts tui"]);
   check("tui: opens and draws the chat", await seen("pong openai: after restart", 15e3), pane());
   check("tui: the footer shows the pick", await seen("gpt-6-luna"), pane());
@@ -185,9 +191,11 @@ async function main(): Promise<void> {
   keys("C-o");
 
   // /stop cuts a running tool: its shell dies, the next message works
-  type("RUN: sleep 45");
-  await seen(/\$ (Shell )?sleep 45/, 10e3);
-  const sleeping = () => sh(["pgrep", "-f", "^sleep 45$"]).ok;
+  // its own length, so another run's sleep is never taken for it
+  const nap = "sleep 45." + PORT;
+  type("RUN: " + nap);
+  await seen("sleep 45", 10e3);
+  const sleeping = () => sh(["pgrep", "-f", "^" + nap.replace(".", "\\.") + "$"]).ok;
   check("tui: the long tool runs here", await until(sleeping, 5e3));
   type("/stop");
   check("tui: /stop kills the tool's process", await until(() => !sleeping(), 10e3));
