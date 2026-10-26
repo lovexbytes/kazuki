@@ -2,8 +2,8 @@
 // ====
 // A tool call as people read it. Logged as its tool's name, a space and its
 // input's JSON (`zoom {"id":6243,"n":1}`; an MCP client's prefix,
-// `mcp__kazuki__`, dropped), it shows on its device (its `device` field) as its
-// emoji (Theme.TOOL), its name in bold and a head, as its tool reads (READS): a
+// `mcp__kazuki__`, dropped), it shows on its device (its `device` field) as
+// its name in bold and a head, as its tool reads (READS): a
 // command as itself; a file tool its path, read's lines after it, write's
 // content in a block, edit's files (the diff comes in its result); zoom and
 // date the message (`#6243`, a line `#6243+8`, an agent by name); spawn its
@@ -87,11 +87,6 @@ export function call_line(c: Call): string {
   const blocks = c.blocks.map((b) => (b.k === "" ? "" : b.k + ": ") + b.x);
   const where  = c.device === "" ? [] : ["· " + c.device];
   return [c.head, ...blocks, ...where].join(" ").replace(/\s+/g, " ").trim();
-}
-
-// the call as it shows, for Copy: its name and head, then each block
-export function call_text(c: Call): string {
-  return [(c.name + " " + c.head).trim(), ...c.blocks.map((b) => b.x)].join("\n");
 }
 
 // any tool's input: its short values as arguments, the rest in blocks

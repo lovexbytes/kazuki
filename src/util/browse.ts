@@ -1,8 +1,8 @@
 // Browse
 // ======
 // A link opened in the browser here, if any: a Linux with no desktop has
-// no xdg-open (spawning one missing throws). `kazuki web` (src/cli.ts) and
-// the terminal's chat (/tree) both open links by it.
+// no xdg-open (spawning one missing throws). The terminal's chat
+// (/tree) opens links by it.
 
 import * as child from "node:child_process";
 

@@ -9,8 +9,8 @@
 // compactor: that provider's cheapest); one naming no model a provider
 // has is an error, which stops the server as it starts; one whose
 // provider isn't connected gives way to the first connected model, and
-// every view is told (Picks.lost). The secrets (API keys,
-// APNS_KEY) are read from the environment then too (config_hide) and
+// every view is told (Picks.lost). The secrets (API keys)
+// are read from the environment then too (config_hide) and
 // removed from it, so no program an agent runs inherits them, and put
 // back for the workers.
 
@@ -27,8 +27,6 @@ export const DIR = config_path(process.env.KAZUKI_DIR ?? "~/.kazuki");
 const PATH = DIR + "/config.json";
 const FILE: Record<string, string> = fs.existsSync(PATH) ? JSON.parse(fs.readFileSync(PATH, "utf8")) : {};
 
-export const SITE    = config_get("site", "http://127.0.0.1:8788").replace(/\/$/, "");
-
 // the models offered, by label (null: all)
 export const MODELS     = config_get("models", "") ? config_get("models", "").split(",").map((m) => m.trim()) : null;
 
@@ -42,12 +40,6 @@ export const CHATGPT    = config_path(config_get("chatgpt", DIR + "/chatgpt.json
 
 // each provider's chosen auth method, by its type (provider.ts)
 export const AUTH       = DIR + "/auth.json";
-
-// the iOS app (ios/, cloud.ts): its App ID, the team's then the bundle's
-// ("TEAM.com.example.kazuki"), whose app sign-in links open; and
-// the id of the key its pushes are signed with (APNS_KEY holds the key)
-export const APPLE      = config_get("apple", "");
-export const APNS       = config_get("apns", "");
 
 // the picks: what a chat runs on until it picks another; what every
 // compaction runs on, a chat's and an import's alike, whatever the
@@ -141,9 +133,9 @@ export function secret(name: string): string {
   return SECRETS.get(name) ?? (process.env[name] ?? "").trim();
 }
 
-// reads these secrets and APNS_KEY, and removes them from the environment
+// reads these secrets and removes them from the environment
 export function config_hide(names: string[]): void {
-  for (const name of [...names, "APNS_KEY"]) {
+  for (const name of names) {
     SECRETS.set(name, secret(name));
     delete process.env[name];
   }

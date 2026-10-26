@@ -2,8 +2,7 @@
   "name": "kazuki",
   "private": true,
   "scripts": {
-    "test": "bun test --isolate",
-    "web": "bun build web/src/main.ts --outfile web/app.js --target browser"
+    "test": "bun test --isolate"
   },
   "dependencies": {
     "@opentui/core": "0.6.8",

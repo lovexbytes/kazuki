@@ -1,6 +1,6 @@
 // Server test
 // ===========
-// `bun test server.test.ts`. `./src/core/server.ts <port>` alone serves the site;
+// `bun test server.test.ts`. `./src/core/server.ts <port>` alone serves the chat;
 // with workers set, it is their
 // supervisor, which only routes (a proxy in front sends each request to
 // the worker it names).
@@ -31,7 +31,7 @@ async function server_get(port: number, env: Record<string, string>, path: strin
   const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-");
   const site = "http://127.0.0.1:" + port;
   const proc = Bun.spawn([process.execPath, import.meta.dir + "/../src/core/server.ts", String(port)], {
-    env    : { ...process.env, KAZUKI_DIR: dir, KAZUKI_SITE: site, ...env },
+    env    : { ...process.env, KAZUKI_DIR: dir, ...env },
     stdout : "ignore",
     stderr : "inherit",
   });
@@ -50,10 +50,8 @@ async function server_get(port: number, env: Record<string, string>, path: strin
   }
 }
 
-test("server.ts alone serves the page", async () => {
-  const res = await server_get(9461, {}, "/");
-  expect(res.status).toBe(200);
-  expect(await res.text()).toContain("<title>");
+test("server.ts alone serves no site", async () => {
+  expect((await server_get(9461, {}, "/")).status).toBe(404);
 });
 
 test("the compiled terminal manages its local server separately from its TUI", async () => {
@@ -64,7 +62,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
   const data = dir + "/data";
   const port = await unused_port();
   const site = "http://127.0.0.1:" + port;
-  const env = { ...process.env, KAZUKI_DIR: data, KAZUKI_URL: "http://localhost:" + port, KAZUKI_SITE: site };
+  const env = { ...process.env, KAZUKI_DIR: data, KAZUKI_URL: "http://localhost:" + port };
   let absent: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined;
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined;
   let tui: Bun.Subprocess<"pipe", "ignore", "pipe"> | undefined;
@@ -92,14 +90,6 @@ test("the compiled terminal manages its local server separately from its TUI", a
     expect(pid).toBeGreaterThan(0);
     const me = await fetch(site + "/api/me", { signal: AbortSignal.timeout(1000) });
     expect(await me.json()).toMatchObject({ id: "local" });
-    const app = await fetch(site + "/app.js", { signal: AbortSignal.timeout(1000) });
-    expect(app.status).toBe(200);
-    expect((await app.text()).length).toBeGreaterThan(0);
-    const install = await fetch(site + "/install.sh", { signal: AbortSignal.timeout(1000) });
-    expect(install.status).toBe(200);
-    const script = await install.text();
-    expect(script).toContain("releases/latest");
-    expect(script).not.toContain("example.invalid/install.sh");
     fs.mkdirSync(dir + "/fake");
     fs.writeFileSync(dir + "/fake/curl", "#!/bin/sh\nexit 7\n", { mode: 0o755 });
     update = Bun.spawn([bin, "update"], { cwd: dir, env: { ...env, PATH: dir + "/fake" }, stdout: "ignore", stderr: "pipe" });

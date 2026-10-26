@@ -4,7 +4,7 @@
 // (view.ts) fed by the server's socket, the person's acts sent back,
 // and, while open, a device the agent's tools reach (its jobs run here,
 // machine.ts). The server is standalone and owns the chat; this is one
-// of its views, local or remote, as the web is. The UI (app.tsx) reads
+// of its views, local or remote. The UI (app.tsx) reads
 // the View after each `rev` and tells the person what the hooks say.
 
 import * as os from "node:os";

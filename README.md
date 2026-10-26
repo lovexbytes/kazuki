@@ -24,8 +24,8 @@ repository does not operate a hosted service.
 - **Built in the background.** Summaries are written by a cheaper model (the
   compactor) as messages arrive. The view changes only at its end, so each
   call reads most of its input from the vendor's prompt cache.
-- **Every window is a view.** The local server owns the chat. A browser tab,
-  or `kazuki` in a terminal, shows it live; any of them can send a message,
+- **Every terminal is a view.** The local server owns the chat. Each
+  `kazuki` in a terminal shows it live; any of them can send a message,
   stop the work, or change the model.
 - **Agents and tools.** The agent runs a shell, reads and edits files, and can
   drive a Mac's screen on a computer where `kazuki` is open. It can spawn
@@ -59,23 +59,22 @@ bun scripts/build.ts --outfile kazuki
 
 `./kazuki` starts its loopback server when none is already listening, then
 opens the same persistent local chat. `./kazuki server` starts it in the
-background, `./kazuki tui` opens only the terminal UI, and `./kazuki web`
-starts it and opens its URL in a browser. The background server stays up when
-the TUI exits; use `/quit` or empty Ctrl+D to leave the TUI. Its output is in
-`$KAZUKI_DIR/server.log` (default `~/.kazuki/server.log`). Set
-`KAZUKI_URL=http://127.0.0.1:9000` (and `KAZUKI_SITE` if it is not already
-set) for another local port; `localhost` and `[::1]` aliases resolve to its
+background, and `./kazuki tui` opens only the terminal UI. The background
+server stays up when the TUI exits; use `/quit` or empty Ctrl+D to leave
+the TUI. Its output is in `$KAZUKI_DIR/server.log` (default
+`~/.kazuki/server.log`). Set `KAZUKI_URL=http://127.0.0.1:9000` for another
+local port; `localhost` and `[::1]` aliases resolve to its
 IPv4 loopback listener. `./kazuki http://example.test` is client-only.
 Kazuki starts only with a provider connected: `./kazuki auth` lists them and
 connects one.
 
-To run the source server for a browser instead:
+To run the server from source:
 
 ```sh
 bun src/core/server.ts                    # http://127.0.0.1:8788, data in ~/.kazuki
 ```
 
-Then open <http://127.0.0.1:8788>. `bun src/cli.ts help` lists the rest.
+Then run `bun src/cli.ts tui`. `bun src/cli.ts help` lists the rest.
 
 The server is loopback-only: it accepts `127.0.0.1`, `localhost`, and `::1`
 hosts and same-origin browser requests. Do not put it behind a reverse proxy
@@ -86,7 +85,6 @@ Other commands:
 
 ```sh
 bun run test                     # the tests, each file on its own
-bun run web                      # rebuild web/app.js from web/src
 bun scripts/build.ts --outfile kazuki    # the executable (--target=bun-linux-x64 ...)
 bun src/cli.ts tui                  # the terminal UI from source
 ```
@@ -96,7 +94,7 @@ terminal UI's JSX transform) only from the current directory.
 
 ## The terminal
 
-`kazuki` in a terminal is a client of the server, as a browser tab is: it
+`kazuki` in a terminal is a client of the server: it
 connects by the server's socket (`view.ts`), and any server it can reach will
 do (`kazuki http://host:port`). It is built on
 [OpenTUI](https://github.com/anomalyco/opentui) (Solid), in `src/tui/`:
@@ -115,8 +113,6 @@ and per summary (`tree/`). They are the memory: back them up.
 `~/.kazuki/config.json` is optional (the directory is `$KAZUKI_DIR`). Each
 key may also be set as `KAZUKI_<KEY>`:
 
-- `site`: the server's local origin (default `http://127.0.0.1:8788`). Another
-  port: `KAZUKI_SITE=http://127.0.0.1:9000 bun src/core/server.ts 9000`.
 - `models`: the models offered, by label, comma-separated (default all).
 - `pick`: what a chat runs on until it picks another,
   `provider:model[:effort][:speed]`, the effort and speed only for a
@@ -138,7 +134,6 @@ it moves at its next turn and says so, and every open view is told.
 - `workers`: how many processes serve the local users (default none: one
   process). With a number, `server.ts` only routes, behind a proxy that honors
   its `x-kazuki-worker` header (`server.ts` explains).
-- `apple`, `apns`: the iOS app's App ID and push key ID (`ios/`).
 - `chatgpt`: where the ChatGPT sign-in is kept (default
   `~/.kazuki/chatgpt.json`).
 - `models_fetch`: `off` stops the fetch of the models' prices from
@@ -168,8 +163,8 @@ that stops working disconnects the provider; it never falls back to
 another one that bills elsewhere. With none chosen, the first method set
 up is used (for openai, the key). The choice is in `~/.kazuki/auth.json`.
 
-Keys are read from the environment when the server starts, with
-`APNS_KEY`, and removed from it.
+Keys are read from the environment when the server starts, and removed
+from it.
 
 ## The `kazuki` terminal
 

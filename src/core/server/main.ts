@@ -197,7 +197,7 @@ export namespace Main {
         Memory.stop(chat.mem);
       }
     });
-    console.log("kazuki: " + config.SITE + ", users in " + config.DIR + "/users, worker " + Main.index + " of " + Main.count + " on 127.0.0.1:" + port);
+    console.log("kazuki: users in " + config.DIR + "/users, worker " + Main.index + " of " + Main.count + " on 127.0.0.1:" + port);
     send?.({ $: "ready" });
     Handover.back?.send({ $: "go", tools: Tools.base() });
     Handover.listen(hand);
@@ -266,7 +266,7 @@ export namespace Main {
       process.on(sig, stop);
     }
     process.on("SIGHUP", () => workers.forEach((_, k) => start(k)));
-    console.log("kazuki: " + config.SITE + ", " + config.WORKERS + " workers on 127.0.0.1:" + (port + 1) + "-" + (port + config.WORKERS) + ", routes on " + port);
+    console.log("kazuki: " + config.WORKERS + " workers on 127.0.0.1:" + (port + 1) + "-" + (port + config.WORKERS) + ", routes on " + port);
   }
 
   // whether a worker process runs

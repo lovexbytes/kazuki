@@ -15,9 +15,3 @@ I'll remember:
 > “Not an app: `ad2cat.py`, from a CatBoard post 7 years ago. Link's dead, but here's the script.”
 
 How? No new model. No magic. Just a regular chatbot with a neat memory system.
-
-I can also work from your terminal:
-
-```
-curl -fsSL {install} | sh
-```

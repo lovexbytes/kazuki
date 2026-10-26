@@ -1,14 +1,14 @@
 // Http
 // ====
-// What the server answers over HTTP: a site's files, a user's pages, a
-// request routed to its chat.
+// What the server answers over HTTP: a user's pages, a request routed to
+// its chat.
 
 import * as fs from "node:fs";
 import { Cloud, type User } from "../cloud.ts";
 import { Memory } from "../memory.ts";
 import { answer_json } from "../../view/link.ts";
 import * as config from "../../config.ts";
-import { Sock, OWN, PIECE, SOCKETS, USERS, WEB, local_request } from "./shared.ts";
+import { Sock, OWN, PIECE, SOCKETS, USERS, local_request } from "./shared.ts";
 import { Chat } from "./chat.ts";
 import { Handover } from "./handover.ts";
 import { Ingest } from "./ingest.ts";
@@ -16,13 +16,6 @@ import { Main } from "./main.ts";
 import { Views } from "./views.ts";
 
 export namespace Http {
-
-  // a site's file
-  export function file(pathname: string): Response {
-    const file = WEB[pathname];
-    return file === undefined ? new Response("not found", { status: 404 }) : new Response(Bun.file(file));
-  }
-
 
   // deletes the local chat, if they typed its name,
   // where their chat is: one the worker before still gives (a deploy) is
@@ -138,7 +131,7 @@ export namespace Http {
         return await Http.close(req);
       }
       if (!OWN.includes(p) && !p.startsWith("/image/") && !p.startsWith("/api/")) {
-        return Http.file(p);
+        return new Response("not found", { status: 404 });
       }
       await Handover.here(user.id);
       if (p === "/ws") {
