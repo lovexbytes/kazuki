@@ -1,5 +1,5 @@
-# the TUI's JSX (tui/) is Solid's, compiled by OpenTUI's transform; the
-# release's build (build.ts) runs the same plugin
+# the TUI's JSX (src/tui/) is Solid's, compiled by OpenTUI's transform; the
+# release's build (scripts/build.ts) runs the same plugin
 preload = ["@opentui/solid/preload"]
 
 [test]

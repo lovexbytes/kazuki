@@ -33,8 +33,8 @@ repository does not operate a hosted service.
 - **Import.** Bring your past Claude and ChatGPT chats (Claude Code and Codex
   folders, or the websites' exports); they join the tree.
 
-The design is in the header comment of each file. Start with `Memory.ts` (the
-tree and the view), `Server.ts` (the chat, turns, workers), and `AskAI.ts`
+The design is in the header comment of each file. Start with `memory.ts` (the
+tree and the view), `server.ts` (the chat, turns, workers), and `ask-ai.ts`
 (model calls and the cache).
 
 ## Run it
@@ -53,7 +53,7 @@ To build from source instead, install [Bun](https://bun.sh) >= 1.4.3:
 ```sh
 export ANTHROPIC_API_KEY=sk-ant-...
 bun install
-bun build.ts --outfile kazuki
+bun scripts/build.ts --outfile kazuki
 ./kazuki
 ```
 
@@ -72,10 +72,10 @@ connects one.
 To run the source server for a browser instead:
 
 ```sh
-bun Server.ts                    # http://127.0.0.1:8788, data in ~/.kazuki
+bun src/core/server.ts                    # http://127.0.0.1:8788, data in ~/.kazuki
 ```
 
-Then open <http://127.0.0.1:8788>. `bun Term.ts help` lists the rest.
+Then open <http://127.0.0.1:8788>. `bun src/cli.ts help` lists the rest.
 
 The server is loopback-only: it accepts `127.0.0.1`, `localhost`, and `::1`
 hosts and same-origin browser requests. Do not put it behind a reverse proxy
@@ -87,23 +87,23 @@ Other commands:
 ```sh
 bun run test                     # the tests, each file on its own
 bun run web                      # rebuild web/app.js from web/src
-bun build.ts --outfile kazuki    # the executable (--target=bun-linux-x64 ...)
-bun Term.ts tui                  # the terminal UI from source
+bun scripts/build.ts --outfile kazuki    # the executable (--target=bun-linux-x64 ...)
+bun src/cli.ts tui                  # the terminal UI from source
 ```
 
-Run `bun Term.ts` from the repository root: Bun reads `bunfig.toml` (the
+Run `bun src/cli.ts` from the repository root: Bun reads `bunfig.toml` (the
 terminal UI's JSX transform) only from the current directory.
 
 ## The terminal
 
 `kazuki` in a terminal is a client of the server, as a browser tab is: it
-connects by the server's socket (`View.ts`), and any server it can reach will
+connects by the server's socket (`view.ts`), and any server it can reach will
 do (`kazuki http://host:port`). It is built on
-[OpenTUI](https://github.com/anomalyco/opentui) (Solid), in `tui/`:
-`Client.ts` (the link, and the agent's jobs this device runs), `App.tsx` (the
-page), `Transcript.tsx` (the chat), `Tool.tsx` (each tool call: a command and
+[OpenTUI](https://github.com/anomalyco/opentui) (Solid), in `src/tui/`:
+`client.ts` (the link, and the agent's jobs this device runs), `app.tsx` (the
+page), `transcript.tsx` (the chat), `tool.tsx` (each tool call: a command and
 its output, a file read, a write's or edit's diff, the agents spawned),
-`Prompt.tsx` (the input, its `/` commands and history). There is one chat, so
+`prompt.tsx` (the input, its `/` commands and history). There is one chat, so
 there are no sessions to manage: older messages show as the memory tree's
 summaries, opened by a click, and each subagent at work is a tab (Tab).
 
@@ -116,7 +116,7 @@ and per summary (`tree/`). They are the memory: back them up.
 key may also be set as `KAZUKI_<KEY>`:
 
 - `site`: the server's local origin (default `http://127.0.0.1:8788`). Another
-  port: `KAZUKI_SITE=http://127.0.0.1:9000 bun Server.ts 9000`.
+  port: `KAZUKI_SITE=http://127.0.0.1:9000 bun src/core/server.ts 9000`.
 - `models`: the models offered, by label, comma-separated (default all).
 - `pick`: what a chat runs on until it picks another,
   `provider:model[:effort][:speed]`, the effort and speed only for a
@@ -136,19 +136,19 @@ it moves at its next turn and says so, and every open view is told.
 - `rules`: a file appended to every system prompt.
 - `after`: a shell command run after each turn.
 - `workers`: how many processes serve the local users (default none: one
-  process). With a number, `Server.ts` only routes, behind a proxy that honors
-  its `x-kazuki-worker` header (`Server.ts` explains).
+  process). With a number, `server.ts` only routes, behind a proxy that honors
+  its `x-kazuki-worker` header (`server.ts` explains).
 - `apple`, `apns`: the iOS app's App ID and push key ID (`ios/`).
 - `chatgpt`: where the ChatGPT sign-in is kept (default
   `~/.kazuki/chatgpt.json`).
 - `models_fetch`: `off` stops the fetch of the models' prices from
-  models.dev every 5 minutes (`ModelsDev.ts`); the picker then shows the
+  models.dev every 5 minutes (`models-dev.ts`); the picker then shows the
   last copy kept (`~/.kazuki/models.json`) or the one Kazuki ships
-  (`models.txt`, made again with `bun ModelsDev.ts`).
+  (`models.txt`, made again with `bun src/ai/models-dev.ts`).
 
 ## Providers
 
-Each provider is a plugin (`Plugin.ts`, `Provider.ts`). The server offers
+Each provider is a plugin (`plugin.ts`, `provider.ts`). The server offers
 only the connected ones, and won't start with none. `kazuki auth` lists
 them, and sends each connected one a small request to check that it
 works: it shows as connected only if it answers (each check costs a
@@ -156,7 +156,7 @@ fraction of a cent):
 
 - `anthropic`: set `ANTHROPIC_API_KEY`.
 - `openai`: set `OPENAI_API_KEY`, or sign in with a ChatGPT plan:
-  `kazuki auth openai login` (or `kazuki chatgpt`, or `bun ChatGPT.ts`)
+  `kazuki auth openai login` (or `kazuki chatgpt`, or `bun src/ai/chatgpt.ts`)
   shows a link and a code to enter in any browser; `kazuki auth openai
   logout` signs out. The sign-in is local to the server that uses it.
   Voice messages need openai on its key (`kazuki auth openai use key`):
@@ -181,7 +181,7 @@ lovexbytes/kazuki` checks. `kazuki` alone starts and opens its local
 server; `kazuki <url>` is client-only for another local instance.
 
 Run with `KAZUKI_COMPUTER=1` on a Mac and the agent may use its screen (it
-compiles `Computer.swift` with `swiftc`; macOS asks for Screen Recording and
+compiles `computer.swift` with `swiftc`; macOS asks for Screen Recording and
 Accessibility).
 
 ## Credits and license

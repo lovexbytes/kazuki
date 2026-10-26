@@ -1,7 +1,7 @@
 // Kazuki (the site)
 // ===================
-// The page around View.ts's chat: the server's messages go to
-// View.view_hear, a click's `data-act` (Html.ts) to View.view_act, and
+// The page around view.ts's chat: the server's messages go to
+// View.view_hear, a click's `data-act` (html.ts) to View.view_act, and
 // both answer what to send back. The page is drawn once a frame, keeping
 // the first row in sight in place, or the bottom while the page is at it;
 // the log's rows only once a message (but a stream's piece) or an act
@@ -11,11 +11,11 @@
 // (/account), and the footer as the terminal's. A tab is no device; a
 // every local browser opens the same chat.
 
-import * as Import from "../../Import.ts";
-import { caught, Ok, type Result } from "../../Result.ts";
-import { theme_css } from "../../Theme.ts";
-import * as View from "../../View.ts";
-import * as Html from "./Html.ts";
+import * as Import from "../../src/core/import.ts";
+import { caught, Ok, type Result } from "../../src/util/result.ts";
+import { theme_css } from "../../src/view/theme.ts";
+import * as View from "../../src/view/view.ts";
+import * as Html from "./html.ts";
 
 // Types
 // =====
@@ -208,7 +208,7 @@ function act(a: View.Act): void {
   draw(a.$ === "Send");
 }
 
-// a click on a View.Act, a Copy button or a page (go) (Html.ts), unless
+// a click on a View.Act, a Copy button or a page (go) (html.ts), unless
 // it ends a selection dragged in
 // its element
 function click(ev: MouseEvent): void {
