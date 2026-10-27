@@ -59,14 +59,9 @@ async function server_start(): Promise<Bun.Subprocess> {
   return proc;
 }
 
-// one pipe client run: the lines sent, what it printed (stdout+stderr).
-// A command waits for the view first: piped as the first line, it runs
-// before the server's state comes and is dropped (a finding of this run)
-async function say(lines: string[], ms = 60e3, wait = true, env: Record<string, string | undefined> = process.env): Promise<string> {
+// one pipe client run: the lines sent, what it printed (stdout+stderr)
+async function say(lines: string[], ms = 60e3, env: Record<string, string | undefined> = process.env): Promise<string> {
   const proc = Bun.spawn(["bun", "src/cli.ts"], { cwd: ROOT, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-  if (wait && lines.some((l) => l.startsWith("/"))) {
-    await Bun.sleep(2000);
-  }
   proc.stdin.write(lines.join("\n") + "\n");
   proc.stdin.end();
   const timer = setTimeout(() => proc.kill(), ms);
@@ -105,7 +100,7 @@ async function main(): Promise<void> {
   // the server's keys stay on the server: a job runs in its terminal's own
   // environment (machine.ts), so a terminal with no keys gives it none
   const keyless = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.endsWith("_API_KEY")));
-  out = await say(["RUN: echo keys=$(env | grep -c _API_KEY)"], 60e3, true, keyless);
+  out = await say(["RUN: echo keys=$(env | grep -c _API_KEY)"], 60e3, keyless);
   check("a job gets none of the server's keys", out.includes("ran: keys=0"), out);
 
   // a long message: the compactor (the provider's cheapest) summarizes it
@@ -215,13 +210,12 @@ async function main(): Promise<void> {
   check("tui: Ctrl+D quits", await until(() => !tmux(["has-session", "-t", "e2e"]).ok, 5e3), pane());
   tmux(["kill-server"]);
 
-  // a command piped as the first line: known bug, older than the refactor
-  // (it runs before the view has the server's state, and is dropped)
-  await say(["/model haiku-5.5"], 30e3, false);
+  // a command piped as the first line applies, though it comes before the
+  // view has the server's state
+  await say(["/model haiku-5.5"], 30e3);
   n = asked().length;
   await say(["which model"]);
-  const dropped = !asked().slice(n).some((r) => r.body?.model === "claude-haiku-5-5");
-  console.log((dropped ? "XFAIL" : "XPASS") + " pipe: a /command as the first piped line is " + (dropped ? "still dropped (known bug)" : "applied now: the bug is fixed, make this a check"));
+  check("pipe: a /command as the first piped line applies", asked().slice(n).some((r) => r.body?.model === "claude-haiku-5-5"), JSON.stringify(asked().slice(n).map((r) => r.body?.model)));
 
 
   // the compiled executable: builds, prints help, and works as a client
