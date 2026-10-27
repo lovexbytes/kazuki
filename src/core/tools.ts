@@ -41,8 +41,9 @@ import {Memory} from "./memory.ts"
 import PROMPT from "./prompt.txt" with {type: "text"}
 import {EFFORTS, Pick} from "../ai/pick.ts"
 import {Providers} from "../ai/provider.ts"
+import {noop} from "../util/noop.ts"
 
-export type {Live}
+export type {Live} from "../ai/live.ts"
 
 // Types
 // =====
@@ -88,7 +89,7 @@ export type Agent = {
 // calls of its agents at work by the id `far` takes (server.ts)
 export type Moved = {
   key: string
-  devices: Array<[string, string, Array<[string, string, Job]>]>
+  devices: [string, string, [string, string, Job][]][]
   agents: Array<Omit<Agent, "role" | "call"> & {call: string}>
 }
 
@@ -117,7 +118,7 @@ export type Tools = {
 // Constants
 // =========
 
-export const MAIN = config.WORK + "/main"
+export const MAIN = `${config.WORK}/main`
 
 // the most web searches a request of a turn or a subagent runs
 export const SEARCHES = 10
@@ -203,7 +204,7 @@ listed can't be done now, so tell the user it isn't available.`
 const DEVICES_NONE = "(None is open now.)"
 
 // a subagent's prompt: its part, then the view's and the devices' docs
-const SUB = SUB_HEAD + "\n\n" + VIEW_DOC + "\n\n" + DEVICES
+const SUB = `${SUB_HEAD}\n\n${VIEW_DOC}\n\n${DEVICES}`
 
 // the tools of everyone (OWN), the master's (BOSS), those that run on a
 // device (`kit`: machine.ts's), and the master's computer tasks (HAND),
@@ -275,7 +276,7 @@ export namespace Tools {
     hooks: Hooks,
     key: string = crypto.randomUUID()
   ): Tools {
-    const url = Tools.base() + key + "/"
+    const url = `${Tools.base() + key}/`
     const tools: Tools = {
       mem,
       devices: new Map(),
@@ -298,7 +299,7 @@ export namespace Tools {
       idleTimeout: 0,
       fetch: Tools.fetch
     })
-    return "http://127.0.0.1:" + HTTP.port + "/"
+    return `http://127.0.0.1:${HTTP.port}/`
   }
 
   // the chats on their way here: a request for one not here waits on
@@ -317,7 +318,7 @@ export namespace Tools {
   }
 
   export function system(head: string): string {
-    return head + "\n\n" + Tools.rules()
+    return `${head}\n\n${Tools.rules()}`
   }
 
   export function devices(tools: Tools): Block {
@@ -346,7 +347,7 @@ export namespace Tools {
     return {
       text:
         "Agents at work now: " +
-        (names.length === 0 ? "none." : names.join(", ") + ".") +
+        (names.length === 0 ? "none." : `${names.join(", ")}.`) +
         "\n\n",
       mark: false
     }
@@ -381,7 +382,7 @@ export namespace Tools {
     if (msg.id === undefined) {
       return new Response(null, {status: 202})
     }
-    const no = {error: {code: -32601, message: "no method " + msg.method}}
+    const no = {error: {code: -32_601, message: `no method ${msg.method}`}}
     const here = Tools.answer(
       tools,
       who,
@@ -391,7 +392,7 @@ export namespace Tools {
       id
     ).then(
       (result) => (result === null ? no : {result}),
-      (err) => ({error: {code: -32603, message: String(err?.message ?? err)}})
+      (err) => ({error: {code: -32_603, message: String(err?.message ?? err)}})
     )
     const out = await Promise.race([here, tools.away.promise])
     if (typeof out === "string") {
@@ -410,7 +411,7 @@ export namespace Tools {
     signal: AbortSignal
   ): Promise<Response> {
     const headers = {"content-type": "application/json", [JOB]: id}
-    return globalThis.fetch(url + key + "/" + who, {
+    return globalThis.fetch(`${url + key}/${who}`, {
       method: "POST",
       headers,
       body: JSON.stringify(msg),
@@ -457,7 +458,7 @@ export namespace Tools {
               signal,
               id
             )
-          : {text: "No tool " + name + ".", fail: true}
+          : {text: `No tool ${name}.`, fail: true}
         const imgs = (out.imgs ?? []).map((img) => ({
           type: "image",
           data: img.data,
@@ -512,8 +513,7 @@ export namespace Tools {
         const effort = args.effort === undefined ? null : String(args.effort)
         if (effort !== null && !EFFORTS.includes(effort)) {
           return {
-            text:
-              "No effort " + effort + "; one of " + EFFORTS.join(", ") + ".",
+            text: `No effort ${effort}; one of ${EFFORTS.join(", ")}.`,
             fail: true
           }
         }
@@ -575,8 +575,8 @@ export namespace Tools {
     link: Link
   ): string {
     let name = host
-    for (let k = 2; (tools.devices.get(name)?.who ?? who) !== who; k++) {
-      name = host + "-" + k
+    for (let k = 2; (tools.devices.get(name)?.who ?? who) !== who; k += 1) {
+      name = `${host}-${k}`
     }
     const d = tools.devices.get(name) ?? {
       who,
@@ -596,7 +596,7 @@ export namespace Tools {
     term: string,
     fresh: (id: string) => boolean
   ): void {
-    const send = d.terms.get(term)?.send ?? (() => {})
+    const send = d.terms.get(term)?.send ?? noop
     const mine = [...d.jobs].filter(([, j]) => j.term === term)
     send({$: "jobs", ids: mine.map(([id]) => id)})
     mine
@@ -612,7 +612,7 @@ export namespace Tools {
     for (const job of d.jobs.values()) {
       if (job.term === term) {
         job.end({
-          text: "The terminal that ran this on " + device + " closed.",
+          text: `The terminal that ran this on ${device} closed.`,
           fail: true
         })
       }
@@ -775,7 +775,7 @@ export namespace Tools {
   ): Promise<string> {
     const agent = Tools.agent(tools, name)
     if (agent === null) {
-      return "No agent " + name + " to tell."
+      return `No agent ${name} to tell.`
     }
     if (agent.call !== null) {
       tools.hooks.push(agent, "user", message)
@@ -794,7 +794,7 @@ export namespace Tools {
     }
     tools.hooks.push(agent, "user", message)
     Tools.run(tools, Object.assign(agent, {view, replies: [], stop: false}))
-    return "Sent. " + name + "'s reply will reach you as a message."
+    return `Sent. ${name}'s reply will reach you as a message.`
   }
 
   export function start(
@@ -814,7 +814,7 @@ export namespace Tools {
       view,
       replies: []
     }
-    fs.mkdirSync(config.WORK + "/" + name, {recursive: true})
+    fs.mkdirSync(`${config.WORK}/${name}`, {recursive: true})
     tools.agents.set(name, agent)
     tools.hooks.push(
       agent,
@@ -862,8 +862,9 @@ export namespace Tools {
   export async function run(
     tools: Tools,
     agent: Agent,
-    call: Call | null = null
+    first: Call | null = null
   ): Promise<void> {
+    let call = first
     try {
       for (let more = true; more; call = null) {
         agent.call =
@@ -872,12 +873,12 @@ export namespace Tools {
         tools.hooks.change()
         const end = await agent.call.done
         agent.call = null
-        agent.replies.push(end.ok ? end.text : "failed: " + end.text)
+        agent.replies.push(end.ok ? end.text : `failed: ${end.text}`)
         more = end.ok && end.left.length > 0
       }
     } catch (err: any) {
       agent.call = null
-      agent.replies.push("failed: " + String(err?.message ?? err))
+      agent.replies.push(`failed: ${String(err?.message ?? err)}`)
     }
     tools.hooks.report(
       agent,

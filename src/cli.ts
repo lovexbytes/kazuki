@@ -52,7 +52,7 @@ const WORDS = [
 const WEB = /^https?:\/\//
 const ODD = AUTH
   ? undefined
-  : ARGS.find((a) => !WORDS.includes(a) && !WEB.test(a) && a !== PORT)
+  : ARGS.find((a) => !(WORDS.includes(a) || WEB.test(a)) && a !== PORT)
 const INSTALL =
   "https://raw.githubusercontent.com/lovexbytes/kazuki/main/install.sh"
 const REMOTE = ARGS.find((a) => WEB.test(a))
@@ -84,6 +84,7 @@ In the chat, /help lists every command and key.`
 const LOCAL =
   process.platform === "darwin"
     ? child
+        // biome-ignore lint/security/noSecrets: a scutil key name
         .spawnSync("scutil", ["--get", "LocalHostName"])
         .stdout?.toString()
         .trim()
@@ -103,7 +104,7 @@ const COMPUTER = process.env.KAZUKI_COMPUTER === "1"
 // runs the installer again: the one way kazuki changes. The command prints
 // first, so one can run it alone.
 function update_run(): void {
-  console.error("curl -fsSL " + INSTALL + " | sh")
+  console.error(`curl -fsSL ${INSTALL} | sh`)
   const got = child.spawnSync("curl", ["-fsSL", INSTALL], {
     stdio: ["ignore", "pipe", "inherit"]
   })
@@ -126,7 +127,7 @@ async function tui_open(url: string): Promise<void> {
 }
 
 function cli_error(why: string): void {
-  console.error("kazuki: " + why)
+  console.error(`kazuki: ${why}`)
   process.exitCode = 1
 }
 
@@ -145,10 +146,12 @@ function local_url(url: string): number | null {
 async function local_live(
   url: string
 ): Promise<"ours" | "occupied" | "absent"> {
-  const res = await fetch(url + "/api/me", {
+  const res = await fetch(`${url}/api/me`, {
     signal: AbortSignal.timeout(750)
   }).catch(() => null)
-  if (res === null) return "absent"
+  if (res === null) {
+    return "absent"
+  }
   const me = await res.json().catch(() => null)
   return res.ok && me?.id === "local" ? "ours" : "occupied"
 }
@@ -161,9 +164,11 @@ async function local_start(url: string): Promise<boolean> {
     return false
   }
   const live = await local_live(url)
-  if (live === "ours") return true
+  if (live === "ours") {
+    return true
+  }
   if (live === "occupied") {
-    cli_error(url + " is occupied by another HTTP service.")
+    cli_error(`${url} is occupied by another HTTP service.`)
     return false
   }
   // a server with no provider connected, or picks it can't run, won't
@@ -181,9 +186,9 @@ async function local_start(url: string): Promise<boolean> {
     cli_error(picks.error().message)
     return false
   }
-  const set = process.env.KAZUKI_DIR || os.homedir() + "/.kazuki"
+  const set = process.env.KAZUKI_DIR || `${os.homedir()}/.kazuki`
   const dir = set.startsWith("~/") ? os.homedir() + set.slice(1) : set
-  const log = dir + "/server.log"
+  const log = `${dir}/server.log`
   fs.mkdirSync(dir, {recursive: true, mode: 0o700})
   const out = fs.openSync(log, "a", 0o600)
   let proc: child.ChildProcess
@@ -213,24 +218,22 @@ async function local_start(url: string): Promise<boolean> {
   }
   fs.closeSync(out)
   proc.unref()
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 40; k += 1) {
     if ((await local_live(url)) === "ours") {
-      console.log(
-        "kazuki: local server started at " + url + " (pid " + proc.pid + ")"
-      )
+      console.log(`kazuki: local server started at ${url} (pid ${proc.pid})`)
       return true
     }
     await Bun.sleep(100)
   }
   proc.kill("SIGTERM")
-  cli_error("could not start local server at " + url + " (log: " + log + ")")
+  cli_error(`could not start local server at ${url} (log: ${log})`)
   return false
 }
 
 // a TUI never starts a server: a failed local connection must not queue acts
 async function local_tui(url: string): Promise<boolean> {
   if (local_url(url) !== null && (await local_live(url)) !== "ours") {
-    cli_error("local server is not running at " + url + "; run kazuki server.")
+    cli_error(`local server is not running at ${url}; run kazuki server.`)
     return false
   }
   return true
@@ -241,11 +244,11 @@ async function local_tui(url: string): Promise<boolean> {
 
 if (HELP || ODD !== undefined) {
   if (ODD !== undefined) {
-    cli_error("no argument " + ODD + ".")
+    cli_error(`no argument ${ODD}.`)
   }
   console.log(USAGE)
 } else if (ASKVER) {
-  console.log("kazuki " + VERSION)
+  console.log(`kazuki ${VERSION}`)
 } else if (UPDATE) {
   update_run()
 } else if (AUTH) {
@@ -268,12 +271,10 @@ if (HELP || ODD !== undefined) {
   if (await local_tui(SERVER)) {
     await tui_open(SERVER)
   }
+} else if (local_url(SERVER) === null) {
+  await tui_open(SERVER)
+} else if (await local_start(SERVER)) {
+  await tui_open(SERVER)
 } else {
-  if (local_url(SERVER) === null) {
-    await tui_open(SERVER)
-  } else if (!(await local_start(SERVER))) {
-    // local_start has reported the error; do not open an offline terminal.
-  } else {
-    await tui_open(SERVER)
-  }
+  // local_start has reported the error; do not open an offline terminal.
 }

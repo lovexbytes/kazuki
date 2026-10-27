@@ -101,7 +101,8 @@ export function App(props: {
   onCleanup(() => clearInterval(timer))
 
   c.hooks.note = (text) => {
-    const id = ++toastId
+    toastId += 1
+    const id = toastId
     setToasts((ts) => [...ts, {id, text}].slice(-TOASTS))
     setTimeout(
       () => setToasts((ts) => ts.filter((t) => t.id !== id)),
@@ -120,26 +121,23 @@ export function App(props: {
 
   // the chat's items (made again only as its rows change), then what
   // streams
-  const items = createMemo<Item[]>(
-    () => (
-      c.log(),
-      items_of(
-        View.view_body(c.v),
-        (id, n) => c.v.open.get(id + "+" + n) === true
-      )
+  const items = createMemo<Item[]>(() => {
+    c.log()
+    return items_of(
+      View.view_body(c.v),
+      (id, n) => c.v.open.get(`${id}+${n}`) === true
     )
-  )
-  const live = createMemo<Item[]>(
-    () => (c.rev(), items_live(View.view_stream(c.v)))
-  )
-  const unsent = createMemo(
-    () => (
-      c.rev(),
-      c.v.page === null && !c.v.up
-        ? c.v.out.map((x) => x.said).filter((s) => s !== "")
-        : []
-    )
-  )
+  })
+  const live = createMemo<Item[]>(() => {
+    c.rev()
+    return items_live(View.view_stream(c.v))
+  })
+  const unsent = createMemo(() => {
+    c.rev()
+    return c.v.page === null && !c.v.up
+      ? c.v.out.map((x) => x.said).filter((s) => s !== "")
+      : []
+  })
 
   // the input has the keys again once a sheet or a list closes
   createEffect(
@@ -153,7 +151,10 @@ export function App(props: {
   // unfolded: back to the chat's bottom
   createEffect(
     on(
-      () => (c.rev(), c.v.fold === null),
+      () => {
+        c.rev()
+        return c.v.fold === null
+      },
       (whole, was) => {
         if (whole && was === false) {
           setTimeout(() => scroll?.scrollTo(scroll.scrollHeight), 0)
@@ -322,7 +323,9 @@ export function App(props: {
         flexDirection="column"
       >
         <scrollbox
-          ref={(s: ScrollBoxRenderable) => (scroll = s)}
+          ref={(s: ScrollBoxRenderable) => {
+            scroll = s
+          }}
           flexGrow={1}
           stickyScroll={true}
           stickyStart="bottom"
@@ -370,7 +373,9 @@ export function App(props: {
         {/* over the status line: the input's command list shows above it */}
         <box paddingLeft={1} paddingRight={1} flexShrink={0} zIndex={5}>
           <Prompt
-            api={(api) => (prompt = api)}
+            api={(api) => {
+              prompt = api
+            }}
             onSent={() => scroll?.scrollTo(scroll.scrollHeight)}
           />
         </box>
@@ -380,7 +385,9 @@ export function App(props: {
           {(s) => (
             <SheetView
               sheet={s()}
-              scrollRef={(x) => (sheetScroll = x)}
+              scrollRef={(x) => {
+                sheetScroll = x
+              }}
               close={() => setSheet(null)}
             />
           )}
@@ -412,7 +419,7 @@ function Connecting(): JSX.Element {
   return (
     <box paddingLeft={2}>
       <text fg={ctx.p.muted}>
-        {ctx.spin() + " Connecting to " + ctx.c.url + "…"}
+        {`${ctx.spin()} Connecting to ${ctx.c.url}…`}
       </text>
     </box>
   )
@@ -430,28 +437,41 @@ function Status(): JSX.Element {
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => c.since > 0 && setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
-  const busy = () => (c.rev(), c.v.busy)
+  const busy = () => {
+    c.rev()
+    return c.v.busy
+  }
   const wait = () => {
     c.rev()
     if (c.v.wait === View.SUMMARIES) {
       return "compressing earlier messages"
     }
     if (c.v.wait !== "") {
-      return "waiting for " + c.v.wait
+      return `waiting for ${c.v.wait}`
     }
     return c.v.live.length > 0 ? "working" : "thinking"
   }
   // the clock as last read, else the turn's start: never before it
-  const time = () => (
-    c.rev(), c.since === 0 ? "" : secs_show(Math.max(0, now() - c.since) / 1000)
-  )
-  const agents = () => (c.rev(), c.v.agents)
-  const jobs = () => (c.rev(), c.jobs.size)
-  const load = () => (
-    c.rev(),
-    c.v.importing === null ? "" : View.progress_show(c.v, c.v.importing)
-  )
-  const up = () => (c.rev(), c.v.up)
+  const time = () => {
+    c.rev()
+    return c.since === 0 ? "" : secs_show(Math.max(0, now() - c.since) / 1000)
+  }
+  const agents = () => {
+    c.rev()
+    return c.v.agents
+  }
+  const jobs = () => {
+    c.rev()
+    return c.jobs.size
+  }
+  const load = () => {
+    c.rev()
+    return c.v.importing === null ? "" : View.progress_show(c.v, c.v.importing)
+  }
+  const up = () => {
+    c.rev()
+    return c.v.up
+  }
   const shown = () =>
     busy() || agents().length > 0 || jobs() > 0 || load() !== "" || !up()
   return (
@@ -466,31 +486,31 @@ function Status(): JSX.Element {
       >
         <Show when={!up()}>
           <text fg={p.warn} flexShrink={0}>
-            {"○ offline · reconnecting"}
+            ○ offline · reconnecting
           </text>
         </Show>
         <Show when={busy()}>
           <text fg={p.accent} flexShrink={0}>
-            {ctx.spin() + " "}
+            {`${ctx.spin()} `}
             <span style={{fg: p.text}}>{wait()}</span>
             <span style={{fg: p.faint}}>
-              {(time() === "" ? "" : " · " + time()) + " · esc to interrupt"}
+              {`${time() === "" ? "" : ` · ${time()}`} · esc to interrupt`}
             </span>
           </text>
         </Show>
         <Show when={agents().length > 0}>
           <text fg={p.agent} flexShrink={1} wrapMode="none">
-            {"◆ " + agents().join(", ") + " at work"}
+            {`◆ ${agents().join(", ")} at work`}
           </text>
         </Show>
         <Show when={jobs() > 0}>
           <text fg={p.warn} flexShrink={0}>
-            {"⚙ " + jobs() + (jobs() === 1 ? " job" : " jobs") + " here"}
+            {`⚙ ${jobs()}${jobs() === 1 ? " job" : " jobs"} here`}
           </text>
         </Show>
         <Show when={load() !== ""}>
           <text fg={p.muted} flexShrink={1} wrapMode="none">
-            {"⇣ " + load()}
+            {`⇣ ${load()}`}
           </text>
         </Show>
       </box>
@@ -508,8 +528,14 @@ function Footer(props: {
   const ctx = useCtx()
   const c = ctx.c
   const p = ctx.p
-  const tabs = () => (c.rev(), View.view_tabs(c.v))
-  const knobs = () => (c.rev(), View.view_pick(c.v))
+  const tabs = () => {
+    c.rev()
+    return View.view_tabs(c.v)
+  }
+  const knobs = () => {
+    c.rev()
+    return View.view_pick(c.v)
+  }
   const host = c.url.replace(/^https?:\/\//, "")
   return (
     <box
@@ -627,7 +653,7 @@ function SheetView(props: {
         paddingLeft={2}
         paddingRight={2}
         paddingTop={1}
-        title={" " + props.sheet.title + " "}
+        title={` ${props.sheet.title} `}
         titleAlignment="left"
         bottomTitle=" esc to close · ↑↓ to scroll "
         bottomTitleAlignment="right"
@@ -669,7 +695,10 @@ function PickerView(props: {
   const p = ctx.p
   // made again only as the chat's state changes, not at each piece of a
   // stream (the highlight stays where the keys moved it)
-  const opts = createMemo(() => (c.log(), pick_options(c, props.move)))
+  const opts = createMemo(() => {
+    c.log()
+    return pick_options(c, props.move)
+  })
   const now = () =>
     Math.max(
       0,
@@ -697,8 +726,8 @@ function PickerView(props: {
         backgroundColor={p.raised}
         paddingLeft={1}
         paddingRight={1}
-        title={" " + title + " "}
-        bottomTitle={" " + hint() + " "}
+        title={` ${title} `}
+        bottomTitle={` ${hint()} `}
       >
         <select
           flexGrow={1}
@@ -737,5 +766,5 @@ function PickerView(props: {
 // a time as a clock reads it: "4s", "1m 20s"
 function secs_show(s: number): string {
   const t = Math.floor(s)
-  return t < 60 ? t + "s" : Math.floor(t / 60) + "m " + (t % 60) + "s"
+  return t < 60 ? `${t}s` : `${Math.floor(t / 60)}m ${t % 60}s`
 }

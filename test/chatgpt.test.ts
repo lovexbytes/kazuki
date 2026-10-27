@@ -10,18 +10,17 @@ import {beforeEach, expect, spyOn, test} from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import {Ok} from "../src/util/result.ts"
+import {noop} from "../src/util/noop.ts"
 
 // Fake
 // ====
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-chatgpt-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-chatgpt-`)
 
 const now = () => Math.floor(Date.now() / 1000)
 
 function jwt(claims: object): string {
-  return (
-    "e30." + Buffer.from(JSON.stringify(claims)).toString("base64url") + ".sig"
-  )
+  return `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`
 }
 
 // an access token of the fake's, valid till exp (s)
@@ -70,9 +69,9 @@ const fake = {
   refreshes: [] as any[],
   requests: [] as Array<{headers: Record<string, string>; body: any}>,
   limited: false,
-  resets: 1793082856,
+  resets: 1_793_082_856,
   polls: 0,
-  exchanges: [] as Array<Record<string, string>>,
+  exchanges: [] as Record<string, string>[],
   revoked: [] as any[],
   slow: 0,
   down: 0,
@@ -81,7 +80,7 @@ const fake = {
 
 function sse(events: any[]): Response {
   const body = events
-    .map((ev) => "event: " + ev.type + "\ndata: " + JSON.stringify(ev) + "\n\n")
+    .map((ev) => `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`)
     .join("")
   return new Response(body, {headers: {"content-type": "text/event-stream"}})
 }
@@ -94,7 +93,7 @@ function tokens(): object {
   return {
     id_token: ID,
     access_token: token,
-    refresh_token: "refresh-" + fake.issued
+    refresh_token: `refresh-${fake.issued}`
   }
 }
 
@@ -111,6 +110,7 @@ const server = Bun.serve({
       await Bun.sleep(fake.slow)
       fake.before?.()
       if (
+        // biome-ignore lint/security/noSecrets: the sign-in's public client id, not a secret
         body.client_id !== "app_EMoamEEZ73f0CkXaXp7hrann" ||
         Object.keys(body).sort().join() !== REFRESH.join()
       ) {
@@ -166,7 +166,7 @@ const server = Bun.serve({
       const odd = Object.keys(body).find((k) => !CODEX.includes(k))
       if (odd !== undefined) {
         return Response.json(
-          {detail: "Unsupported parameter: " + odd},
+          {detail: `Unsupported parameter: ${odd}`},
           {status: 400}
         )
       }
@@ -238,8 +238,8 @@ const server = Bun.serve({
 })
 
 process.env.KAZUKI_DIR = DIR
-process.env.KAZUKI_CHATGPT_ISSUER = "http://127.0.0.1:" + server.port
-process.env.KAZUKI_CHATGPT_URL = "http://127.0.0.1:" + server.port + "/codex"
+process.env.KAZUKI_CHATGPT_ISSUER = `http://127.0.0.1:${server.port}`
+process.env.KAZUKI_CHATGPT_URL = `http://127.0.0.1:${server.port}/codex`
 
 const config = await import("../src/config.ts")
 const {ChatGPT} = await import("../src/ai/chatgpt.ts")
@@ -254,7 +254,7 @@ Plugin.load()
 // openai's key comes before its sign-in: none here, so calls run on it
 config.SECRETS.set("OPENAI_API_KEY", "")
 
-const FILE = DIR + "/chatgpt.json"
+const FILE = `${DIR}/chatgpt.json`
 
 // FILE signed in with this access token (and refresh token)
 function sign_in(
@@ -280,12 +280,7 @@ function file(): any {
   return JSON.parse(fs.readFileSync(FILE, "utf8"))
 }
 
-function call(
-  speed = "slow",
-  text = "Say pong.",
-  patient = false,
-  on = (_: any) => {}
-) {
+function call(speed = "slow", text = "Say pong.", patient = false, on = noop) {
   const ask = {
     vendor: "openai",
     model: "gpt-6-luna",
@@ -312,7 +307,7 @@ beforeEach(() => {
     refreshes: [],
     requests: [],
     limited: false,
-    resets: 1793082856,
+    resets: 1_793_082_856,
     polls: 0,
     exchanges: [],
     revoked: [],
@@ -358,7 +353,7 @@ test("a turn runs on the signed-in account, its output the items streamed", asyn
   const end = await turn()
   expect(end.ok).toBe(true)
   expect(end.text).toBe("pong")
-  expect(fake.requests[0].headers.authorization).toBe("Bearer " + token)
+  expect(fake.requests[0].headers.authorization).toBe(`Bearer ${token}`)
   expect(fake.requests[0].headers["chatgpt-account-id"]).toBe("acct-1")
   expect(fake.refreshes).toHaveLength(0)
 })
@@ -380,7 +375,7 @@ test("a 401 refreshes the token and sends again, once", async () => {
   expect((await turn()).ok).toBe(true)
   expect(fake.requests).toHaveLength(2)
   const valid = fake.valid
-  fake.valid = {has: () => false, add: () => {}, clear: () => {}} as any
+  fake.valid = {has: () => false, add: noop, clear: noop} as any
   const end = await turn()
   fake.valid = valid
   expect(end.ok).toBe(false)
@@ -425,13 +420,13 @@ test("a call stopped mid-refresh keeps the process alive till the new tokens are
   sign_in(access(1, now() + 10), "refresh-0")
   fake.slow = 300
   const c = call()
-  for (let i = 0; i < 100 && fake.refreshes.length === 0; i++) {
+  for (let i = 0; i < 100 && fake.refreshes.length === 0; i += 1) {
     await Bun.sleep(10)
   }
   c.stop()
   await c.done
   expect(READING.n).toBeGreaterThan(0)
-  for (let i = 0; i < 100 && READING.n > 0; i++) {
+  for (let i = 0; i < 100 && READING.n > 0; i += 1) {
     await Bun.sleep(20)
   }
   expect(READING.n).toBe(0)
@@ -455,10 +450,10 @@ test("a call stopped while yielding doesn't start a token refresh", async () => 
       server: "",
       yields: "stopped-import"
     },
-    () => {}
+    noop
   )
   try {
-    for (let i = 0; i < 100 && Agent.room(model).wait.length === 0; i++) {
+    for (let i = 0; i < 100 && Agent.room(model).wait.length === 0; i += 1) {
       await Bun.sleep(10)
     }
     expect(Agent.room(model).wait.length).toBeGreaterThan(0)
@@ -519,7 +514,7 @@ test("a patient call (a summary's) at a usage limit waits for the reset, not ask
   )
   try {
     const c = call("slow", "Summarize.", true)
-    for (let i = 0; i < 100 && naps.length === 0; i++) {
+    for (let i = 0; i < 100 && naps.length === 0; i += 1) {
       await Bun.sleep(20)
     }
     c.stop()
@@ -533,7 +528,7 @@ test("a patient call (a summary's) at a usage limit waits for the reset, not ask
 
 test("device sign-in: polled till entered, past the issuer's 5xx, and saved", async () => {
   fake.down = 1
-  const auth = await ChatGPTAuth.device(() => {})
+  const auth = await ChatGPTAuth.device(noop)
   expect(fake.exchanges[0]).toMatchObject({
     code: "code-ok",
     code_verifier: "verifier-dev"

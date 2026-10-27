@@ -13,6 +13,7 @@ import {Machine, type Job} from "../device/machine.ts"
 import type {Result} from "../util/result.ts"
 import * as View from "../view/view.ts"
 import {link_open, link_send, post} from "../view/link.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -103,11 +104,11 @@ export function client_new(
     since: 0,
     pending: 0,
     hooks: {
-      note: () => {},
-      sheet: () => {},
-      back: () => {},
-      pick: () => {},
-      quit: () => {}
+      note: noop,
+      sheet: noop,
+      back: noop,
+      pick: noop,
+      quit: noop
     },
     heard: []
   }
@@ -125,7 +126,7 @@ export function client_connect(c: Client): void {
     encodeURIComponent(c.work)
   link_open(c.v, {
     open: (query) =>
-      new WebSocket(c.url.replace(/^http/, "ws") + "/ws" + query + dev),
+      new WebSocket(`${c.url.replace(/^http/, "ws")}/ws${query}${dev}`),
     post: (path, body) => fetch(c.url + path, {method: "POST", body}),
     hear: (msg) => client_hear(c, msg),
     lost: async () => {
@@ -224,7 +225,7 @@ export async function client_get(
       "Could not " +
         what +
         ": " +
-        (res === null ? "no connection" : "HTTP " + res.status) +
+        (res === null ? "no connection" : `HTTP ${res.status}`) +
         "."
     )
     return null
@@ -264,7 +265,7 @@ export function path_read(arg: string): string {
 function client_jobs(c: Client, msg: View.Server & {$: "jobs" | "job"}): void {
   if (msg.$ === "job") {
     const sent = c.v.out.some((p) => p.msg.$ === "out" && p.msg.job === msg.id)
-    if (!c.jobs.has(msg.id) && !sent) {
+    if (!(c.jobs.has(msg.id) || sent)) {
       client_run(c, msg.id, msg.job as Job)
     }
     return

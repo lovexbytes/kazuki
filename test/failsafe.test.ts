@@ -11,8 +11,9 @@
 import {expect, test} from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
+import {noop} from "../src/util/noop.ts"
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-failsafe-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-failsafe-`)
 
 process.env.KAZUKI_DIR = DIR
 
@@ -43,7 +44,6 @@ const BROKE =
   "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."
 const LIMIT =
   "This request would exceed your organization's rate limit of 80,000 output tokens per minute."
-const BUSY = "the AI service is busy or unavailable right now"
 
 // messages, each too long to be its own summary; the one whose summary
 // the model refuses
@@ -51,7 +51,7 @@ const COUNT = 16
 const REFUSED = 5
 const MSGS = Array.from({length: COUNT}, (_, k) => ({
   kind: "unii" as const,
-  text: k + " " + "word ".repeat(200)
+  text: `${k} ${"word ".repeat(200)}`
 }))
 
 const real = {setTimeout, fetch, error: console.error}
@@ -82,13 +82,13 @@ function answer(text: string, stop: string): Response {
     {type: "message_stop"}
   ]
   return new Response(
-    events.map((ev) => "data: " + JSON.stringify(ev) + "\n\n").join("")
+    events.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("")
   )
 }
 
 async function vendor(_url: string, init: any): Promise<Response> {
   const content = JSON.parse(init.body).messages[0].content
-  const task: string = content[content.length - 1].text
+  const task: string = content.at(-1).text
   if (broke) {
     refused += 1
     return Response.json(
@@ -106,7 +106,7 @@ async function vendor(_url: string, init: any): Promise<Response> {
   const leaf = /compress message (\d+)/.exec(task)?.[1]
   return leaf === String(REFUSED)
     ? answer("", "refusal")
-    : answer("line for " + task.split("\n")[0], "end_turn")
+    : answer(`line for ${task.split("\n")[0]}`, "end_turn")
 }
 
 function sleep(ms: number): Promise<void> {
@@ -114,10 +114,10 @@ function sleep(ms: number): Promise<void> {
 }
 
 // every node of the tree: [part, its text or null]
-function nodes(mem: any): Array<[{l: number; i: number}, string | null]> {
-  const out: Array<[{l: number; i: number}, string | null]> = []
-  for (let l = 0; 2 ** l <= COUNT; l++) {
-    for (let i = 0; i < COUNT / 2 ** l; i++) {
+function nodes(mem: any): [{l: number; i: number}, string | null][] {
+  const out: [{l: number; i: number}, string | null][] = []
+  for (let l = 0; 2 ** l <= COUNT; l += 1) {
+    for (let i = 0; i < COUNT / 2 ** l; i += 1) {
       out.push([{l, i}, Memory.node(mem, {l, i})])
     }
   }
@@ -130,7 +130,7 @@ async function completes(mem: any): Promise<void> {
   for (
     let t = 0;
     t < 100 && nodes(mem).some(([, text]) => text === null);
-    t++
+    t += 1
   ) {
     await sleep(50)
   }
@@ -143,7 +143,7 @@ async function completes(mem: any): Promise<void> {
     )
   }
   expect(logged.filter((line) => line.includes("clipped"))).toEqual([
-    "compactor: node 0/" + REFUSED + ": stopped: refusal; clipped"
+    `compactor: node 0/${REFUSED}: stopped: refusal; clipped`
   ])
   Memory.stop(mem)
 }
@@ -165,7 +165,7 @@ async function fast(go: () => Promise<void>): Promise<void> {
 
 test("an outage delays summaries, never clips them; a refusal clips", () =>
   fast(async () => {
-    const mem = Memory.load(DIR + "/chat", () => SHARE)
+    const mem = Memory.load(`${DIR}/chat`, () => SHARE)
     Memory.push(mem, MSGS)
     await sleep(300)
     expect(refused).toBeGreaterThan(2 * COUNT)
@@ -175,12 +175,12 @@ test("an outage delays summaries, never clips them; a refusal clips", () =>
 
     const turn = await AskAI.ask(
       {...SHARE, blocks: [{text: "hi", mark: true}]},
-      () => {}
+      noop
     ).done
     expect(turn).toMatchObject({
       ok: false,
       stop: "down",
-      text: "HTTP 400: " + BROKE
+      text: `HTTP 400: ${BROKE}`
     })
 
     broke = false
@@ -195,22 +195,23 @@ test("a request leads single flight only as it is sent", () =>
     const room = Agent.room(SHARE.model)
     const asked: string[] = []
     const vend = globalThis.fetch
-    globalThis.fetch = ((url: string, init: any) => (
-      asked.push(JSON.parse(init.body).messages[0].content.at(-1).text),
-      vend(url, init)
-    )) as any
+    globalThis.fetch = ((url: string, init: any) => {
+      asked.push(JSON.parse(init.body).messages[0].content.at(-1).text)
+      return vend(url, init)
+    }) as any
     const blocks = (who: string) => [
+      // biome-ignore lint/security/noSecrets: test text
       {text: "<chat>\nyields\n", mark: true},
       {text: "</chat>\n", mark: false},
-      {text: who + " yields", mark: false}
+      {text: `${who} yields`, mark: false}
     ]
     room.busy = 1
     const held = AskAI.ask(
       {...SHARE, blocks: blocks("held"), yields: DIR},
-      () => {}
+      noop
     )
     await sleep(20)
-    const free = AskAI.ask({...SHARE, blocks: blocks("free")}, () => {}).done
+    const free = AskAI.ask({...SHARE, blocks: blocks("free")}, noop).done
     expect(
       await Promise.race([free, sleep(300).then(() => "still waiting")])
     ).toMatchObject({ok: true})
@@ -235,8 +236,8 @@ test("a rate limit's retries say BUSY; the vendor's words go to the log", () =>
       "The AI service is busy: asking again in 1 s."
     ])
     expect(logged).toEqual([
-      SHARE.model + ": HTTP 429: " + LIMIT + ": its requests ask again",
-      SHARE.model + ": none asks again"
+      `${SHARE.model}: HTTP 429: ${LIMIT}: its requests ask again`,
+      `${SHARE.model}: none asks again`
     ])
   }))
 
@@ -255,7 +256,7 @@ test("imports share a busy model alike", () =>
     const ask = (who: string) =>
       AskAI.ask(
         {...SHARE, blocks: [{text: who, mark: false}], yields: who[0]},
-        () => {}
+        noop
       ).done
     const ends = await Promise.all(["a0", "a1", "a2", "a3", "b0"].map(ask))
     expect(ends.map((end) => end.ok)).toEqual([true, true, true, true, true])

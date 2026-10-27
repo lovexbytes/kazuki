@@ -16,6 +16,7 @@ import {OpenAI} from "../ai/openai.ts"
 import {Pick} from "../ai/pick.ts"
 import {Providers, type Auth, type Provider} from "../ai/provider.ts"
 import {Err, Ok, type Result} from "../util/result.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -75,7 +76,7 @@ export namespace Plugin {
         )
       }
       if (ids.has(plugin.id)) {
-        throw new Error("plugin " + plugin.id + " is loaded twice")
+        throw new Error(`plugin ${plugin.id} is loaded twice`)
       }
       ids.add(plugin.id)
       plugin.setup({provider: Providers.add})
@@ -105,8 +106,8 @@ export namespace Plugin {
           a === undefined
             ? "not connected"
             : ping.ok
-              ? "connected (" + Plugin.method(a) + ")"
-              : "not connected: " + ping.error().message
+              ? `connected (${Plugin.method(a)})`
+              : `not connected: ${ping.error().message}`
         console.log(p.id.padEnd(12) + p.name.padEnd(12) + state)
       })
       console.log("\nUse `kazuki auth <provider_id>` to connect a provider.")
@@ -142,7 +143,7 @@ export namespace Plugin {
       if (!chose.ok) {
         return chose
       }
-      const bold = process.stdout.isTTY ? "\x1b[1m" + id + "\x1b[22m" : id
+      const bold = process.stdout.isTTY ? `\x1b[1m${id}\x1b[22m` : id
       console.log(
         "provider " +
           bold +
@@ -156,7 +157,7 @@ export namespace Plugin {
     const oauth = p.auth.find((a) => a.type === "oauth")
     if (act === "login" || act === "logout") {
       if (oauth === undefined) {
-        return new Err(new Error(id + " has no sign-in"))
+        return new Err(new Error(`${id} has no sign-in`))
       }
       if (act === "logout") {
         const out = await oauth.logout()
@@ -176,7 +177,7 @@ export namespace Plugin {
     for (const a of p.auth) {
       console.log(
         a.type === "key"
-          ? "Set " + a.envs.join(" and ") + " where the server starts."
+          ? `Set ${a.envs.join(" and ")} where the server starts.`
           : "`kazuki auth " +
               id +
               " login`: sign in with " +
@@ -224,7 +225,7 @@ export namespace Plugin {
         searches: 0,
         server: ""
       },
-      () => {}
+      noop
     )
     // a check, not a turn: a busy or unreachable provider is not waited out
     const late = setTimeout(call.stop, PING)
@@ -234,7 +235,7 @@ export namespace Plugin {
     }
     return new Err(
       new Error(
-        end.text === "stopped" ? "no answer in " + PING / 1e3 + " s" : end.text
+        end.text === "stopped" ? `no answer in ${PING / 1e3} s` : end.text
       )
     )
   }
@@ -245,8 +246,8 @@ export namespace Plugin {
       const ping = await quiet(() => Plugin.ping(p))
       console.log(
         ping.ok
-          ? "Connected to " + p.name + "."
-          : "Not connected: " + ping.error().message
+          ? `Connected to ${p.name}.`
+          : `Not connected: ${ping.error().message}`
       )
     }
   }
@@ -255,7 +256,7 @@ export namespace Plugin {
   // why says them
   async function quiet<T>(run: () => Promise<T>): Promise<T> {
     const log = console.error
-    console.error = () => {}
+    console.error = noop
     try {
       return await run()
     } finally {

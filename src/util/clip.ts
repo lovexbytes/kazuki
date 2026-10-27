@@ -10,7 +10,7 @@
 // Constants
 // =========
 
-export const CAP = 30000
+export const CAP = 30_000
 
 // Clip
 // ====

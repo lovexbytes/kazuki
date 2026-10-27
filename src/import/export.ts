@@ -34,10 +34,12 @@ export async function import_export(
       .then(JSON.parse)
       .catch(() => null)
     if (
-      !Array.isArray(chats) ||
-      !chats.every(
-        (chat) =>
-          chat?.mapping !== undefined || Array.isArray(chat?.chat_messages)
+      !(
+        Array.isArray(chats) &&
+        chats.every(
+          (chat) =>
+            chat?.mapping !== undefined || Array.isArray(chat?.chat_messages)
+        )
       )
     ) {
       return new Err(new Error(NOT_EXPORT))
@@ -54,12 +56,12 @@ function chat_session(chat: any): Promise<Session | null> {
   const [app, msgs] = chat.mapping
     ? ["ChatGPT", chat_openai(chat)]
     : ["Claude", chat_claude(chat)]
-  const file = new Blob(msgs.map((m) => JSON.stringify(m) + "\n"))
+  const file = new Blob(msgs.map((m) => `${JSON.stringify(m)}\n`))
   return import_session(
     file,
     "msgs",
     app,
-    'chat "' + String(chat.title ?? chat.name ?? "") + '"'
+    `chat "${String(chat.title ?? chat.name ?? "")}"`
   )
 }
 
@@ -96,7 +98,7 @@ function chat_openai(chat: any): Msg[] {
       ? []
       : msgs_of(
           kind,
-          (kind === "tool" ? m.recipient + " " : "") +
+          (kind === "tool" ? `${m.recipient} ` : "") +
             parts_text(m.content.parts ?? [m.content.text]),
           date
         )
@@ -115,7 +117,7 @@ function chat_claude(chat: any): Msg[] {
       ? m.content
       : [{type: "text", text: String(m.text ?? "")}]
     const files = [...(m.attachments ?? []), ...(m.files ?? [])].map(
-      (f: any) => ({type: "text", text: "[file " + f.file_name + "]"})
+      (f: any) => ({type: "text", text: `[file ${f.file_name}]`})
     )
     return blocks_msgs(kind, [...blocks, ...files], date)
   })

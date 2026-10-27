@@ -66,7 +66,7 @@ const READS = new Map<string, (x: Input) => Shown>([
     "zoom",
     (x) => ({
       head:
-        msg_show(x.id, x.n) + (x.at === undefined ? "" : " from char " + x.at),
+        msg_show(x.id, x.n) + (x.at === undefined ? "" : ` from char ${x.at}`),
       blocks: []
     })
   ],
@@ -91,7 +91,7 @@ const READS = new Map<string, (x: Input) => Shown>([
 export type Report = {name: string; text: string}
 
 export function report_text(name: string, text: string): string {
-  return "[" + name + "]\n" + text + '\n\nFull chat: zoom("' + name + '")'
+  return `[${name}]\n${text}\n\nFull chat: zoom("${name}")`
 }
 
 export function report_read(text: string): Report | null {
@@ -120,8 +120,8 @@ export function call_parse(text: string): Call {
 // the call on one line, after its name: its head, then each block,
 // spaces folded, then its device
 export function call_line(c: Call): string {
-  const blocks = c.blocks.map((b) => (b.k === "" ? "" : b.k + ": ") + b.x)
-  const where = c.device === "" ? [] : ["· " + c.device]
+  const blocks = c.blocks.map((b) => (b.k === "" ? "" : `${b.k}: `) + b.x)
+  const where = c.device === "" ? [] : [`· ${c.device}`]
   return [c.head, ...blocks, ...where].join(" ").replace(/\s+/g, " ").trim()
 }
 
@@ -154,8 +154,8 @@ function text_block(x: unknown): Md.Code[] {
 // the message or line zoom and date name: `#6243`, `#6243+8` (n > 1), an
 // agent's name as is
 function msg_show(id: unknown, n: unknown): string {
-  const many = typeof n === "number" && n > 1 ? "+" + n : ""
-  return typeof id === "number" ? "#" + id + many : String(id ?? "")
+  const many = typeof n === "number" && n > 1 ? `+${n}` : ""
+  return typeof id === "number" ? `#${id}${many}` : String(id ?? "")
 }
 
 // a spawn's count of tasks, and its effort if named
@@ -164,7 +164,7 @@ function tasks_show(tasks: unknown, effort: unknown): string {
   return (
     n +
     (n === 1 ? " agent" : " agents") +
-    (typeof effort === "string" ? " · " + effort : "")
+    (typeof effort === "string" ? ` · ${effort}` : "")
   )
 }
 
@@ -172,9 +172,7 @@ function tasks_show(tasks: unknown, effort: unknown): string {
 function lines_show(offset: unknown, limit: unknown): string {
   const from = typeof offset === "number" ? offset : 1
   const to = typeof limit === "number" ? String(from + limit - 1) : ""
-  return offset === undefined && limit === undefined
-    ? ""
-    : ":" + from + "-" + to
+  return offset === undefined && limit === undefined ? "" : `:${from}-${to}`
 }
 
 // the files an edit's list names, each once
@@ -192,7 +190,7 @@ function input_parse(text: string): Record<string, unknown> | null {
   let quote = false
   let esc = false
   let field = 0
-  for (let i = 0; i < text.length; i++) {
+  for (let i = 0; i < text.length; i += 1) {
     const c = text[i]
     if (quote) {
       quote = esc || c !== '"'
@@ -208,9 +206,9 @@ function input_parse(text: string): Record<string, unknown> | null {
       field = i
     }
   }
-  const open = quote ? (esc ? text.slice(0, -1) : text) + '"' : text
+  const open = quote ? `${esc ? text.slice(0, -1) : text}"` : text
   const full = open.replace(/[\s,]*$/, "") + shut.reverse().join("")
-  return object_parse(full) ?? object_parse(text.slice(0, field) + "}")
+  return object_parse(full) ?? object_parse(`${text.slice(0, field)}}`)
 }
 
 // null: no JSON object

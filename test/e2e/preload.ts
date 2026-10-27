@@ -22,7 +22,7 @@ globalThis.fetch = ((input: any, init?: any) => {
     return real(MOCK + url.slice(host.length), init)
   }
   if (!LOCAL.test(url)) {
-    return Promise.reject(new Error("e2e: blocked a request to " + url))
+    return Promise.reject(new Error(`e2e: blocked a request to ${url}`))
   }
   return real(input, init)
 }) as typeof fetch

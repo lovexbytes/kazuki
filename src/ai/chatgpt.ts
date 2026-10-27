@@ -23,10 +23,9 @@ type Sub = State & {items: any[]}
 // Constants
 // =========
 
-const RESPONSES =
-  config
-    .config_get("chatgpt_url", "https://chatgpt.com/backend-api/codex")
-    .replace(/\/$/, "") + "/responses"
+const RESPONSES = `${config
+  .config_get("chatgpt_url", "https://chatgpt.com/backend-api/codex")
+  .replace(/\/$/, "")}/responses`
 
 // 429s whose limit lasts, and what the user reads of each
 const LIMITS: Record<string, string> = {
@@ -88,7 +87,7 @@ export namespace ChatGPT {
   export function headers(token: string): Record<string, string> {
     const saved = ChatGPTAuth.load()
     return {
-      authorization: "Bearer " + token,
+      authorization: `Bearer ${token}`,
       "chatgpt-account-id":
         ChatGPTAuth.claims(token)[CLAIMS]?.chatgpt_account_id ??
         (saved.ok ? saved.value()?.tokens.account_id : undefined) ??
@@ -132,7 +131,7 @@ export namespace ChatGPT {
     const plan =
       typeof err.plan_type === "string" &&
       /^[a-z0-9_]{1,20}$/.test(err.plan_type)
-        ? " (" + err.plan_type + ")"
+        ? ` (${err.plan_type})`
         : ""
     const when =
       until === undefined

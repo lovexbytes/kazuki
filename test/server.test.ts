@@ -33,12 +33,12 @@ async function server_get(
   path: string,
   headers?: HeadersInit
 ): Promise<Response> {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-")
-  const site = "http://127.0.0.1:" + port
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
+  const site = `http://127.0.0.1:${port}`
   const proc = Bun.spawn(
     [
       process.execPath,
-      import.meta.dir + "/../src/core/server.ts",
+      `${import.meta.dir}/../src/core/server.ts`,
       String(port)
     ],
     {
@@ -48,14 +48,14 @@ async function server_get(
     }
   )
   try {
-    for (let k = 0; k < 100; k++) {
+    for (let k = 0; k < 100; k += 1) {
       const res = await fetch(site + path, {headers}).catch(() => null)
       if (res !== null) {
         return new Response(await res.text(), res)
       }
       await Bun.sleep(50)
     }
-    throw new Error("no answer on " + site)
+    throw new Error(`no answer on ${site}`)
   } finally {
     proc.kill()
     await proc.exited
@@ -67,17 +67,17 @@ test("server.ts alone serves no site", async () => {
 })
 
 test("the compiled terminal manages its local server separately from its TUI", async () => {
-  const scratch = os.tmpdir() + "/"
-  const dir = fs.mkdtempSync(scratch + "kazuki-terminal-")
-  fs.mkdirSync(dir + "/home")
-  const bin = dir + "/kazuki"
-  const data = dir + "/data"
+  const scratch = `${os.tmpdir()}/`
+  const dir = fs.mkdtempSync(`${scratch}kazuki-terminal-`)
+  fs.mkdirSync(`${dir}/home`)
+  const bin = `${dir}/kazuki`
+  const data = `${dir}/data`
   const port = await unused_port()
-  const site = "http://127.0.0.1:" + port
+  const site = `http://127.0.0.1:${port}`
   const env = {
     ...process.env,
     KAZUKI_DIR: data,
-    KAZUKI_URL: "http://localhost:" + port
+    KAZUKI_URL: `http://localhost:${port}`
   }
   let absent: Bun.Subprocess<"ignore", "ignore", "pipe"> | undefined
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined
@@ -89,11 +89,11 @@ test("the compiled terminal manages its local server separately from its TUI", a
     const build = Bun.spawnSync(
       [
         process.execPath,
-        import.meta.dir + "/../scripts/build.ts",
+        `${import.meta.dir}/../scripts/build.ts`,
         "--outfile",
         bin
       ],
-      {cwd: import.meta.dir + "/.."}
+      {cwd: `${import.meta.dir}/..`}
     )
     expect(build.exitCode).toBe(0)
     absent = Bun.spawn([bin, "tui"], {
@@ -126,15 +126,15 @@ test("the compiled terminal manages its local server separately from its TUI", a
     expect(proc.exitCode).toBe(0)
     pid = Number(out.match(/pid (\d+)/)?.[1])
     expect(pid).toBeGreaterThan(0)
-    const me = await fetch(site + "/api/me", {
+    const me = await fetch(`${site}/api/me`, {
       signal: AbortSignal.timeout(1000)
     })
     expect(await me.json()).toMatchObject({id: "local"})
-    fs.mkdirSync(dir + "/fake")
-    fs.writeFileSync(dir + "/fake/curl", "#!/bin/sh\nexit 7\n", {mode: 0o755})
+    fs.mkdirSync(`${dir}/fake`)
+    fs.writeFileSync(`${dir}/fake/curl`, "#!/bin/sh\nexit 7\n", {mode: 0o755})
     update = Bun.spawn([bin, "update"], {
       cwd: dir,
-      env: {...env, PATH: dir + "/fake"},
+      env: {...env, PATH: `${dir}/fake`},
       stdout: "ignore",
       stderr: "pipe"
     })
@@ -163,10 +163,10 @@ test("the compiled terminal manages its local server separately from its TUI", a
     ])
     expect(tui.exitCode).toBe(0)
     expect(await tui_err).toContain("/model <model> picks one.")
-    expect((await fetch(site + "/api/me")).status).toBe(200)
+    expect((await fetch(`${site}/api/me`)).status).toBe(200)
     v6 = Bun.spawn([bin, "server"], {
       cwd: dir,
-      env: {...env, KAZUKI_URL: "http://[::1]:" + port},
+      env: {...env, KAZUKI_URL: `http://[::1]:${port}`},
       stdout: "ignore",
       stderr: "pipe"
     })
@@ -177,7 +177,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
       })
     ])
     expect(v6.exitCode).toBe(0)
-    expect((await fetch(site + "/api/me")).status).toBe(200)
+    expect((await fetch(`${site}/api/me`)).status).toBe(200)
   } finally {
     for (const child of [absent, proc, tui, v6, update]) {
       child?.kill()
@@ -191,18 +191,18 @@ test("the compiled terminal manages its local server separately from its TUI", a
 })
 
 test("the installer accepts a verified release and preserves a target on checksum failure", () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-install-")
-  const fixture = dir + "/fixture"
-  const home = dir + "/home"
-  const fake = dir + "/fake"
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-install-`)
+  const fixture = `${dir}/fixture`
+  const home = `${dir}/home`
+  const fake = `${dir}/fake`
   const platform = process.platform === "darwin" ? "darwin" : "linux"
   const arch = process.arch === "arm64" ? "aarch64" : "x64-baseline"
   const asset = `kazuki-${platform}-${arch}.tar.gz`
-  const archive = fixture + "/" + asset
+  const archive = `${fixture}/${asset}`
   try {
     fs.mkdirSync(fixture)
     fs.mkdirSync(fake)
-    fs.writeFileSync(fixture + "/kazuki", "#!/bin/sh\necho fixture\n", {
+    fs.writeFileSync(`${fixture}/kazuki`, "#!/bin/sh\necho fixture\n", {
       mode: 0o755
     })
     expect(
@@ -211,9 +211,9 @@ test("the installer accepts a verified release and preserves a target on checksu
     const digest = Bun.spawnSync(["shasum", "-a", "256", archive])
       .stdout.toString()
       .split(/\s/)[0]
-    fs.writeFileSync(fixture + "/SHA256SUMS", `${digest}  ${asset}\n`)
+    fs.writeFileSync(`${fixture}/SHA256SUMS`, `${digest}  ${asset}\n`)
     fs.writeFileSync(
-      fake + "/curl",
+      `${fake}/curl`,
       `#!/bin/sh
 out=
 url=
@@ -233,29 +233,29 @@ esac
       ...process.env,
       HOME: home,
       TMPDIR: dir,
-      PATH: fake + ":" + process.env.PATH,
+      PATH: `${fake}:${process.env.PATH}`,
       FIXTURE: fixture,
       ARCHIVE: archive,
       LATEST: "https://github.com/lovexbytes/kazuki/releases/tag/v1.0.138"
     }
-    let run = Bun.spawnSync(["sh", import.meta.dir + "/../install.sh"], {
+    let run = Bun.spawnSync(["sh", `${import.meta.dir}/../install.sh`], {
       env,
       stdout: "ignore",
       stderr: "pipe"
     })
     expect(run.exitCode).toBe(0)
-    const target = home + "/.local/bin/kazuki"
+    const target = `${home}/.local/bin/kazuki`
     expect(fs.readFileSync(target, "utf8")).toContain("fixture")
     fs.writeFileSync(target, "keep me\n", {mode: 0o755})
-    fs.writeFileSync(fixture + "/SHA256SUMS", `${"0".repeat(64)}  ${asset}\n`)
-    run = Bun.spawnSync(["sh", import.meta.dir + "/../install.sh"], {
+    fs.writeFileSync(`${fixture}/SHA256SUMS`, `${"0".repeat(64)}  ${asset}\n`)
+    run = Bun.spawnSync(["sh", `${import.meta.dir}/../install.sh`], {
       env,
       stdout: "ignore",
       stderr: "pipe"
     })
     expect(run.exitCode).not.toBe(0)
     expect(fs.readFileSync(target, "utf8")).toBe("keep me\n")
-    run = Bun.spawnSync(["sh", import.meta.dir + "/../install.sh"], {
+    run = Bun.spawnSync(["sh", `${import.meta.dir}/../install.sh`], {
       env: {...env, LATEST: "https://github.com/lovexbytes/kazuki/releases"},
       stdout: "ignore",
       stderr: "pipe"
@@ -295,11 +295,11 @@ test("the local user needs no session and hostile origins are refused", async ()
 // names the model the running one asked. Its own process, as config is
 // read once a process (another test file's dir is not this one's)
 const TURN = `
-const { Chat, Views } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
-const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/../src/ai/ask-ai.ts")});
-const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
-const { Memory } = await import(${JSON.stringify(import.meta.dir + "/../src/core/memory.ts")});
-const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/../src/core/plugin.ts")});
+const { Chat, Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
+const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
+const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
+const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
 Plugin.load();
 Chat.cloud = Cloud.open(() => {});
 const chat = Chat.open({ id: "u1", name: "a@b.c" });
@@ -315,9 +315,9 @@ process.exit(0);
 `
 
 test("a turn's wait names the model it runs on, not one picked since", async () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-")
-  fs.writeFileSync(dir + "/turn.ts", TURN)
-  const proc = Bun.spawn([process.execPath, dir + "/turn.ts"], {
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
+  fs.writeFileSync(`${dir}/turn.ts`, TURN)
+  const proc = Bun.spawn([process.execPath, `${dir}/turn.ts`], {
     env: {...process.env, KAZUKI_DIR: dir},
     stdout: "pipe",
     stderr: "inherit"
@@ -339,11 +339,11 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
 // with no call, its calls never ending, so it still runs at the reads
 const RESUME = `
 const fs = await import("node:fs");
-const { Chat, Ingest, Views } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
-const { AskAI } = await import(${JSON.stringify(import.meta.dir + "/../src/ai/ask-ai.ts")});
-const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
-const { Memory } = await import(${JSON.stringify(import.meta.dir + "/../src/core/memory.ts")});
-const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/../src/core/plugin.ts")});
+const { Chat, Ingest, Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
+const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
+const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
+const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
 Plugin.load();
 Chat.cloud = Cloud.open(() => {});
 AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
@@ -366,9 +366,9 @@ process.exit(0);
 `
 
 test("an import's pause survives its chat opening again", async () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-")
-  fs.writeFileSync(dir + "/resume.ts", RESUME)
-  const proc = Bun.spawn([process.execPath, dir + "/resume.ts"], {
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
+  fs.writeFileSync(`${dir}/resume.ts`, RESUME)
+  const proc = Bun.spawn([process.execPath, `${dir}/resume.ts`], {
     env: {...process.env, KAZUKI_DIR: dir},
     stdout: "pipe",
     stderr: "inherit"
@@ -388,13 +388,15 @@ test("an import's pause survives its chat opening again", async () => {
 })
 
 test("a worker that dies starts again; one that fails in its place, after a pause", async () => {
-  process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-died-")
+  process.env.KAZUKI_DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-died-`)
   const {Main} = await import("../src/core/server.ts")
   delete process.env.KAZUKI_DIR
   const proc = (exitCode: number | null) =>
     ({exitCode, signalCode: null}) as Bun.Subprocess
   const starts = {n: 0}
-  const again = () => starts.n++
+  const again = () => {
+    starts.n += 1
+  }
   const dead = proc(1)
   Main.died(0, 1, dead, dead, again)
   expect(starts.n).toBe(1)
@@ -410,10 +412,10 @@ test("a worker that dies starts again; one that fails in its place, after a paus
 // a chat open as its provider disconnects runs, from its next turn, on
 // a model connected now, and says so
 const MOVED = `
-const { Chat } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
-const { Cloud } = await import(${JSON.stringify(import.meta.dir + "/../src/core/cloud.ts")});
-const config = await import(${JSON.stringify(import.meta.dir + "/../src/config.ts")});
-const { Plugin } = await import(${JSON.stringify(import.meta.dir + "/../src/core/plugin.ts")});
+const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
+const config = await import(${JSON.stringify(`${import.meta.dir}/../src/config.ts`)});
+const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
 Plugin.load();
 Chat.cloud = Cloud.open(() => {});
 config.SECRETS.set("ANTHROPIC_API_KEY", "test");
@@ -428,9 +430,9 @@ process.exit(0);
 `
 
 test("a chat whose provider disconnects runs on one connected now", async () => {
-  const dir = fs.mkdtempSync(os.tmpdir() + "/kazuki-server-")
-  fs.writeFileSync(dir + "/moved.ts", MOVED)
-  const proc = Bun.spawn([process.execPath, dir + "/moved.ts"], {
+  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
+  fs.writeFileSync(`${dir}/moved.ts`, MOVED)
+  const proc = Bun.spawn([process.execPath, `${dir}/moved.ts`], {
     env: {...process.env, KAZUKI_DIR: dir},
     stdout: "pipe",
     stderr: "inherit"

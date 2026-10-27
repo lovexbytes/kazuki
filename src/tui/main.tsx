@@ -31,7 +31,7 @@ const SIGNALS = ["SIGHUP", "SIGTERM", "SIGINT", "SIGQUIT", "SIGPIPE"] as const
 export async function tui_run(o: Opts): Promise<void> {
   const c = client_new(o.url, o.device, o.work, o.screen)
   process.on("exit", () => Machine.end())
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
     return pipe_run(c)
   }
   const r = await createCliRenderer({
@@ -55,10 +55,11 @@ export async function tui_run(o: Opts): Promise<void> {
     }
     done = true
     client_close(c)
-    // the terminal may be gone (a hangup): nothing to restore then
     try {
       r.destroy()
-    } catch {}
+    } catch {
+      // the terminal may be gone (a hangup): nothing to restore then
+    }
     setTimeout(() => process.exit(process.exitCode ?? 0), 50)
   }
   for (const sig of SIGNALS) {
@@ -91,7 +92,7 @@ async function pipe_run(c: Client): Promise<void> {
     }
   }
   c.hooks.note = (text) => console.error(text)
-  c.hooks.sheet = (title, md) => console.log("# " + title + "\n\n" + md + "\n")
+  c.hooks.sheet = (title, md) => console.log(`# ${title}\n\n${md}\n`)
   c.hooks.back = () => {
     client_close(c)
     process.exit(1)
@@ -106,8 +107,7 @@ async function pipe_run(c: Client): Promise<void> {
     ended = true
     idle()
   }
-  c.hooks.pick = (move) =>
-    console.error("/" + move + " <" + move + "> picks one.")
+  c.hooks.pick = (move) => console.error(`/${move} <${move}> picks one.`)
   // a command reads the chat (its pick, its blocks): no line is taken
   // before both came; a server never reached keeps the pipe waiting
   const view = Promise.withResolvers<void>()
@@ -127,7 +127,7 @@ async function pipe_run(c: Client): Promise<void> {
       last = msg.id
       const line = pipe_line(msg.kind, msg.text)
       if (line !== "") {
-        console.log(line + "\n")
+        console.log(`${line}\n`)
       }
     }
     if (msg.$ === "state") {
@@ -166,10 +166,10 @@ function pipe_line(kind: string, text: string): string {
     case "work":
       return (Call.report_read(text)?.text ?? text).trim()
     case "note":
-      return "· " + text.trim()
+      return `· ${text.trim()}`
     case "tool": {
       const call = Call.call_parse(text)
-      return "→ " + (call.name + " " + Call.call_line(call)).trim()
+      return `→ ${(`${call.name} ${Call.call_line(call)}`).trim()}`
     }
     default:
       return ""

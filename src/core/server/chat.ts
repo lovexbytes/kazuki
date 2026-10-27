@@ -17,14 +17,14 @@ import {answer_json} from "../../view/link.ts"
 import * as config from "../../config.ts"
 import {Err, Ok} from "../../util/result.ts"
 import {
-  Sock,
-  Body,
-  Msg,
-  Eye,
-  Check,
-  Batch,
-  Moved,
-  Peer,
+  type Sock,
+  type Body,
+  type Msg,
+  type Eye,
+  type Check,
+  type Batch,
+  type Moved,
+  type Peer,
   LOST,
   HEAD,
   GOAL,
@@ -41,6 +41,7 @@ import {Ingest} from "./ingest.ts"
 import {Move} from "./move.ts"
 import {Views} from "./views.ts"
 import {Main} from "./main.ts"
+import {noop} from "../../util/noop.ts"
 
 // a chat: acts being done (Views.apply); posts: requests and acts being
 // taken, its start till what it resumed runs, and the command after a
@@ -102,7 +103,7 @@ export namespace Chat {
       return old ?? null
     }
     const acct = {cloud, user: user.id}
-    const dir = config.DIR + "/users/" + user.id
+    const dir = `${config.DIR}/users/${user.id}`
     const mem = Memory.load(
       dir,
       () => Chat.share(chat),
@@ -189,7 +190,7 @@ export namespace Chat {
         Views.change(chat)
       })
       .catch((err) =>
-        console.error("chat " + acct.user + ": open: " + (err?.message ?? err))
+        console.error(`chat ${acct.user}: open: ${err?.message ?? err}`)
       )
     return chat
   }
@@ -210,7 +211,8 @@ export namespace Chat {
     if (was === Pick.label(pick)) {
       return
     }
-    chat.pick = chat.mem.pick = pick
+    chat.mem.pick = pick
+    chat.pick = pick
     Memory.save(chat.mem)
     Chat.note(
       chat,
@@ -372,7 +374,7 @@ export namespace Chat {
         held.forEach((step) => step())
       }
     })
-    chat.writes = run.catch(() => {})
+    chat.writes = run.catch(noop)
     return run
   }
 
@@ -389,9 +391,10 @@ export namespace Chat {
   // whether more come; none over READ
   export async function* pieces(
     body: Body,
-    at: number,
+    start: number,
     cut: (text: string) => string[]
   ): AsyncGenerator<[string[], boolean]> {
+    let at = start
     const dec = new TextDecoder()
     let rest = ""
     do {
@@ -400,9 +403,7 @@ export namespace Chat {
       const all = cut(rest + dec.decode(buf, {stream: at < body.size}))
       rest = at < body.size ? all.pop()! : ""
       if (rest.length > READ) {
-        throw new Error(
-          "A line over " + READ + " characters: no import sends it."
-        )
+        throw new Error(`A line over ${READ} characters: no import sends it.`)
       }
       yield [all, at < body.size]
     } while (at < body.size)
@@ -480,7 +481,8 @@ export namespace Chat {
   export async function call(chat: Chat): Promise<boolean> {
     const mem = chat.mem
     Chat.repick(chat)
-    const halt = (chat.halt = new AbortController())
+    const halt = new AbortController()
+    chat.halt = halt
     Views.change(chat)
     let from = -1
     while (from !== Chat.from(chat)) {
@@ -490,7 +492,8 @@ export namespace Chat {
         return false
       }
     }
-    const msgs = (chat.sent = chat.wait.splice(0))
+    const msgs = chat.wait.splice(0)
+    chat.sent = msgs
     const says = msgs
       .filter((m) => m.end > from)
       .map((m) => Memory.say(mem, Math.max(m.id, from), m.end))
@@ -510,7 +513,8 @@ export namespace Chat {
     chat.model = chat.pick.model
     chat.asked = true
     chat.open = 0
-    const call = (chat.call = AskAI.ask(ask, (ev) => Chat.on(chat, null, ev)))
+    const call = AskAI.ask(ask, (ev) => Chat.on(chat, null, ev))
+    chat.call = call
     Views.change(chat)
     return Chat.ended(chat, call, halt)
   }
@@ -526,7 +530,7 @@ export namespace Chat {
     Chat.unanswered(chat, null)
     Chat.live(chat, null, [])
     chat.wait.unshift(...chat.sent.slice(chat.sent.length - end.left.length))
-    if (!end.ok && !halt.signal.aborted) {
+    if (!(end.ok || halt.signal.aborted)) {
       Chat.failed(chat, end.text)
     }
     if (end.note) {
@@ -552,7 +556,7 @@ export namespace Chat {
     const tail = Array.from({length: mem.count - at}, (_, k) => at + k).map(
       (i) => {
         const msg = Memory.message(mem, i)!
-        return Memory.line({l: 0, i}, msg.kind + ": " + msg.text) + "\n"
+        return `${Memory.line({l: 0, i}, `${msg.kind}: ${msg.text}`)}\n`
       }
     )
     const blocks = [
@@ -560,7 +564,7 @@ export namespace Chat {
       {text: tail.join("") + GOAL_ASK + goal, mark: true}
     ]
     return {
-      call: AskAI.ask({...Chat.share(chat), system: GOAL, blocks}, () => {}),
+      call: AskAI.ask({...Chat.share(chat), system: GOAL, blocks}, noop),
       goal
     }
   }
@@ -575,7 +579,8 @@ export namespace Chat {
     check: Check<Call>,
     halt: AbortController
   ): Promise<boolean> {
-    const {call, goal} = (chat.check = check)
+    chat.check = check
+    const {call, goal} = check
     halt.signal.addEventListener("abort", () => call.stop(), {once: true})
     const end = await call.done
     const mem = chat.mem
@@ -605,7 +610,7 @@ export namespace Chat {
   export function failed(chat: Chat, why: string): void {
     Chat.note(
       chat,
-      "No reply: " + why.replace(/\.$/, "") + ". Send a message to try again."
+      `No reply: ${why.replace(/\.$/, "")}. Send a message to try again.`
     )
   }
 
@@ -724,9 +729,9 @@ export namespace Chat {
     Chat.hold(chat, () => {
       chat.posts += 1
       const msg =
-        Chat.chats.get(chat.acct.user) !== chat
-          ? null
-          : Chat.push(chat, null, "work", text)
+        Chat.chats.get(chat.acct.user) === chat
+          ? Chat.push(chat, null, "work", text)
+          : null
       if (msg !== null && !stopped) {
         Chat.take(chat, msg)
       }
@@ -750,10 +755,10 @@ export namespace Chat {
         })
         const err = await new Response(proc.stderr).text()
         if ((await proc.exited) !== 0) {
-          Views.all(chat, {$: "note", text: "after: " + err.trim()})
+          Views.all(chat, {$: "note", text: `after: ${err.trim()}`})
         }
       })
-      .catch((err) => console.error("after: " + (err?.message ?? err)))
+      .catch((err) => console.error(`after: ${err?.message ?? err}`))
       .finally(() => {
         chat.posts -= 1
         Chat.free(chat)
@@ -764,7 +769,7 @@ export namespace Chat {
   // to load is logged and left (its user's page gets the error), never
   // keeping the worker, which serves every other user, from starting
   export function wake(): void {
-    const dir = config.DIR + "/users/"
+    const dir = `${config.DIR}/users/`
     for (const id of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
       const user =
         Main.shard(id) === Main.index ? Cloud.user(Chat.cloud, id) : null
@@ -773,7 +778,7 @@ export namespace Chat {
         ((Memory.saved(dir + id)?.work ?? []).length > 0 ||
           fs.existsSync(dir + id + BATCH))
       ) {
-        Main.event("waking the chat of user " + id, () => Chat.open(user))
+        Main.event(`waking the chat of user ${id}`, () => Chat.open(user))
       }
     }
   }

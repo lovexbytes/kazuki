@@ -10,6 +10,7 @@ import {expect, setSystemTime, test} from "bun:test"
 import * as crypto from "node:crypto"
 import * as fs from "node:fs"
 import * as os from "node:os"
+import {noop} from "../src/util/noop.ts"
 
 // Types
 // =====
@@ -29,7 +30,7 @@ type Use = {read: number; write: number; input: number; n: number}
 const LOOK = 20
 const TTL = 300e3
 const FIRST = 1500
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-cache-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-cache-`)
 
 process.env.KAZUKI_DIR = DIR
 
@@ -62,8 +63,8 @@ let seed = 1
 const queue: Array<{at: number; go: () => void}> = []
 
 function rand(): number {
-  seed = (seed * 48271) % 2147483647
-  return seed / 2147483647
+  seed = (seed * 48_271) % 2_147_483_647
+  return seed / 2_147_483_647
 }
 
 function rand_span(a: number, b: number): number {
@@ -82,7 +83,7 @@ async function drain(): Promise<void> {
     now = Math.max(now, ev.at)
     setSystemTime(new Date(now))
     ev.go()
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 8; k += 1) {
       await new Promise((ok) => setImmediate(ok))
     }
   }
@@ -124,15 +125,15 @@ function cache_use(body: any): Use {
   const ends: number[] = []
   for (const {cache_control, ...b} of blocks) {
     const text = JSON.stringify(b)
-    keys.push(hash((keys[keys.length - 1] ?? head) + text))
-    ends.push((ends[ends.length - 1] ?? 0) + text.length)
+    keys.push(hash((keys.at(-1) ?? head) + text))
+    ends.push((ends.at(-1) ?? 0) + text.length)
   }
   const live = (k: number) =>
-    (CACHE.get(keys[k])?.from ?? Infinity) <= now &&
+    (CACHE.get(keys[k])?.from ?? Number.POSITIVE_INFINITY) <= now &&
     CACHE.get(keys[k])!.until >= now
   let hit = -1
   for (const m of marks) {
-    for (let k = m; k > m - LOOK && k >= 0; k--) {
+    for (let k = m; k > m - LOOK && k >= 0; k -= 1) {
       if (live(k)) {
         hit = Math.max(hit, k)
         break
@@ -143,7 +144,9 @@ function cache_use(body: any): Use {
     CACHE.get(keys[hit])!.until = now + TTL
   }
   for (const m of marks.filter(
-    (m) => m > hit && !(CACHE.get(keys[m])?.until! >= now)
+    (m) =>
+      m > hit &&
+      !((CACHE.get(keys[m])?.until ?? Number.NEGATIVE_INFINITY) >= now)
   )) {
     CACHE.set(keys[m], {from: now + FIRST, until: now + TTL})
   }
@@ -152,7 +155,7 @@ function cache_use(body: any): Use {
   return {
     read,
     write: Math.max(0, write),
-    input: ends[ends.length - 1] - read - Math.max(0, write),
+    input: (ends.at(-1) ?? 0) - read - Math.max(0, write),
     n: 1
   }
 }
@@ -164,7 +167,7 @@ function reply(body: any, task: string, line: string): Response {
   const done = body.messages.filter((m: any) => m.role === "assistant").length
   const tool = !task.startsWith("Compaction:") && done < steps
   const block = tool
-    ? {type: "tool_use", id: "t" + done, name: "zoom", input: {}}
+    ? {type: "tool_use", id: `t${done}`, name: "zoom", input: {}}
     : {type: "text", text: ""}
   const delta = tool
     ? {type: "input_json_delta", partial_json: "{}"}
@@ -183,7 +186,7 @@ function reply(body: any, task: string, line: string): Response {
   ]
   const sse = (evs: object[]) =>
     new TextEncoder().encode(
-      evs.map((ev) => "data: " + JSON.stringify(ev) + "\n\n").join("")
+      evs.map((ev) => `data: ${JSON.stringify(ev)}\n\n`).join("")
     )
   const ms = rand_span(3000, 9000)
   const stream = new ReadableStream({
@@ -214,7 +217,7 @@ function task_node(task: string): [number, number] {
 // real ones vary, a fourth too long at first: a try after one sends at
 // most its first's messages and the note
 async function replay(logs: Log[]): Promise<Record<string, Use>> {
-  const dir = DIR + "/chat" + Math.floor(rand() * 1e9)
+  const dir = `${DIR}/chat${Math.floor(rand() * 1e9)}`
   const mem = Memory.load(dir, () => SHARE)
   const uses: Record<string, Use> = {}
   const sizes = new Map<string, number>()
@@ -225,20 +228,17 @@ async function replay(logs: Log[]): Promise<Record<string, Use>> {
     const first = body.messages[0].content
     const task: string =
       first.findLast((c: any) => c.text.startsWith("Compaction:"))?.text ??
-      first[first.length - 1].text
+      first.at(-1).text
     const node = task.startsWith("Compaction:") ? task_node(task) : null
     const size = JSON.stringify(body.messages).length
-    const again = first[first.length - 1].text.startsWith("Too long:")
+    const again = first.at(-1).text.startsWith("Too long:")
     if (node !== null) {
       sizes.set(node.join(), sizes.get(node.join()) ?? size)
       expect(size).toBeLessThanOrEqual(sizes.get(node.join())! + 1000)
     }
-    const sum = (uses[node === null ? "turn" : "compaction"] ??= {
-      read: 0,
-      write: 0,
-      input: 0,
-      n: 0
-    })
+    const kind = node === null ? "turn" : "compaction"
+    uses[kind] ??= {read: 0, write: 0, input: 0, n: 0}
+    const sum = uses[kind]
     for (const k of ["read", "write", "input", "n"] as const) {
       sum[k] += use[k]
     }
@@ -260,6 +260,7 @@ async function replay(logs: Log[]): Promise<Record<string, Use>> {
   const start = Date.parse(logs[0].date)
   let turns = Promise.resolve()
   for (const log of logs) {
+    // biome-ignore lint/suspicious/noLoopFunc: each timer adds its turn to the one chain
     later(Date.parse(log.date) - start, () => {
       const id = Memory.push(mem, [
         {kind: log.kind as any, text: log.text, date: log.date}
@@ -281,10 +282,10 @@ async function replay(logs: Log[]): Promise<Record<string, Use>> {
 // a turn as Server.call makes it
 async function turn(mem: any, id: number, log: Log): Promise<void> {
   if ((await Memory.settle(mem, id, new AbortController().signal)) === null) {
-    const text = log.text + " #steps=" + log.steps
+    const text = `${log.text} #steps=${log.steps}`
     const call = AskAI.ask(
       {...SHARE, blocks: [...Memory.view(mem, id), {text, mark: true}]},
-      () => {}
+      noop
     )
     await call.done
   }
@@ -305,7 +306,7 @@ function synthetic(n: number): Log[] {
   while (logs.length < n) {
     const steps = Math.floor(rand() * 7)
     say("user", 40, 1500, rand_span(20e3, 240e3), steps)
-    for (let k = 0; k < steps; k++) {
+    for (let k = 0; k < steps; k += 1) {
       say("tool", 80, 600, rand_span(2e3, 12e3))
       say("echo", 40, 8000, rand_span(1e3, 6e3))
     }

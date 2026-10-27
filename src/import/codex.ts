@@ -20,7 +20,7 @@ export function line_codex(s: Session, j: any, last: string): Msg[] {
     s.where =
       (p.source?.subagent ?? p.source?.internal)
         ? ""
-        : "session in " + String(p.cwd ?? "")
+        : `session in ${String(p.cwd ?? "")}`
   }
   return j.type === "response_item" && s.where !== "" ? item_codex(p, date) : []
 }
@@ -36,19 +36,19 @@ function item_codex(p: any, date: string): Msg[] {
       return kind === null ? [] : msgs_of(kind, parts_text(parts), date)
     }
     case "function_call": {
-      return msgs_of("tool", p.name + " " + p.arguments, date)
+      return msgs_of("tool", `${p.name} ${p.arguments}`, date)
     }
     case "custom_tool_call": {
       return msgs_of(
         "tool",
-        p.name + " " + JSON.stringify({input: p.input}),
+        `${p.name} ${JSON.stringify({input: p.input})}`,
         date
       )
     }
     case "local_shell_call": {
       return msgs_of(
         "tool",
-        "shell " + JSON.stringify({command: p.action?.command}),
+        `shell ${JSON.stringify({command: p.action?.command})}`,
         date
       )
     }

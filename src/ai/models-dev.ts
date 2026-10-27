@@ -35,7 +35,7 @@ type Stored = {at: number; body: Catalog}
 
 const API = "https://models.dev/api.json"
 const TTL = 5 * 60e3
-const PATH = config.DIR + "/models.json"
+const PATH = `${config.DIR}/models.json`
 const NOW: {catalog?: Catalog} = {}
 
 // fewer providers: an error page or a body cut short, no catalog
@@ -83,7 +83,7 @@ export namespace ModelsDev {
         signal: AbortSignal.timeout(10e3)
       })
       if (!res.ok) {
-        return new Err(new Error(API + ": " + res.status))
+        return new Err(new Error(`${API}: ${res.status}`))
       }
       const all: Record<string, {models?: Record<string, {cost?: Cost}>}> =
         await res.json()
@@ -99,7 +99,7 @@ export namespace ModelsDev {
       )
       if (Object.keys(body).length < LEAST) {
         return new Err(
-          new Error(API + " has " + Object.keys(body).length + " providers")
+          new Error(`${API} has ${Object.keys(body).length} providers`)
         )
       }
       return new Ok(body)
@@ -117,15 +117,15 @@ export namespace ModelsDev {
     const got = await ModelsDev.fetched()
     const kept = got.ok ? ModelsDev.keep(got.value()) : got
     if (!kept.ok) {
-      console.error("models.dev: " + kept.error().message)
+      console.error(`models.dev: ${kept.error().message}`)
     }
   }
 
   // the copy kept, whole or not at all: the workers read it
   export function keep(body: Catalog): Result<void, Error> {
     try {
-      fs.writeFileSync(PATH + ".tmp", JSON.stringify({at: Date.now(), body}))
-      fs.renameSync(PATH + ".tmp", PATH)
+      fs.writeFileSync(`${PATH}.tmp`, JSON.stringify({at: Date.now(), body}))
+      fs.renameSync(`${PATH}.tmp`, PATH)
     } catch (e) {
       return caught(e)
     }
@@ -155,6 +155,6 @@ if (import.meta.main) {
     console.error(got.error().message)
     process.exit(1)
   }
-  await Bun.write(import.meta.dir + "/models.txt", JSON.stringify(got.value()))
-  console.log("models.txt: " + Object.keys(got.value()).length + " providers")
+  await Bun.write(`${import.meta.dir}/models.txt`, JSON.stringify(got.value()))
+  console.log(`models.txt: ${Object.keys(got.value()).length} providers`)
 }

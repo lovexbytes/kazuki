@@ -9,7 +9,7 @@ import {expect, test} from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-models-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-models-`)
 process.env.KAZUKI_DIR = DIR
 
 const {ModelsDev} = await import("../src/ai/models-dev.ts")
@@ -17,7 +17,7 @@ const {ModelsDev} = await import("../src/ai/models-dev.ts")
 // models.dev's api.json: enough providers, one priced model
 const catalog = (input: number, providers = 100) => ({
   ...Object.fromEntries(
-    Array.from({length: providers - 1}, (_, i) => ["p" + i, {models: {}}])
+    Array.from({length: providers - 1}, (_, i) => [`p${i}`, {models: {}}])
   ),
   x: {models: {m: {name: "M", cost: {input, output: 2}}, free: {name: "F"}}}
 })
@@ -25,7 +25,7 @@ const catalog = (input: number, providers = 100) => ({
 const FETCHES = {n: 0}
 const serve = (res: () => Response) => {
   globalThis.fetch = (async () => {
-    FETCHES.n++
+    FETCHES.n += 1
     return res()
   }) as unknown as typeof fetch
 }
@@ -48,7 +48,7 @@ test("an old copy is fetched again and kept; a fresh one is no fetch", async () 
 
 test("a failed fetch, or a catalog cut short, keeps the prices", async () => {
   const old = (body: object) =>
-    fs.writeFileSync(DIR + "/models.json", JSON.stringify({at: 0, body}))
+    fs.writeFileSync(`${DIR}/models.json`, JSON.stringify({at: 0, body}))
   old(ModelsDev.stored()!.body)
   serve(() => new Response("", {status: 500}))
   await ModelsDev.refresh()

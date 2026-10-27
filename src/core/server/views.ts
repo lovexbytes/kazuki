@@ -20,7 +20,7 @@ import {
 import {answer_json, answer_read} from "../../view/link.ts"
 import * as config from "../../config.ts"
 import {caught, Err, Ok, type Result} from "../../util/result.ts"
-import {Sock, Eye, FULL, SPARE, BODIES} from "./shared.ts"
+import {type Sock, type Eye, FULL, SPARE, BODIES} from "./shared.ts"
 import {Chat} from "./chat.ts"
 import {Ingest} from "./ingest.ts"
 
@@ -160,7 +160,7 @@ export namespace Views {
 
   // what a message or act that threw answers
   export function fail(err: unknown): Done {
-    console.error("kazuki: an act failed: " + ((err as Error)?.stack ?? err))
+    console.error(`kazuki: an act failed: ${(err as Error)?.stack ?? err}`)
     return caught(err)
   }
 
@@ -253,7 +253,7 @@ export namespace Views {
         const what = Chat.running(chat).filter(
           (w) => name === null || w === name
         )
-        const why = "Stopped by the user: " + what.join(", ") + "."
+        const why = `Stopped by the user: ${what.join(", ")}.`
         const turn = what.includes(TURN)
         if (what.length === 0) {
           return new Ok({})
@@ -286,9 +286,10 @@ export namespace Views {
       case "pick": {
         const pick = Pick.read(msg.to, Providers.offer())
         if (pick === null) {
-          return new Err(new Error("No pick " + JSON.stringify(msg.to) + "."))
+          return new Err(new Error(`No pick ${JSON.stringify(msg.to)}.`))
         }
-        chat.pick = chat.mem.pick = pick
+        chat.mem.pick = pick
+        chat.pick = pick
         Memory.save(chat.mem)
         Views.change(chat)
         return new Ok({})
@@ -298,7 +299,7 @@ export namespace Views {
         return new Ok({})
       }
     }
-    return new Err(new Error("No act " + msg.$ + "."))
+    return new Err(new Error(`No act ${msg.$}.`))
   }
 
   // a post (msg.req) refused before a byte of its body is read: under
@@ -309,8 +310,8 @@ export namespace Views {
     if (disk.bavail * disk.bsize < SPARE) {
       return new Err(Object.assign(new Error(FULL), {status: 507}))
     }
-    const file = chat.mem.dir + "/up/" + crypto.randomUUID()
-    fs.mkdirSync(chat.mem.dir + "/up", {recursive: true})
+    const file = `${chat.mem.dir}/up/${crypto.randomUUID()}`
+    fs.mkdirSync(`${chat.mem.dir}/up`, {recursive: true})
     const body = {fh: await fs.promises.open(file, "w+"), size: 0}
     fs.rmSync(file)
     try {
@@ -334,7 +335,7 @@ export namespace Views {
           return await Chat.voice(chat, id, String(msg.type), body)
         }
       }
-      return new Err(new Error("No act " + msg.$ + "."))
+      return new Err(new Error(`No act ${msg.$}.`))
     } catch (e) {
       // its body unread or cut short (Chat.pieces)
       return caught(e)
@@ -409,9 +410,9 @@ export namespace Views {
   // yet, once built (Ingest.made)
   export function teach(chat: Chat, sock: Sock, parts: Part[]): void {
     for (const [id, n] of parts.filter(
-      ([id, n]) => !sock.data.seen.has(id + "+" + n)
+      ([id, n]) => !sock.data.seen.has(`${id}+${n}`)
     )) {
-      sock.data.seen.add(id + "+" + n)
+      sock.data.seen.add(`${id}+${n}`)
       if (n === 1) {
         const m = Memory.message(chat.mem, id)!
         Views.send(sock, {
@@ -432,7 +433,7 @@ export namespace Views {
       Views.send(sock, {
         $: "know",
         nodes: {
-          [id + "+" + n]: {text, to: Memory.message(chat.mem, id + n - 1)!.date}
+          [`${id}+${n}`]: {text, to: Memory.message(chat.mem, id + n - 1)!.date}
         }
       })
     }

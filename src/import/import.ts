@@ -267,7 +267,7 @@ export function path_short(path: string): string {
 
 // a session as it opens
 function import_note(s: Session): Msg {
-  return {kind: "note", text: import_name(s) + " (imported)", date: s.start}
+  return {kind: "note", text: `${import_name(s)} (imported)`, date: s.start}
 }
 
 // a session's name in Done (its note's) and in Want.off
@@ -295,9 +295,10 @@ export async function* import_body(picked: Session[]): AsyncGenerator<string> {
   for (const s of picked) {
     const kept = new Set(s.heads.map((m) => m.n))
     let n = 0
-    part += JSON.stringify(import_note(s)) + "\n"
+    part += `${JSON.stringify(import_note(s))}\n`
     for await (const m of import_read(s)) {
-      part += kept.has(n++) ? JSON.stringify(m) + "\n" : ""
+      part += kept.has(n) ? `${JSON.stringify(m)}\n` : ""
+      n += 1
       if (part.length >= PART) {
         yield part
         part = ""
@@ -315,10 +316,11 @@ export async function* import_body(picked: Session[]): AsyncGenerator<string> {
 export function import_guess(a: number, sizes: number[]): number[][] {
   const usd: number[][] = []
   let nodes: Node[] = sizes.map((bytes) => ({bytes, depth: 0}))
-  for (let l = 0, i = a; nodes.length > 0; l++, i = Math.floor(i / 2)) {
+  for (let l = 0, i = a; nodes.length > 0; l += 1, i = Math.floor(i / 2)) {
     usd.push(nodes.map(node_usd))
+    const [depth, now] = [l, nodes]
     const line = (k: number) =>
-      k < 0 ? {bytes: LINE, depth: l} : node_line(nodes[k])
+      k < 0 ? {bytes: LINE, depth} : node_line(now[k])
     const from = Math.floor(i / 2)
     nodes = Array.from(
       {length: Math.floor((i + nodes.length) / 2) - from},
@@ -340,19 +342,17 @@ export function import_usd(a: number, sizes: number[]): number {
 
 // a message's bytes as summarized
 export function import_size(m: {kind: Kind; text: string}): number {
-  return new TextEncoder().encode(m.kind + ": " + m.text).length
+  return new TextEncoder().encode(`${m.kind}: ${m.text}`).length
 }
 
 // "1 message", "2,048 new messages" (what: "new ")
 export function import_count(n: number, what: string): string {
-  return (
-    n.toLocaleString("en-US") + " " + what + (n === 1 ? "message" : "messages")
-  )
+  return `${n.toLocaleString("en-US")} ${what}${n === 1 ? "message" : "messages"}`
 }
 
 // "$3.10"
 export function guess_usd(usd: number): string {
-  return "$" + Math.max(0.01, usd).toFixed(2)
+  return `$${Math.max(0.01, usd).toFixed(2)}`
 }
 
 // Node

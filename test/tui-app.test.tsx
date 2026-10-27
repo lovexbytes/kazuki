@@ -3,11 +3,12 @@ import {testRender} from "@opentui/solid"
 import {App} from "../src/tui/app.tsx"
 import {client_new} from "../src/tui/client.ts"
 import {DARK} from "../src/tui/palette.ts"
+import {noop} from "../src/util/noop.ts"
 
 // the whole page, drawn headless, with no server to reach
 async function page() {
   const c = client_new("http://127.0.0.1:9", "test", "/tmp", false)
-  return testRender(() => <App c={c} p={DARK} quit={() => {}} />, {
+  return testRender(() => <App c={c} p={DARK} quit={noop} />, {
     width: 100,
     height: 30
   })

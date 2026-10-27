@@ -11,8 +11,8 @@ import {Tools} from "../tools.ts"
 import {FRAME, MOVE, PING, QUIT, TICK, WIRE} from "../../view/view.ts"
 import * as config from "../../config.ts"
 import {
-  Sock,
-  Limit,
+  type Sock,
+  type Limit,
   LOCK,
   RETRY,
   HAND,
@@ -28,6 +28,7 @@ import {Chat} from "./chat.ts"
 import {Handover} from "./handover.ts"
 import {Http} from "./http.ts"
 import {Views} from "./views.ts"
+import {noop} from "../../util/noop.ts"
 
 export namespace Main {
   // whether the supervisor ends; its workers, which this is; mails the
@@ -47,9 +48,9 @@ export namespace Main {
   // refuses connections and is taken; one held is waited on
   export async function lock(): Promise<void> {
     fs.mkdirSync(config.DIR, {recursive: true})
-    while (true) {
+    for (;;) {
       try {
-        Bun.listen({unix: LOCK, socket: {data() {}}})
+        Bun.listen({unix: LOCK, socket: {data: noop}})
         return
       } catch (err: any) {
         if (err.code !== "EADDRINUSE") {
@@ -75,12 +76,12 @@ export namespace Main {
   export function event(
     what: string,
     run: () => void,
-    fail: () => void = () => {}
+    fail: () => void = noop
   ): void {
     try {
       run()
     } catch (err: any) {
-      console.error("kazuki: " + what + " failed: " + (err?.stack ?? err))
+      console.error(`kazuki: ${what} failed: ${err?.stack ?? err}`)
       fail()
     }
   }
@@ -153,11 +154,11 @@ export namespace Main {
     process.on("disconnect", () => process.exit(0))
     process.on("unhandledRejection", Main.unowned)
     Main.server = Bun.serve<Sock["data"]>({
-      port: port,
+      port,
       hostname: "127.0.0.1",
       reusePort: true,
       idleTimeout: 0,
-      maxRequestBodySize: Infinity,
+      maxRequestBodySize: Number.POSITIVE_INFINITY,
       fetch: Http.reply,
       websocket: {
         maxPayloadLength: FRAME,
@@ -167,7 +168,7 @@ export namespace Main {
         open(ws: Sock) {
           Main.opened(ws.data.user.id, 1)
           Main.event(
-            "a socket of user " + ws.data.user.id,
+            `a socket of user ${ws.data.user.id}`,
             () => {
               if (ws.data.wire !== String(WIRE)) {
                 ws.send(
@@ -205,7 +206,7 @@ export namespace Main {
         },
         close(ws: Sock, code) {
           Main.opened(ws.data.user.id, -1)
-          Main.event("a socket of user " + ws.data.user.id, () => {
+          Main.event(`a socket of user ${ws.data.user.id}`, () => {
             const chat = Chat.chats.get(ws.data.user.id)
             if (chat !== undefined) {
               Views.leave(chat, ws, code === QUIT)
@@ -249,7 +250,7 @@ export namespace Main {
   // end of the worker and every chat it holds
   export function unowned(err: unknown): void {
     console.error(
-      "kazuki: a failure no one owned: " + ((err as any)?.stack ?? err)
+      `kazuki: a failure no one owned: ${(err as any)?.stack ?? err}`
     )
   }
 
@@ -262,7 +263,7 @@ export namespace Main {
   // to start leaves that one serving. Its own code changes only on a
   // restart
   export function supervise(port: number, run: string[]): void {
-    const cloud = Cloud.open(() => {})
+    const cloud = Cloud.open(noop)
     const workers: Bun.Subprocess[] = []
     const all = new Set<Bun.Subprocess>()
     const hear = (k: number, proc: Bun.Subprocess, msg: any) => {
@@ -301,7 +302,7 @@ export namespace Main {
     Array.from({length: config.WORKERS}, (_, k) => start(k))
     Main.forget(NETS)
     Bun.serve({
-      port: port,
+      port,
       hostname: "127.0.0.1",
       fetch: (req) => {
         if (!local_request(req)) {
@@ -314,7 +315,7 @@ export namespace Main {
         }
         const k = Main.shard(Cloud.who(cloud, req).id)
         return new Response(null, {
-          headers: {"x-kazuki-worker": "127.0.0.1:" + (port + 1 + k)}
+          headers: {"x-kazuki-worker": `127.0.0.1:${port + 1 + k}`}
         })
       }
     })
@@ -359,7 +360,7 @@ export namespace Main {
     again: () => void
   ): void {
     if (code !== 0) {
-      console.error("kazuki: worker " + k + " ended (" + code + ")")
+      console.error(`kazuki: worker ${k} ended (${code})`)
     }
     if (Main.leaving || (now !== proc && Main.runs(now))) {
       return

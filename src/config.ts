@@ -24,7 +24,7 @@ import {Err, Ok, type Result} from "./util/result.ts"
 
 export const DIR = config_path(process.env.KAZUKI_DIR ?? "~/.kazuki")
 
-const PATH = DIR + "/config.json"
+const PATH = `${DIR}/config.json`
 const FILE: Record<string, string> = fs.existsSync(PATH)
   ? JSON.parse(fs.readFileSync(PATH, "utf8"))
   : {}
@@ -36,16 +36,16 @@ export const MODELS = config_get("models", "")
       .map((m) => m.trim())
   : null
 
-export const WORK = config_path(config_get("work", DIR + "/work"))
+export const WORK = config_path(config_get("work", `${DIR}/work`))
 export const RULES = config_path(config_get("rules", ""))
 export const AFTER = config_get("after", "")
 export const WORKERS = Number(config_get("workers", "0"))
 
 // the openai provider's ChatGPT sign-in (chatgpt.ts)
-export const CHATGPT = config_path(config_get("chatgpt", DIR + "/chatgpt.json"))
+export const CHATGPT = config_path(config_get("chatgpt", `${DIR}/chatgpt.json`))
 
 // each provider's chosen auth method, by its type (provider.ts)
-export const AUTH = DIR + "/auth.json"
+export const AUTH = `${DIR}/auth.json`
 
 // the picks: what a chat runs on until it picks another; what every
 // compaction runs on, a chat's and an import's alike, whatever the
@@ -69,7 +69,7 @@ export const SECRETS = new Map<string, string>()
 // ======
 
 export function config_get(key: string, def: string): string {
-  return process.env["KAZUKI_" + key.toUpperCase()] ?? FILE[key] ?? def
+  return process.env[`KAZUKI_${key.toUpperCase()}`] ?? FILE[key] ?? def
 }
 
 function config_path(path: string): string {
@@ -118,15 +118,15 @@ export function config_picks(
   const lost = (key: string, got: Pick | null, runs: string) => {
     if (config_get(key, "") !== "" && got === null) {
       picks.lost.push(
-        key + " " + config_get(key, "") + " isn't connected, so " + runs + "."
+        `${key} ${config_get(key, "")} isn't connected, so ${runs}.`
       )
     }
   }
-  lost("pick", pick, "new chats run on " + Pick.label(picks.pick))
+  lost("pick", pick, `new chats run on ${Pick.label(picks.pick)}`)
   lost(
     "compactor",
     compactor,
-    "summaries run on " + Pick.label(picks.compactor)
+    `summaries run on ${Pick.label(picks.compactor)}`
   )
   lost("agents", agents, "agents run on the chat's pick")
   return new Ok(picks)
@@ -162,12 +162,10 @@ function config_pick(
     effort: rest.find((r) => EFFORTS.includes(r)),
     speed: rest.find((r) => SPEEDS.includes(r))
   }
-  const odd = rest.some((r) => !EFFORTS.includes(r) && !SPEEDS.includes(r))
+  const odd = rest.some((r) => !(EFFORTS.includes(r) || SPEEDS.includes(r)))
   if (text !== "" && odd) {
     return new Err(
-      new Error(
-        "config: " + key + " is no provider:model[:effort][:speed]: " + text
-      )
+      new Error(`config: ${key} is no provider:model[:effort][:speed]: ${text}`)
     )
   }
   if (text !== "" && Pick.read(x, catalog) === null) {

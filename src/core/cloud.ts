@@ -25,7 +25,7 @@ export namespace Cloud {
     const file = path.join(config.DIR, "cloud.db")
     const db = Disk.db(file)
     db.exec(SCHEMA)
-    return {db, wal: file + "-wal", change}
+    return {db, wal: `${file}-wal`, change}
   }
 
   export function who(_cloud: Cloud, _req: Request): User {
@@ -42,21 +42,21 @@ export namespace Cloud {
   // an IPv4 address (including one written as IPv6), or an IPv6 /48
   export function net(ip: string): string {
     const v4 = /(\d+\.){3}\d+$/.exec(ip)
-    if (v4 !== null || !ip.includes(":")) return v4?.[0] ?? ip
+    if (v4 !== null || !ip.includes(":")) {
+      return v4?.[0] ?? ip
+    }
     const [head, tail = ""] = ip.toLowerCase().split("::")
     const a = head === "" ? [] : head.split(":")
     const b = tail === "" ? [] : tail.split(":")
     const all = [
       ...a,
-      ...Array(Math.max(0, 8 - a.length - b.length)).fill("0"),
+      ...new Array(Math.max(0, 8 - a.length - b.length)).fill("0"),
       ...b
     ]
-    return (
-      all
-        .slice(0, 3)
-        .map((h) => parseInt(h, 16).toString(16))
-        .join(":") + "::/48"
-    )
+    return `${all
+      .slice(0, 3)
+      .map((h) => Number.parseInt(h, 16).toString(16))
+      .join(":")}::/48`
   }
 
   export async function data(_cloud: Cloud, user: User): Promise<object> {
@@ -83,7 +83,7 @@ export namespace Cloud {
   }
 
   export async function http(
-    cloud: Cloud,
+    _cloud: Cloud,
     req: Request
   ): Promise<Response | null> {
     const user = LOCAL

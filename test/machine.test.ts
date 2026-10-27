@@ -7,16 +7,16 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import {Machine} from "../src/device/machine.ts"
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-machine-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-machine-`)
 
 test("a read past a file's end says so, never an empty range", () => {
-  const file = DIR + "/three"
+  const file = `${DIR}/three`
   fs.writeFileSync(file, "a\nb\nc\n")
-  expect(Machine.read(file, 3, Infinity, 0)).toEqual({
+  expect(Machine.read(file, 3, Number.POSITIVE_INFINITY, 0)).toEqual({
     text: "c\n[lines 3-3 of 3]",
     fail: false
   })
-  expect(Machine.read(file, 9, Infinity, 0)).toEqual({
+  expect(Machine.read(file, 9, Number.POSITIVE_INFINITY, 0)).toEqual({
     text: "No lines from line 9: the file has 3.",
     fail: true
   })

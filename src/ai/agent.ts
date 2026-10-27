@@ -125,7 +125,7 @@ export type Wire<S> = {
 // =========
 
 // a request's most output tokens: the models' own cap
-const MAX = 128000
+const MAX = 128_000
 export const TRIES = 8
 
 // what a call the vendor never answered says
@@ -177,7 +177,7 @@ export namespace Agent {
     const signal = run.abort.signal
     if (used === undefined) {
       return new Err(
-        new Error(p.name + " isn't connected: run `kazuki auth " + p.id + "`")
+        new Error(`${p.name} isn't connected: run \`kazuki auth ${p.id}\``)
       )
     }
     const key = used.type === "key" ? config.secret(used.envs[0]) : ""
@@ -273,11 +273,11 @@ export namespace Agent {
     const signal = run.abort.signal
     const model = run.ask.model
     const own =
-      run.ask.yields === undefined ? model : model + " " + run.ask.yields
+      run.ask.yields === undefined ? model : `${model} ${run.ask.yields}`
     let asking = false
     let refused: string | undefined
     try {
-      for (let k = 1; !signal.aborted; k++) {
+      for (let k = 1; !signal.aborted; k += 1) {
         await Agent.yielded(run, own, asking)
         if (signal.aborted) {
           return new Ok(Agent.fail("stopped", []))
@@ -311,7 +311,7 @@ export namespace Agent {
           continue
         }
         if (step.stop === "down") {
-          console.error(model + ": " + step.why.slice(0, 300))
+          console.error(`${model}: ${step.why.slice(0, 300)}`)
         }
         if (step.stop !== "busy" || k >= TRIES) {
           return new Ok(step.stop === "busy" ? {...step, stop: "down"} : step)
@@ -328,7 +328,7 @@ export namespace Agent {
         run.on({
           $: "Entry",
           kind: "mind",
-          text: "The AI service is busy: asking again in " + wait + " s."
+          text: `The AI service is busy: asking again in ${wait} s.`
         })
         await nap(wait * 1000, signal)
       }
@@ -373,10 +373,10 @@ export namespace Agent {
   // a request asks `model` again, holding `own`, its model's room or its
   // import's; the model's first says why
   export function hold(model: string, own: string, why: string): void {
-    if (Agent.room(model).asking++ === 0) {
-      console.error(
-        model + ": " + why.slice(0, 300) + ": its requests ask again"
-      )
+    const room = Agent.room(model)
+    room.asking += 1
+    if (room.asking === 1) {
+      console.error(`${model}: ${why.slice(0, 300)}: its requests ask again`)
     }
     Agent.room(own).busy += 1
   }
@@ -388,8 +388,10 @@ export namespace Agent {
     if (room.busy === 0) {
       room.wait.splice(0).forEach((ok) => ok())
     }
-    if (--Agent.room(model).asking === 0) {
-      console.error(model + ": none asks again")
+    const asked = Agent.room(model)
+    asked.asking -= 1
+    if (asked.asking === 0) {
+      console.error(`${model}: none asks again`)
     }
     for (const key of [own, model]) {
       if (ROOMS.get(key)?.busy === 0 && ROOMS.get(key)?.asking === 0) {
@@ -440,9 +442,9 @@ export namespace Agent {
       return {res: null, step: Agent.fail("stopped", [])}
     }
     READING.n += 1
-    return Agent.send(wire, run, key, body, flight, seen).finally(
-      () => (READING.n -= 1)
-    )
+    return Agent.send(wire, run, key, body, flight, seen).finally(() => {
+      READING.n -= 1
+    })
   }
 
   export async function send<S>(
@@ -456,9 +458,7 @@ export namespace Agent {
     const idle = new AbortController()
     const timer = setTimeout(
       () =>
-        idle.abort(
-          new Error("no word from the API in " + wire.idle / 1e3 + " s")
-        ),
+        idle.abort(new Error(`no word from the API in ${wire.idle / 1e3} s`)),
       wire.idle
     )
     const st = wire.start(run.ask)
@@ -477,8 +477,8 @@ export namespace Agent {
       const refusal = text === null ? null : (wire.refusal?.(res, text) ?? null)
       const auth =
         res.status === 401 || res.status === 403
-          ? "Provider authentication failed (" + run.ask.vendor + "): "
-          : "HTTP " + res.status + ": "
+          ? `Provider authentication failed (${run.ask.vendor}): `
+          : `HTTP ${res.status}: `
       const why =
         text === null ? "" : (refusal?.why ?? auth + Agent.reason(text))
       const stop = refusal === null && Agent.passing(res) ? "busy" : "down"
@@ -562,8 +562,7 @@ export namespace Agent {
     seen: Entry[],
     stop: Step["stop"] = "lost"
   ): Step {
-    const mark =
-      "\n[cut off: " + (stop === "busy" ? BUSY : why).slice(0, 300) + "]"
+    const mark = `\n[cut off: ${(stop === "busy" ? BUSY : why).slice(0, 300)}]`
     const entries = seen
       .filter((e) => e.text.trim())
       .map((e) => ({kind: e.kind, text: e.text.trim() + mark}))
@@ -592,7 +591,7 @@ export namespace Agent {
 
   export async function use(run: Run, tools: Tool[], use: Use): Promise<Out> {
     if (!tools.some((t) => t.name === use.name)) {
-      return {text: "No tool " + use.name + ".", fail: true}
+      return {text: `No tool ${use.name}.`, fail: true}
     }
     if (use.input === null || typeof use.input !== "object") {
       return {text: "The input is not a JSON object.", fail: true}
@@ -615,13 +614,11 @@ export namespace Agent {
     const list = await Agent.rpc(run, "tools/list", {})
     return list.ok
       ? new Ok(
-          list
-            .value()
-            .tools.map((t: any) => ({
-              name: t.name,
-              info: t.description,
-              schema: t.inputSchema
-            }))
+          list.value().tools.map((t: any) => ({
+            name: t.name,
+            info: t.description,
+            schema: t.inputSchema
+          }))
         )
       : list
   }
@@ -663,7 +660,7 @@ export namespace Agent {
       } as RequestInit)
       const msg = await res.json()
       return msg.error
-        ? new Err(new Error(method + ": " + msg.error.message))
+        ? new Err(new Error(`${method}: ${msg.error.message}`))
         : new Ok(msg.result)
     } catch (e) {
       return caught(e)

@@ -13,7 +13,7 @@ import solid from "@opentui/solid/bun-plugin"
 const args = process.argv.slice(2)
 const flag = (name: string) => {
   const at = args.findIndex(
-    (a) => a === "--" + name || a.startsWith("--" + name + "=")
+    (a) => a === `--${name}` || a.startsWith(`--${name}=`)
   )
   return at < 0
     ? undefined
@@ -25,7 +25,7 @@ const target = flag("target")
 const outfile = flag("outfile") ?? "kazuki"
 
 const out = await Bun.build({
-  entrypoints: [import.meta.dir + "/../src/cli.ts"],
+  entrypoints: [`${import.meta.dir}/../src/cli.ts`],
   plugins: [solid],
   minify: true,
   compile: {

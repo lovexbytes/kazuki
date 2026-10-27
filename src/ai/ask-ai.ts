@@ -29,6 +29,7 @@ import {stream_lines} from "../util/clip.ts"
 import {nap} from "../util/nap.ts"
 import type {Pick} from "./pick.ts"
 import {Providers} from "./provider.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -113,7 +114,7 @@ const AGAIN = 60e3
 
 // the longest a patient call waits for a refusal to lift (a ChatGPT
 // plan's limits last a week at most)
-const WEEK = 7 * 86400e3
+const WEEK = 7 * 86_400e3
 
 // the prefixes cached, by key (AskAI.keys)
 const CACHE = new Map<string, Cached>()
@@ -170,7 +171,17 @@ export namespace AskAI {
     const {promise, resolve} = Promise.withResolvers<End>()
     let to: Sink = {on, end: resolve}
     const feed: Sink = {on: (ev) => to.on(ev), end: (end) => to.end(end)}
-    return [{send, stop, done: promise, move: (sink) => (to = sink)}, feed]
+    return [
+      {
+        send,
+        stop,
+        done: promise,
+        move: (sink) => {
+          to = sink
+        }
+      },
+      feed
+    ]
   }
 
   // one try; a vendor that throws gives a failed one
@@ -180,7 +191,7 @@ export namespace AskAI {
     } catch (err: any) {
       const end = AskAI.end(err.message)
       const send = (say: Say) => end.left.push(say)
-      return {send, stop: () => {}, done: Promise.resolve(end)}
+      return {send, stop: noop, done: Promise.resolve(end)}
     }
   }
 
@@ -206,9 +217,10 @@ export namespace AskAI {
       ask.searches > 0
     ]
     let key = Bun.hash(JSON.stringify(head))
-    return ask.blocks
-      .slice(0, last + 1)
-      .map((b) => String((key = Bun.hash(b.text, key))))
+    return ask.blocks.slice(0, last + 1).map((b) => {
+      key = Bun.hash(b.text, key)
+      return String(key)
+    })
   }
 
   // single flight: waits while a leader writes the longest cached part of
@@ -231,10 +243,11 @@ export namespace AskAI {
         CACHE.delete(keys[k])
         CACHE.set(keys[k], got)
       }
-      if (k === keys.length - 1) {
-        return {begun: () => {}, end: () => {}}
+      const last = keys.at(-1)
+      if (k === keys.length - 1 || last === undefined) {
+        return {begun: noop, end: noop}
       }
-      return AskAI.lead(keys[keys.length - 1], ttl, now)
+      return AskAI.lead(last, ttl, now)
     }
   }
 
@@ -248,8 +261,13 @@ export namespace AskAI {
       }
       CACHE.delete(k)
     }
-    let free = () => {}
-    const own: Cached = {until: 0, ready: new Promise((ok) => (free = ok))}
+    let free = noop
+    const own: Cached = {
+      until: 0,
+      ready: new Promise((ok) => {
+        free = ok
+      })
+    }
     CACHE.set(key, own)
     const begun = () => {
       if (own.ready !== null) {
@@ -281,7 +299,7 @@ export namespace AskAI {
       return content
     }
     return (content ?? [])
-      .map((part: any) => part.text ?? "[" + part.type + "]")
+      .map((part: any) => part.text ?? `[${part.type}]`)
       .join("\n")
   }
 }

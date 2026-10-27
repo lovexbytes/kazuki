@@ -12,12 +12,12 @@ import * as fs from "node:fs"
 
 const E2E = process.env.E2E!
 const LOG = process.env.E2E_LOG!
-const ROOT = import.meta.dir + "/../.."
+const ROOT = `${import.meta.dir}/../..`
 const SERVER = process.env.KAZUKI_URL!
 const MOCK = process.env.E2E_MOCK!
 const PORT = Number(new URL(SERVER).port)
 
-if (!E2E || !process.env.KAZUKI_DIR?.startsWith(E2E) || PORT === 8788) {
+if (!(E2E && process.env.KAZUKI_DIR?.startsWith(E2E)) || PORT === 8788) {
   console.error(
     "run: start me with test/e2e/env.sh (KAZUKI_DIR must be under $E2E, never port 8788)"
   )
@@ -34,7 +34,7 @@ function check(name: string, ok: boolean, why = ""): void {
   console.log(
     (ok ? "PASS " : "FAIL ") +
       name +
-      (ok || why === "" ? "" : "\n     " + why.split("\n").join("\n     "))
+      (ok || why === "" ? "" : `\n     ${why.split("\n").join("\n     ")}`)
   )
   failed += ok ? 0 : 1
 }
@@ -51,7 +51,7 @@ function asked(): any[] {
 }
 
 function start(name: string, cmd: string[]): Bun.Subprocess {
-  const out = Bun.file(E2E + "/" + name + ".out")
+  const out = Bun.file(`${E2E}/${name}.out`)
   const proc = Bun.spawn(cmd, {cwd: ROOT, stdout: out, stderr: out})
   procs.push(proc)
   return proc
@@ -62,13 +62,15 @@ async function until(
   ms = 10e3
 ): Promise<boolean> {
   for (const end = Date.now() + ms; Date.now() < end; await Bun.sleep(100)) {
-    if (await what()) return true
+    if (await what()) {
+      return true
+    }
   }
   return false
 }
 
 const up = (url: string) =>
-  fetch(url + "/api/me").then(
+  fetch(`${url}/api/me`).then(
     (r) => r.ok,
     () => false
   )
@@ -83,9 +85,9 @@ async function server_start(): Promise<Bun.Subprocess> {
     String(PORT)
   ])
   check(
-    "server starts on " + SERVER,
+    `server starts on ${SERVER}`,
     await until(() => up(SERVER)),
-    fs.readFileSync(E2E + "/server.out", "utf8")
+    fs.readFileSync(`${E2E}/server.out`, "utf8")
   )
   return proc
 }
@@ -103,7 +105,7 @@ async function say(
     stdout: "pipe",
     stderr: "pipe"
   })
-  proc.stdin.write(lines.join("\n") + "\n")
+  proc.stdin.write(`${lines.join("\n")}\n`)
   proc.stdin.end()
   const timer = setTimeout(() => proc.kill(), ms)
   const [out, err] = await Promise.all([
@@ -132,7 +134,7 @@ async function main(): Promise<void> {
   check(
     "mock starts",
     await until(() =>
-      fetch(MOCK + "/").then(
+      fetch(`${MOCK}/`).then(
         () => true,
         () => false
       )
@@ -141,7 +143,7 @@ async function main(): Promise<void> {
   let server = await server_start()
 
   // the server's own route
-  check("serves /api/me", (await fetch(SERVER + "/api/me")).ok)
+  check("serves /api/me", (await fetch(`${SERVER}/api/me`)).ok)
 
   // Anthropic: a reply, a tool call run on this device
   let out = await say(["hello e2e"])
@@ -150,7 +152,7 @@ async function main(): Promise<void> {
     out.includes("pong anthropic: hello e2e"),
     out
   )
-  let a = asked().filter((r) => r.path === "/v1/messages")
+  const a = asked().filter((r) => r.path === "/v1/messages")
   check(
     "anthropic: asked with the dummy key",
     a.length > 0 && a.every((r) => r.auth === "e2e-anthropic-dummy"),
@@ -169,8 +171,8 @@ async function main(): Promise<void> {
   )
   check(
     "tool runs in the e2e work dir",
-    fs.existsSync(process.env.KAZUKI_WORK + "/main"),
-    process.env.KAZUKI_WORK + "/main missing"
+    fs.existsSync(`${process.env.KAZUKI_WORK}/main`),
+    `${process.env.KAZUKI_WORK}/main missing`
   )
 
   // the server's keys stay on the server: a job runs in its terminal's own
@@ -187,7 +189,7 @@ async function main(): Promise<void> {
 
   // a long message: the compactor (the provider's cheapest) summarizes it
   const before = asked().length
-  out = await say(["long " + "words to compact ".repeat(80)])
+  out = await say([`long ${"words to compact ".repeat(80)}`])
   const compacted = await until(
     () =>
       asked()
@@ -257,12 +259,13 @@ async function main(): Promise<void> {
 
   // the terminal app in tmux, as a person uses it
   const tmux = (args: string[]) =>
-    sh(["tmux", "-L", "kazuki-e2e-" + PORT, ...args])
+    sh(["tmux", "-L", `kazuki-e2e-${PORT}`, ...args])
   const pane = () => tmux(["capture-pane", "-p", "-t", "e2e"]).out
   const keys = (...k: string[]) => tmux(["send-keys", "-t", "e2e", ...k])
-  const type = (text: string) => (
-    tmux(["send-keys", "-t", "e2e", "-l", text]), keys("Enter")
-  )
+  const type = (text: string) => {
+    tmux(["send-keys", "-t", "e2e", "-l", text])
+    return keys("Enter")
+  }
   const seen = (what: string | RegExp, ms = 20e3) =>
     until(
       () =>
@@ -270,7 +273,7 @@ async function main(): Promise<void> {
       ms
     )
   const shot = (name: string) =>
-    fs.writeFileSync(E2E + "/tui-" + name + ".txt", pane())
+    fs.writeFileSync(`${E2E}/tui-${name}.txt`, pane())
   tmux(["kill-server"])
   const env = [
     "HOME",
@@ -279,7 +282,7 @@ async function main(): Promise<void> {
     "KAZUKI_URL",
     "KAZUKI_MODELS_FETCH",
     "PATH"
-  ].map((k) => k + "=" + JSON.stringify(process.env[k]))
+  ].map((k) => `${k}=${JSON.stringify(process.env[k])}`)
   tmux([
     "new-session",
     "-d",
@@ -289,7 +292,7 @@ async function main(): Promise<void> {
     "140",
     "-y",
     "45",
-    "env -i TERM=xterm-256color " + env.join(" ") + " bun src/cli.ts tui"
+    `env -i TERM=xterm-256color ${env.join(" ")} bun src/cli.ts tui`
   ])
   check(
     "tui: opens and draws the chat",
@@ -400,11 +403,10 @@ async function main(): Promise<void> {
 
   // /stop cuts a running tool: its shell dies, the next message works
   // its own length, so another run's sleep is never taken for it
-  const nap = "sleep 45." + PORT
-  type("RUN: " + nap)
+  const nap = `sleep 45.${PORT}`
+  type(`RUN: ${nap}`)
   await seen("sleep 45", 10e3)
-  const sleeping = () =>
-    sh(["pgrep", "-f", "^" + nap.replace(".", "\\.") + "$"]).ok
+  const sleeping = () => sh(["pgrep", "-f", `^${nap.replace(".", "\\.")}$`]).ok
   check("tui: the long tool runs here", await until(sleeping, 5e3))
   type("/stop")
   check(
@@ -457,7 +459,7 @@ async function main(): Promise<void> {
   )
 
   // the compiled executable: builds, prints help, and works as a client
-  const bin = E2E + "/kazuki"
+  const bin = `${E2E}/kazuki`
   const built = sh(["bun", "scripts/build.ts", "--outfile", bin])
   check("executable builds", built.ok, built.out)
   check("executable: help", sh([bin, "help"]).out.includes("Usage: kazuki"))
@@ -481,7 +483,7 @@ async function main(): Promise<void> {
   )
 
   // nothing escaped the mock
-  const srv = fs.readFileSync(E2E + "/server.out", "utf8")
+  const srv = fs.readFileSync(`${E2E}/server.out`, "utf8")
   check(
     "no request left for a real host",
     !srv.includes("e2e: blocked"),
@@ -499,7 +501,7 @@ try {
 } finally {
   procs.forEach((p) => p.kill())
   console.log(
-    (failed === 0 ? "ALL PASS" : failed + " FAILED") + " (logs: " + E2E + ")"
+    `${failed === 0 ? "ALL PASS" : `${failed} FAILED`} (logs: ${E2E})`
   )
   process.exit(failed === 0 ? 0 : 1)
 }

@@ -38,6 +38,7 @@ export type Auth = {
 // =========
 
 // Codex CLI's OAuth client
+// biome-ignore lint/security/noSecrets: the sign-in's public client id, not a secret
 const CLIENT = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = config
   .config_get("chatgpt_issuer", "https://auth.openai.com")
@@ -48,7 +49,7 @@ const ISSUER = config
 // sign-in waits for its user to enter its device code; how long
 // a refresh refused as used waits for another process's tokens (ms)
 const EARLY = 5 * 60e3
-const OLD = 8 * 86400e3
+const OLD = 8 * 86_400e3
 const REQUEST = 20e3
 const DEVICE = 15 * 60e3
 const SETTLE = 2e3
@@ -110,7 +111,7 @@ export namespace ChatGPTAuth {
         typeof auth?.tokens?.access_token !== "string" ||
         typeof auth.tokens.refresh_token !== "string"
       ) {
-        return new Err(new Error(config.CHATGPT + " holds no ChatGPT sign-in"))
+        return new Err(new Error(`${config.CHATGPT} holds no ChatGPT sign-in`))
       }
       return new Ok(auth)
     } catch (e) {
@@ -128,8 +129,8 @@ export namespace ChatGPTAuth {
   export function save(auth: Auth): Result<void, Error> {
     try {
       fs.mkdirSync(path.dirname(config.CHATGPT), {recursive: true, mode: 0o700})
-      const tmp = config.CHATGPT + "." + process.pid + ".tmp"
-      fs.writeFileSync(tmp, JSON.stringify(auth, null, 2) + "\n", {mode: 0o600})
+      const tmp = `${config.CHATGPT}.${process.pid}.tmp`
+      fs.writeFileSync(tmp, `${JSON.stringify(auth, null, 2)}\n`, {mode: 0o600})
       fs.renameSync(tmp, config.CHATGPT)
     } catch (e) {
       return caught(e)
@@ -176,12 +177,14 @@ export namespace ChatGPTAuth {
     }
     const auth = got.value()
     if (auth === null) {
-      return new Err(new Error("not signed in to ChatGPT: " + SIGN_IN))
+      return new Err(new Error(`not signed in to ChatGPT: ${SIGN_IN}`))
     }
     if (auth.tokens.access_token !== refused && !ChatGPTAuth.due(auth)) {
       return new Ok(auth.tokens.access_token)
     }
-    REFRESHING ??= ChatGPTAuth.refresh(auth).finally(() => (REFRESHING = null))
+    REFRESHING ??= ChatGPTAuth.refresh(auth).finally(() => {
+      REFRESHING = null
+    })
     const fresh = await REFRESHING
     return fresh.ok
       ? new Ok(fresh.value().tokens.access_token)
@@ -190,7 +193,7 @@ export namespace ChatGPTAuth {
 
   // an error that asking again may get past: a busy try (agent.ts)
   export function busy(why: string): Error {
-    return Object.assign(new Error("ChatGPT token refresh failed: " + why), {
+    return Object.assign(new Error(`ChatGPT token refresh failed: ${why}`), {
       busy: true
     })
   }
@@ -207,16 +210,16 @@ export namespace ChatGPTAuth {
       }
       const auth = now.value()
       if (auth === null) {
-        return new Err(new Error("signed out of ChatGPT: " + SIGN_IN))
+        return new Err(new Error(`signed out of ChatGPT: ${SIGN_IN}`))
       }
       return new Ok(
-        auth.tokens.refresh_token !== old.tokens.refresh_token ? auth : null
+        auth.tokens.refresh_token === old.tokens.refresh_token ? null : auth
       )
     }
     let res: Response
     let text: string
     try {
-      res = await fetch(ISSUER + "/oauth/token", {
+      res = await fetch(`${ISSUER}/oauth/token`, {
         method: "POST",
         headers: {"content-type": "application/json"},
         body: JSON.stringify({
@@ -238,7 +241,7 @@ export namespace ChatGPTAuth {
           : (body.error?.code ?? body.code ?? "")
       ).toLowerCase()
       if (res.status !== 401 && !GONE.includes(code)) {
-        return new Err(ChatGPTAuth.busy("HTTP " + res.status))
+        return new Err(ChatGPTAuth.busy(`HTTP ${res.status}`))
       }
       for (const end = Date.now() + SETTLE; ; await Bun.sleep(250)) {
         const now = newer()
@@ -256,7 +259,7 @@ export namespace ChatGPTAuth {
       return new Err(
         new Error(
           "the ChatGPT sign-in has expired or was revoked (" +
-            (code || "HTTP " + res.status) +
+            (code || `HTTP ${res.status}`) +
             "): " +
             SIGN_IN
         )
@@ -295,7 +298,7 @@ export namespace ChatGPTAuth {
         redirect_uri: redirect,
         code_verifier: verifier
       })
-      const res = await fetch(ISSUER + "/oauth/token", {
+      const res = await fetch(`${ISSUER}/oauth/token`, {
         method: "POST",
         headers: {"content-type": "application/x-www-form-urlencoded"},
         body: form,
@@ -327,7 +330,7 @@ export namespace ChatGPTAuth {
     show: (url: string, code: string) => void,
     wait = DEVICE
   ): Promise<Result<Auth, Error>> {
-    const api = ISSUER + "/api/accounts/deviceauth"
+    const api = `${ISSUER}/api/accounts/deviceauth`
     const post = (path: string, body: object) =>
       fetch(api + path, {
         method: "POST",
@@ -344,14 +347,14 @@ export namespace ChatGPTAuth {
             : ""
         return new Err(
           new Error(
-            "ChatGPT device code request failed: HTTP " + res.status + off
+            `ChatGPT device code request failed: HTTP ${res.status}${off}`
           )
         )
       }
       const got: any = await res.json()
       const code = got.user_code ?? got.usercode
       const every = Math.max(1, Number(got.interval) || 5) * 1000
-      show(ISSUER + "/codex/device", code)
+      show(`${ISSUER}/codex/device`, code)
       for (
         const end = Date.now() + wait;
         Date.now() < end;
@@ -365,7 +368,7 @@ export namespace ChatGPTAuth {
           const ok: any = await poll.json()
           return ChatGPTAuth.exchange(
             ok.authorization_code,
-            ISSUER + "/deviceauth/callback",
+            `${ISSUER}/deviceauth/callback`,
             ok.code_verifier
           )
         }
@@ -376,7 +379,7 @@ export namespace ChatGPTAuth {
           poll.status < 500
         ) {
           return new Err(
-            new Error("ChatGPT device sign-in failed: HTTP " + poll.status)
+            new Error(`ChatGPT device sign-in failed: HTTP ${poll.status}`)
           )
         }
       }
@@ -406,7 +409,7 @@ export namespace ChatGPTAuth {
     const res =
       auth === null
         ? null
-        : await fetch(ISSUER + "/oauth/revoke", {
+        : await fetch(`${ISSUER}/oauth/revoke`, {
             method: "POST",
             headers: {"content-type": "application/json"},
             body: JSON.stringify({
@@ -429,11 +432,11 @@ export namespace ChatGPTAuth {
       auth === null
         ? "it held no token"
         : res
-          ? "HTTP " + res.status
+          ? `HTTP ${res.status}`
           : "offline"
     return new Ok(
       "Signed out of ChatGPT" +
-        (res?.ok ? "." : " (its token wasn't revoked: " + why + ").") +
+        (res?.ok ? "." : ` (its token wasn't revoked: ${why}).`) +
         note
     )
   }
@@ -442,7 +445,7 @@ export namespace ChatGPTAuth {
   export function who(auth: Auth): string {
     const id = ChatGPTAuth.claims(auth.tokens.id_token)
     const plan = id[CLAIMS]?.chatgpt_plan_type
-    return (id.email ?? "an account") + (plan ? " (" + plan + " plan)" : "")
+    return (id.email ?? "an account") + (plan ? ` (${plan} plan)` : "")
   }
 
   // `kazuki chatgpt [logout]`

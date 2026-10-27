@@ -23,7 +23,7 @@ function sse(events: object[], named: boolean): Response {
   const body = events
     .map(
       (ev: any) =>
-        (named ? "event: " + ev.type + "\n" : "") +
+        (named ? `event: ${ev.type}\n` : "") +
         "data: " +
         JSON.stringify(ev) +
         "\n\n"
@@ -34,19 +34,26 @@ function sse(events: object[], named: boolean): Response {
 
 // every text in a value, in order
 function texts(x: any): string[] {
-  if (typeof x === "string") return [x]
+  if (typeof x === "string") {
+    return [x]
+  }
   if (
     x &&
     typeof x === "object" &&
     typeof x.output === "string" &&
     x.type === "function_call_output"
-  )
+  ) {
     return [x.output]
-  if (Array.isArray(x)) return x.flatMap(texts)
+  }
+  if (Array.isArray(x)) {
+    return x.flatMap(texts)
+  }
   // a block's own text, else the parts that hold text (never a type, an
   // id, or a cache mark such as {"mode":"explicit"})
   if (x && typeof x === "object") {
-    if (typeof x.text === "string") return [x.text]
+    if (typeof x.text === "string") {
+      return [x.text]
+    }
     return [
       "system",
       "instructions",
@@ -89,10 +96,10 @@ function plan(
   const turn = text.includes("Turn: the user's new message:")
   const last = said(text)
   if (!turn && result === null) {
-    return {text: "e2e summary: " + last.replace(/\s+/g, " ").slice(0, 60)}
+    return {text: `e2e summary: ${last.replace(/\s+/g, " ").slice(0, 60)}`}
   }
   if (result !== null) {
-    return {text: "ran: " + result.trim().split("\n")[0]}
+    return {text: `ran: ${result.trim().split("\n")[0]}`}
   }
   const run = /RUN:\s*(.+)/.exec(last)
   if (run !== null) {
@@ -104,7 +111,7 @@ function plan(
     }
   }
   return {
-    text: "pong " + vendor + ": " + last.trim().split("\n").pop()!.slice(0, 80)
+    text: `pong ${vendor}: ${last.trim().split("\n").pop()!.slice(0, 80)}`
   }
 }
 
@@ -113,7 +120,7 @@ function plan(
 
 function anthropic(body: any): Response {
   const msgs: any[] = body.messages ?? []
-  const lastMsg = msgs[msgs.length - 1]
+  const lastMsg = msgs.at(-1)
   const content =
     typeof lastMsg?.content === "string"
       ? [{type: "text", text: lastMsg.content}]
@@ -142,7 +149,7 @@ function anthropic(body: any): Response {
           index: 0,
           content_block: {
             type: "tool_use",
-            id: "toolu_" + Date.now(),
+            id: `toolu_${Date.now()}`,
             name: p.tool.name,
             input: {}
           }
@@ -198,7 +205,7 @@ function openai(body: any): Response {
   const input: any[] = Array.isArray(body.input)
     ? body.input
     : [{role: "user", content: String(body.input ?? "")}]
-  const lastItem = input[input.length - 1]
+  const lastItem = input.at(-1)
   const result =
     lastItem?.type === "function_call_output"
       ? texts(lastItem.output).join("\n") || String(lastItem.output)
@@ -218,8 +225,8 @@ function openai(body: any): Response {
   if ("tool" in p) {
     const item = {
       type: "function_call",
-      id: "fc_" + Date.now(),
-      call_id: "call_" + Date.now(),
+      id: `fc_${Date.now()}`,
+      call_id: `call_${Date.now()}`,
       name: p.tool.name,
       arguments: JSON.stringify(p.tool.input),
       status: "completed"
@@ -253,7 +260,7 @@ function openai(body: any): Response {
   }
   const item = {
     type: "message",
-    id: "msg_" + Date.now(),
+    id: `msg_${Date.now()}`,
     role: "assistant",
     status: "completed",
     content: [{type: "output_text", text: p.text, annotations: []}]
@@ -295,7 +302,7 @@ Bun.serve({
     if (url.pathname === "/v1/audio/transcriptions") {
       fs.appendFileSync(
         LOG,
-        JSON.stringify({at: Date.now(), path: url.pathname, auth}) + "\n"
+        `${JSON.stringify({at: Date.now(), path: url.pathname, auth})}\n`
       )
       return Response.json({
         text: "e2e voice words",
@@ -305,12 +312,16 @@ Bun.serve({
     const body = await req.json().catch(() => ({}))
     fs.appendFileSync(
       LOG,
-      JSON.stringify({at: Date.now(), path: url.pathname, auth, body}) + "\n"
+      `${JSON.stringify({at: Date.now(), path: url.pathname, auth, body})}\n`
     )
-    if (url.pathname === "/v1/messages") return anthropic(body)
-    if (url.pathname === "/v1/responses") return openai(body)
-    return new Response("mock: no route " + url.pathname, {status: 404})
+    if (url.pathname === "/v1/messages") {
+      return anthropic(body)
+    }
+    if (url.pathname === "/v1/responses") {
+      return openai(body)
+    }
+    return new Response(`mock: no route ${url.pathname}`, {status: 404})
   }
 })
 
-console.log("mock: listening on 127.0.0.1:" + PORT)
+console.log(`mock: listening on 127.0.0.1:${PORT}`)
