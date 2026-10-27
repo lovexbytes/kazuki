@@ -25,14 +25,15 @@ async function unused_port(): Promise<number> {
   })
 }
 
-// `./src/core/server.ts <port>` on a fresh dir, with `env`: its answer to `path`,
-// read whole, once it answers
-async function server_get(
+// `./src/core/server.ts <port>` on a fresh dir, with `env`, given to `go`
+// as a fetch of its paths, each answer read whole; once it answers
+async function server_with(
   port: number,
   env: Record<string, string>,
-  path: string,
-  headers?: HeadersInit
-): Promise<Response> {
+  go: (
+    get: (path: string, headers?: HeadersInit) => Promise<Response>
+  ) => Promise<void>
+): Promise<void> {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
   const site = `http://127.0.0.1:${port}`
   const proc = Bun.spawn(
@@ -47,19 +48,43 @@ async function server_get(
       stderr: "inherit"
     }
   )
+  const get = async (path: string, headers?: HeadersInit) => {
+    const res = await fetch(site + path, {headers})
+    return new Response(await res.text(), res)
+  }
   try {
-    for (let k = 0; k < 100; k += 1) {
-      const res = await fetch(site + path, {headers}).catch(() => null)
-      if (res !== null) {
-        return new Response(await res.text(), res)
+    let up = false
+    for (let k = 0; k < 100 && !up; k += 1) {
+      up = await fetch(site).then(
+        () => true,
+        () => false
+      )
+      if (!up) {
+        await Bun.sleep(50)
       }
-      await Bun.sleep(50)
     }
-    throw new Error(`no answer on ${site}`)
+    if (!up) {
+      throw new Error(`no answer on ${site}`)
+    }
+    await go(get)
   } finally {
     proc.kill()
     await proc.exited
   }
+}
+
+// the answer to one path, from a server started for it
+async function server_get(
+  port: number,
+  env: Record<string, string>,
+  path: string,
+  headers?: HeadersInit
+): Promise<Response> {
+  let out = new Response()
+  await server_with(port, env, async (get) => {
+    out = await get(path, headers)
+  })
+  return out
 }
 
 test("server.ts alone serves no site", async () => {
@@ -276,19 +301,21 @@ test("with workers, server.ts routes to them", async () => {
 
 // The local server opens its fixed user without a session and rejects hosts
 // or origins which could expose that unauthenticated chat.
+// One server answers all five: a server for each took about 5 s on a CI
+// runner, past the test's time limit.
 test("the local user needs no session and hostile origins are refused", async () => {
-  expect(await (await server_get(9481, {}, "/api/me")).json()).toEqual({
-    id: "local",
-    name: "local"
+  await server_with(await unused_port(), {}, async (get) => {
+    expect(await (await get("/api/me")).json()).toEqual({
+      id: "local",
+      name: "local"
+    })
+    expect((await get("/api/me", {host: "example.test"})).status).toBe(403)
+    expect((await get("/api/me", {origin: "http://evil.test"})).status).toBe(
+      403
+    )
+    expect((await get("/pricing")).status).toBe(404)
+    expect((await get("/terms.html")).status).toBe(404)
   })
-  expect(
-    (await server_get(9484, {}, "/api/me", {host: "example.test"})).status
-  ).toBe(403)
-  expect(
-    (await server_get(9485, {}, "/api/me", {origin: "http://evil.test"})).status
-  ).toBe(403)
-  expect((await server_get(9482, {}, "/pricing")).status).toBe(404)
-  expect((await server_get(9483, {}, "/terms.html")).status).toBe(404)
 })
 
 // test/fixtures/<name>.ts run in its own process on a fresh dir (config
