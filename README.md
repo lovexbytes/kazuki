@@ -184,5 +184,5 @@ Accessibility).
 Kazuki is an independent local-only fork of
 [Victor Taelin's UniiChat](https://github.com/VictorTaelin/uniichat), created
 at Higher Order Company. Upstream work is attributed under the Apache-2.0
-license; see [LICENSE](LICENSE). Kazuki is not affiliated with or a hosted
+license; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Kazuki is not affiliated with or a hosted
 service of the upstream project or Higher Order Company.
