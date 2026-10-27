@@ -1,0 +1,5 @@
+# Commits that git blame skips (git config blame.ignoreRevsFile
+# .git-blame-ignore-revs; GitHub reads this file on its own)
+
+# style: format the code with biome
+8025e9c8de4d9940975d615879fcf6745bd1c464
