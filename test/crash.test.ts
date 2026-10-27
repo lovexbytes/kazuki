@@ -4,14 +4,14 @@
 // (Main.unowned logs it); an agent whose run throws still reports, as a
 // failed reply.
 
-import { expect, test } from "bun:test";
-import * as fs from "node:fs";
-import * as os from "node:os";
+import {expect, test} from "bun:test"
+import * as fs from "node:fs"
+import * as os from "node:os"
 
-process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-crash-");
+process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-crash-")
 
-const { Agent } = await import("../src/ai/agent.ts");
-const { Tools } = await import("../src/core/tools.ts");
+const {Agent} = await import("../src/ai/agent.ts")
+const {Tools} = await import("../src/core/tools.ts")
 
 test("a worker outlives a failure no one owned", async () => {
   const code = `
@@ -19,29 +19,37 @@ test("a worker outlives a failure no one owned", async () => {
     process.on("unhandledRejection", Main.unowned);
     Promise.reject(new Error("nobody's"));
     setTimeout(() => { console.log("alive"); process.exit(0); }, 100);
-  `;
-  const proc = Bun.spawn([process.execPath, "-e", code], { env: { ...process.env }, stdout: "pipe", stderr: "pipe" });
-  const [out, err, exit] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  expect(exit).toBe(0);
-  expect(out).toContain("alive");
-  expect(err).toContain("a failure no one owned");
-  expect(err).toContain("nobody's");
-});
+  `
+  const proc = Bun.spawn([process.execPath, "-e", code], {
+    env: {...process.env},
+    stdout: "pipe",
+    stderr: "pipe"
+  })
+  const [out, err, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited
+  ])
+  expect(exit).toBe(0)
+  expect(out).toContain("alive")
+  expect(err).toContain("a failure no one owned")
+  expect(err).toContain("nobody's")
+})
 
 test("an agent whose run throws still reports", async () => {
-  let told = "";
+  let told = ""
   const tools: any = {
     hooks: {
       change: () => {
-        throw new Error("boom");
+        throw new Error("boom")
       },
       on: () => {},
-      report: (_agent: unknown, text: string) => (told = text),
-    },
-  };
-  const agent: any = { name: "Probe", call: null, replies: [], stop: false };
-  const call: any = { done: Promise.resolve({ ok: true, text: "never", left: [] }) };
-  await Tools.run(tools, agent, call);
-  expect(agent.call).toBeNull();
-  expect(told).toContain("failed: boom");
-});
+      report: (_agent: unknown, text: string) => (told = text)
+    }
+  }
+  const agent: any = {name: "Probe", call: null, replies: [], stop: false}
+  const call: any = {done: Promise.resolve({ok: true, text: "never", left: []})}
+  await Tools.run(tools, agent, call)
+  expect(agent.call).toBeNull()
+  expect(told).toContain("failed: boom")
+})

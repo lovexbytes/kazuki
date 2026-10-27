@@ -17,7 +17,9 @@ dark quiet loud happy jolly merry calm brave bold clever wise kind gentle
 lucky proud quick swift fast slow eager busy sleepy silly funny shy neat noble
 grand royal mighty strong steady nimble lively cozy old new young ancient
 wooden stone paper iron magic cosmic lunar solar polar wild
-`.split(/\s+/).filter(Boolean);
+`
+  .split(/\s+/)
+  .filter(Boolean)
 
 const NOUNS = `
 ant bat bear bee beetle bird bison camel cat cheetah chicken clam cobra cougar
@@ -31,20 +33,27 @@ shrimp skunk sloth snail snake sparrow spider squid squirrel swan tiger toad
 toucan trout tuna turkey turtle walrus wasp whale wolf wombat yak zebra apple
 banana bagel cookie mango melon muffin noodle pancake pepper potato pretzel
 radish taco waffle
-`.split(/\s+/).filter(Boolean);
+`
+  .split(/\s+/)
+  .filter(Boolean)
 
 // any name, old or new, and no other word (GitHub)
-export const NAME = "(?:" + ADJS.map(name_word).join("|") + ")-?(?:" + NOUNS.map(name_word).join("|") + ")";
+export const NAME =
+  "(?:" +
+  ADJS.map(name_word).join("|") +
+  ")-?(?:" +
+  NOUNS.map(name_word).join("|") +
+  ")"
 
 // Names
 // =====
 
 export function name_random(): string {
-  const adj  = ADJS[Math.floor(Math.random() * ADJS.length)];
-  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-  return name_word(adj) + name_word(noun);
+  const adj = ADJS[Math.floor(Math.random() * ADJS.length)]
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)]
+  return name_word(adj) + name_word(noun)
 }
 
 function name_word(word: string): string {
-  return word[0].toUpperCase() + word.slice(1);
+  return word[0].toUpperCase() + word.slice(1)
 }

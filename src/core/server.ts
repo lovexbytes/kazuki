@@ -28,20 +28,20 @@
 //
 // Usage: server.ts [port]   (127.0.0.1; default 8788)
 
-import { NONE, Plugin } from "./plugin.ts";
-import { Providers } from "../ai/provider.ts";
-import { ModelsDev } from "../ai/models-dev.ts";
-import * as config from "../config.ts";
-import { LOST } from "./server/shared.ts";
-import { Main } from "./server/main.ts";
+import {NONE, Plugin} from "./plugin.ts"
+import {Providers} from "../ai/provider.ts"
+import {ModelsDev} from "../ai/models-dev.ts"
+import * as config from "../config.ts"
+import {LOST} from "./server/shared.ts"
+import {Main} from "./server/main.ts"
 
-export { Chat } from "./server/chat.ts";
-export { Handover } from "./server/handover.ts";
-export { Http } from "./server/http.ts";
-export { Ingest } from "./server/ingest.ts";
-export { Move } from "./server/move.ts";
-export { Views } from "./server/views.ts";
-export { Main } from "./server/main.ts";
+export {Chat} from "./server/chat.ts"
+export {Handover} from "./server/handover.ts"
+export {Http} from "./server/http.ts"
+export {Ingest} from "./server/ingest.ts"
+export {Move} from "./server/move.ts"
+export {Views} from "./server/views.ts"
+export {Main} from "./server/main.ts"
 
 // run: the command that starts this server again, to start a worker
 // (null: the server is one process: no workers, or `kazuki serve`)
@@ -49,34 +49,37 @@ export async function serve(port: number, run: string[] | null): Promise<void> {
   // the plugins first: they name the providers, the picks offered and the
   // secrets to hide
   if (!Plugin.ready()) {
-    console.error(NONE);
-    process.exitCode = 1;
-    return;
+    console.error(NONE)
+    process.exitCode = 1
+    return
   }
-  const picks = config.config_picks(Providers.offer(), Providers.catalog());
+  const picks = config.config_picks(Providers.offer(), Providers.catalog())
   if (!picks.ok) {
-    console.error("kazuki: " + picks.error().message);
-    process.exitCode = 1;
-    return;
+    console.error("kazuki: " + picks.error().message)
+    process.exitCode = 1
+    return
   }
-  LOST.told = Providers.picks().lost;
-  LOST.told.forEach((text) => console.error("kazuki: config: " + text));
-  config.config_hide(Providers.envs());
-  const worker = process.env.KAZUKI_WORKER;
-  Main.count = run === null ? 1 : config.WORKERS;
-  Main.index = Number(worker ?? 0);
+  LOST.told = Providers.picks().lost
+  LOST.told.forEach((text) => console.error("kazuki: config: " + text))
+  config.config_hide(Providers.envs())
+  const worker = process.env.KAZUKI_WORKER
+  Main.count = run === null ? 1 : config.WORKERS
+  Main.index = Number(worker ?? 0)
   if (worker === undefined) {
-    await Main.lock();
+    await Main.lock()
   }
   // one fetch for the machine: the lock's holder's
-  ModelsDev.watch(worker === undefined);
+  ModelsDev.watch(worker === undefined)
   if (worker === undefined && run !== null) {
-    Main.supervise(port, run);
+    Main.supervise(port, run)
   } else {
-    await Main.start(port);
+    await Main.start(port)
   }
 }
 
 if (import.meta.main) {
-  await serve(Number(process.argv[2] ?? 8788), config.WORKERS > 0 ? [process.execPath, import.meta.path] : null);
+  await serve(
+    Number(process.argv[2] ?? 8788),
+    config.WORKERS > 0 ? [process.execPath, import.meta.path] : null
+  )
 }

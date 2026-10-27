@@ -4,11 +4,11 @@
 // no xdg-open (spawning one missing throws). The terminal's chat
 // (/tree) opens links by it.
 
-import * as child from "node:child_process";
+import * as child from "node:child_process"
 
 export function browse(url: string): void {
-  const open = Bun.which(process.platform === "darwin" ? "open" : "xdg-open");
+  const open = Bun.which(process.platform === "darwin" ? "open" : "xdg-open")
   if (open !== null) {
-    child.spawn(open, [url], { detached: true, stdio: "ignore" }).unref();
+    child.spawn(open, [url], {detached: true, stdio: "ignore"}).unref()
   }
 }

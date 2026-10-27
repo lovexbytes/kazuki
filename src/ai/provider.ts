@@ -17,152 +17,198 @@
 // models.dev prices them (models-dev.ts), unless it gives a price; a
 // method's models as it gives them (a ChatGPT sign-in's: none).
 
-import type { Wire } from "./agent.ts";
-import type { Vendor } from "./ask-ai.ts";
-import type { Catalog, Model, Offer, Pick } from "./pick.ts";
-import * as fs from "node:fs";
-import * as config from "../config.ts";
-import { ModelsDev } from "./models-dev.ts";
-import { caught, Ok, type Result } from "../util/result.ts";
+import type {Wire} from "./agent.ts"
+import type {Vendor} from "./ask-ai.ts"
+import type {Catalog, Model, Offer, Pick} from "./pick.ts"
+import * as fs from "node:fs"
+import * as config from "../config.ts"
+import {ModelsDev} from "./models-dev.ts"
+import {caught, Ok, type Result} from "../util/result.ts"
 
 // Types
 // =====
 
 // what a method changes when it is the one used (none: the provider's)
-type Route = { wire?: Wire<any>; models?: Model[]; ttl?: number };
+type Route = {wire?: Wire<any>; models?: Model[]; ttl?: number}
 
 // a key method: the variables it needs, the first being the key the
 // wire sends
-export type Key = { type: "key"; envs: string[] } & Route;
+export type Key = {type: "key"; envs: string[]} & Route
 
 // a sign-in: whether one is held, and how to make and end it (`kazuki
 // auth`)
-export type OAuth = { type: "oauth"; name: string; signed: () => boolean; login: () => Promise<Result<void, Error>>; logout: () => Promise<Result<string, Error>> } & Route;
+export type OAuth = {
+  type: "oauth"
+  name: string
+  signed: () => boolean
+  login: () => Promise<Result<void, Error>>
+  logout: () => Promise<Result<string, Error>>
+} & Route
 
-export type Auth = Key | OAuth;
+export type Auth = Key | OAuth
 
 export type Provider = {
-  id     : Vendor;
-  name   : string;
-  ttl    : number;
-  models : Model[];
-  auth   : Auth[];
-  wire   : Wire<any>;
-};
+  id: Vendor
+  name: string
+  ttl: number
+  models: Model[]
+  auth: Auth[]
+  wire: Wire<any>
+}
 
 // Constants
 // =========
 
-const ALL = new Map<Vendor, Provider>();
+const ALL = new Map<Vendor, Provider>()
 
 // Providers
 // =========
 
 export namespace Providers {
-
   export function add(p: Provider): void {
     if (ALL.has(p.id)) {
-      throw new Error("provider " + p.id + " is added twice");
+      throw new Error("provider " + p.id + " is added twice")
     }
-    ALL.set(p.id, p);
+    ALL.set(p.id, p)
   }
 
   export function get(id: Vendor): Provider {
-    const p = ALL.get(id);
+    const p = ALL.get(id)
     if (p === undefined) {
-      throw new Error("no provider " + id);
+      throw new Error("no provider " + id)
     }
-    return p;
+    return p
   }
 
   export function all(): Provider[] {
-    return [...ALL.values()];
+    return [...ALL.values()]
   }
 
   // the auth method used: the one chosen, if it holds, else with none
   // chosen the first that holds
   export function active(p: Provider): Auth | undefined {
-    const holds = (a: Auth) => (a.type === "key" ? a.envs.every((name) => config.secret(name) !== "") : a.signed());
-    const type = Providers.chosen()[p.id];
-    const chosen = p.auth.find((a) => a.type === type);
-    return chosen === undefined ? p.auth.find(holds) : holds(chosen) ? chosen : undefined;
+    const holds = (a: Auth) =>
+      a.type === "key"
+        ? a.envs.every((name) => config.secret(name) !== "")
+        : a.signed()
+    const type = Providers.chosen()[p.id]
+    const chosen = p.auth.find((a) => a.type === type)
+    return chosen === undefined
+      ? p.auth.find(holds)
+      : holds(chosen)
+        ? chosen
+        : undefined
   }
 
   // each provider's chosen method, by its type
   export function chosen(): Record<Vendor, Auth["type"]> {
     try {
-      return JSON.parse(fs.readFileSync(config.AUTH, "utf8")) ?? {};
+      return JSON.parse(fs.readFileSync(config.AUTH, "utf8")) ?? {}
     } catch (err: any) {
       if (err?.code !== "ENOENT") {
-        console.error("kazuki: " + config.AUTH + " unreadable, no method chosen: " + err.message);
+        console.error(
+          "kazuki: " +
+            config.AUTH +
+            " unreadable, no method chosen: " +
+            err.message
+        )
       }
-      return {};
+      return {}
     }
   }
 
   // chooses provider id's method of this type (on), or drops it if it is
   // the one chosen (off)
-  export function choose(id: Vendor, type: Auth["type"], on: boolean): Result<void, Error> {
-    const all = Providers.chosen();
+  export function choose(
+    id: Vendor,
+    type: Auth["type"],
+    on: boolean
+  ): Result<void, Error> {
+    const all = Providers.chosen()
     if (!on && all[id] !== type) {
-      return new Ok();
+      return new Ok()
     }
     if (on) {
-      all[id] = type;
+      all[id] = type
     } else {
-      delete all[id];
+      delete all[id]
     }
     try {
-      fs.mkdirSync(config.DIR, { recursive: true });
-      fs.writeFileSync(config.AUTH, JSON.stringify(all, null, 2));
-      fs.chmodSync(config.AUTH, 0o600);
+      fs.mkdirSync(config.DIR, {recursive: true})
+      fs.writeFileSync(config.AUTH, JSON.stringify(all, null, 2))
+      fs.chmodSync(config.AUTH, 0o600)
     } catch (e) {
-      return caught(e);
+      return caught(e)
     }
-    return new Ok();
+    return new Ok()
   }
 
   // the picks, as the providers connected now make them (config_live)
   export function picks(): config.Picks {
-    return config.config_live(Providers.offer(), Providers.catalog());
+    return config.config_live(Providers.offer(), Providers.catalog())
   }
 
   export function connected(p: Provider): boolean {
-    return Providers.active(p) !== undefined;
+    return Providers.active(p) !== undefined
   }
 
   // the wire, models and ttl calls run on, and the method used (none:
   // not connected)
-  export function route(p: Provider): Required<Route> & { used?: Auth } {
-    const a = Providers.active(p);
-    return { wire: a?.wire ?? p.wire, models: a?.models ?? p.models, ttl: a?.ttl ?? p.ttl, used: a };
+  export function route(p: Provider): Required<Route> & {used?: Auth} {
+    const a = Providers.active(p)
+    return {
+      wire: a?.wire ?? p.wire,
+      models: a?.models ?? p.models,
+      ttl: a?.ttl ?? p.ttl,
+      used: a
+    }
   }
 
   // the providers' catalogs: all of them, as they name their models, or
   // only the connected ones, as their methods run them (the offer)
   export function catalog(): Offer {
-    return Providers.all().map((p) => Providers.shown(p, p.models)).filter((c) => c.models.length > 0);
+    return Providers.all()
+      .map((p) => Providers.shown(p, p.models))
+      .filter((c) => c.models.length > 0)
   }
 
   export function offer(): Offer {
-    const priced = (p: Provider) => p.models.map((m) => ({ ...m, rate: m.rate ?? ModelsDev.rate(p.id, m.id) }));
-    return Providers.all().filter(Providers.connected).map((p) => Providers.shown(p, Providers.active(p)?.models ?? priced(p))).filter((c) => c.models.length > 0);
+    const priced = (p: Provider) =>
+      p.models.map((m) => ({...m, rate: m.rate ?? ModelsDev.rate(p.id, m.id)}))
+    return Providers.all()
+      .filter(Providers.connected)
+      .map((p) => Providers.shown(p, Providers.active(p)?.models ?? priced(p)))
+      .filter((c) => c.models.length > 0)
   }
 
   export function shown(p: Provider, models: Model[]): Catalog {
-    return { id: p.id, name: p.name, models: models.filter((m) => config.MODELS === null || config.MODELS.includes(m.label)) };
+    return {
+      id: p.id,
+      name: p.name,
+      models: models.filter(
+        (m) => config.MODELS === null || config.MODELS.includes(m.label)
+      )
+    }
   }
 
   // every key method's variables
   export function envs(): string[] {
-    return [...new Set(Providers.all().flatMap((p) => p.auth.flatMap((a) => (a.type === "key" ? a.envs : []))))];
+    return [
+      ...new Set(
+        Providers.all().flatMap((p) =>
+          p.auth.flatMap((a) => (a.type === "key" ? a.envs : []))
+        )
+      )
+    ]
   }
 
   // as a call takes it: the model by its id, as the method used names it
   export function ask(pick: Pick): Pick {
-    const p = ALL.get(pick.vendor);
-    const model = p === undefined ? undefined : Providers.route(p).models.find((m) => m.label === pick.model);
-    return { ...pick, model: model?.id ?? pick.model };
+    const p = ALL.get(pick.vendor)
+    const model =
+      p === undefined
+        ? undefined
+        : Providers.route(p).models.find((m) => m.label === pick.model)
+    return {...pick, model: model?.id ?? pick.model}
   }
-
 }

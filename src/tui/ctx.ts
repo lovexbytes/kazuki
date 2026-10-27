@@ -4,29 +4,29 @@
 // style, the spinner's frame, whether every tool's output shows (Ctrl+O),
 // the terminal's width.
 
-import type { SyntaxStyle } from "@opentui/core";
-import { createContext, useContext, type Accessor } from "solid-js";
-import type { Client } from "./client.ts";
-import type { Palette } from "./palette.ts";
+import type {SyntaxStyle} from "@opentui/core"
+import {createContext, useContext, type Accessor} from "solid-js"
+import type {Client} from "./client.ts"
+import type {Palette} from "./palette.ts"
 
 export type Ctx = {
-  c       : Client;
-  p       : Palette;
-  syntax  : SyntaxStyle;
-  spin    : Accessor<string>;
-  outputs : Accessor<boolean>;
-  width   : Accessor<number>;
-};
+  c: Client
+  p: Palette
+  syntax: SyntaxStyle
+  spin: Accessor<string>
+  outputs: Accessor<boolean>
+  width: Accessor<number>
+}
 
-export const CtxOf = createContext<Ctx>();
+export const CtxOf = createContext<Ctx>()
 
 export function useCtx(): Ctx {
-  const ctx = useContext(CtxOf);
+  const ctx = useContext(CtxOf)
   if (ctx === undefined) {
-    throw new Error("no Ctx");
+    throw new Error("no Ctx")
   }
-  return ctx;
+  return ctx
 }
 
 // the spinner's frames
-export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+export const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]

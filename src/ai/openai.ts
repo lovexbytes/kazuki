@@ -9,163 +9,245 @@
 // while it reasons, it is dead after 20 min. Voice: TRANSCRIBER writes
 // a recording out, and says its seconds.
 
-import type { Ask, Img } from "./ask-ai.ts";
-import { Agent, type Emit, type Entry, type Item, type Step, type Tool, type Use, type Wire } from "./agent.ts";
-import { EFFORTS, type Model } from "./pick.ts";
-import { Providers, type Provider } from "./provider.ts";
-import * as config from "../config.ts";
-import { caught, Err, Ok, type Result } from "../util/result.ts";
+import type {Ask, Img} from "./ask-ai.ts"
+import {
+  Agent,
+  type Emit,
+  type Entry,
+  type Item,
+  type Step,
+  type Tool,
+  type Use,
+  type Wire
+} from "./agent.ts"
+import {EFFORTS, type Model} from "./pick.ts"
+import {Providers, type Provider} from "./provider.ts"
+import * as config from "../config.ts"
+import {caught, Err, Ok, type Result} from "../util/result.ts"
 
 // Types
 // =====
 
 // a stream read so far: the final response, or an error event
-export type State = { res: any; error: any };
+export type State = {res: any; error: any}
 
 // Constants
 // =========
 
-const TIERS: Record<string, string> = { slow: "default", fast: "fast", ultrafast: "ultrafast" };
+const TIERS: Record<string, string> = {
+  slow: "default",
+  fast: "fast",
+  ultrafast: "ultrafast"
+}
 
-const MARK = { mode: "explicit" };
+const MARK = {mode: "explicit"}
 
-export const TRANSCRIBER = "gpt-transcribe";
+export const TRANSCRIBER = "gpt-transcribe"
 
 // the models, which a ChatGPT sign-in (chatgpt.ts) runs too
 export const MODELS: Model[] = [
-  { label: "gpt-6-luna",  id: "gpt-6-luna",  name: "GPT-6 Luna",  efforts: EFFORTS, speeds: ["slow", "fast"] },
-  { label: "gpt-6.1-sol", id: "gpt-6.1-sol", name: "GPT-6.1 Sol", efforts: EFFORTS, speeds: ["slow", "fast"] },
-  { label: "gpt-6-astra", id: "gpt-6-astra", name: "GPT-6 Astra", efforts: EFFORTS, speeds: ["slow", "fast", "ultrafast"] },
-];
+  {
+    label: "gpt-6-luna",
+    id: "gpt-6-luna",
+    name: "GPT-6 Luna",
+    efforts: EFFORTS,
+    speeds: ["slow", "fast"]
+  },
+  {
+    label: "gpt-6.1-sol",
+    id: "gpt-6.1-sol",
+    name: "GPT-6.1 Sol",
+    efforts: EFFORTS,
+    speeds: ["slow", "fast"]
+  },
+  {
+    label: "gpt-6-astra",
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    efforts: EFFORTS,
+    speeds: ["slow", "fast", "ultrafast"]
+  }
+]
 
 // OpenAI
 // ======
 
 export namespace OpenAI {
-
-  export function body(ask: Ask, items: Item[], tools: Tool[], max: number): unknown {
-    const tier = TIERS[ask.speed ?? "slow"];
+  export function body(
+    ask: Ask,
+    items: Item[],
+    tools: Tool[],
+    max: number
+  ): unknown {
+    const tier = TIERS[ask.speed ?? "slow"]
     if (!tier) {
-      throw new Error("OpenAI has no speed " + ask.speed);
+      throw new Error("OpenAI has no speed " + ask.speed)
     }
-    const defs: object[] = tools.map((t) => ({ type: "function", name: t.name, description: t.info, parameters: t.schema }));
+    const defs: object[] = tools.map((t) => ({
+      type: "function",
+      name: t.name,
+      description: t.info,
+      parameters: t.schema
+    }))
     if (ask.searches > 0) {
-      defs.push({ type: "web_search" });
+      defs.push({type: "web_search"})
     }
-    const system = { role: "developer", content: [{ type: "input_text", text: ask.system }] };
-    const cache = ask.blocks[ask.blocks.length - 1]?.mark ? undefined : { mode: "explicit" };
+    const system = {
+      role: "developer",
+      content: [{type: "input_text", text: ask.system}]
+    }
+    const cache = ask.blocks[ask.blocks.length - 1]?.mark
+      ? undefined
+      : {mode: "explicit"}
     return {
-      model                : ask.model,
-      stream               : true,
-      store                : false,
-      tools                : defs,
-      reasoning            : { effort: ask.effort, summary: "auto", context: "all_turns" },
-      max_output_tokens    : max,
-      max_tool_calls       : ask.searches || undefined,
-      service_tier         : tier,
-      prompt_cache_options : cache,
-      input                : [system, ...items.flatMap(OpenAI.input)],
-    };
+      model: ask.model,
+      stream: true,
+      store: false,
+      tools: defs,
+      reasoning: {effort: ask.effort, summary: "auto", context: "all_turns"},
+      max_output_tokens: max,
+      max_tool_calls: ask.searches || undefined,
+      service_tier: tier,
+      prompt_cache_options: cache,
+      input: [system, ...items.flatMap(OpenAI.input)]
+    }
   }
 
   export function input(item: Item): unknown[] {
     switch (item.$) {
       case "User": {
-        const texts = item.parts.map((p) => ({ type: "input_text", text: p.text, prompt_cache_breakpoint: p.mark ? MARK : undefined }));
-        return [{ role: "user", content: [...texts, ...item.imgs.map(OpenAI.image)] }];
+        const texts = item.parts.map((p) => ({
+          type: "input_text",
+          text: p.text,
+          prompt_cache_breakpoint: p.mark ? MARK : undefined
+        }))
+        return [
+          {role: "user", content: [...texts, ...item.imgs.map(OpenAI.image)]}
+        ]
       }
       case "Turn": {
-        return item.out;
+        return item.out
       }
       case "Back": {
         return item.backs.map((b) => {
-          const output = [{ type: "input_text", text: b.out.text }, ...(b.out.imgs ?? []).map(OpenAI.image)];
-          return { type: "function_call_output", call_id: b.id, output };
-        });
+          const output = [
+            {type: "input_text", text: b.out.text},
+            ...(b.out.imgs ?? []).map(OpenAI.image)
+          ]
+          return {type: "function_call_output", call_id: b.id, output}
+        })
       }
     }
   }
 
   export function image(img: Img): unknown {
-    return { type: "input_image", image_url: "data:" + img.type + ";base64," + img.data };
+    return {
+      type: "input_image",
+      image_url: "data:" + img.type + ";base64," + img.data
+    }
   }
 
   // one stream event; whether it is the last
   export function read(st: State, ev: any, on: Emit): boolean {
     switch (ev.type) {
       case "response.output_text.delta": {
-        on("unii", ev.delta);
-        return false;
+        on("unii", ev.delta)
+        return false
       }
       case "response.output_item.added": {
-        OpenAI.live(ev.item, on);
-        return false;
+        OpenAI.live(ev.item, on)
+        return false
       }
       case "response.function_call_arguments.delta": {
-        on("tool", ev.delta);
-        return false;
+        on("tool", ev.delta)
+        return false
       }
       case "response.reasoning_summary_text.delta": {
-        on("mind", ev.delta);
-        return false;
+        on("mind", ev.delta)
+        return false
       }
       case "response.reasoning_summary_part.added": {
         if (ev.summary_index > 0) {
-          on("mind", "\n\n");
+          on("mind", "\n\n")
         }
-        return false;
+        return false
       }
       case "response.completed":
       case "response.incomplete":
       case "response.failed": {
-        st.res = ev.response;
-        return true;
+        st.res = ev.response
+        return true
       }
       case "error": {
-        st.error = ev;
-        return true;
+        st.error = ev
+        return true
       }
     }
-    return false;
+    return false
   }
 
   // a tool call starting, shown live (call.ts): its name, then the
   // pieces of its arguments
   export function live(item: any, on: Emit): void {
     if (item.type === "function_call") {
-      on("tool", item.name + " ", true);
+      on("tool", item.name + " ", true)
     }
     if (item.type === "web_search_call") {
-      on("tool", "web_search ", true);
+      on("tool", "web_search ", true)
     }
   }
 
   // the speed a response ran at
   export function tier(res: any): string {
-    const tier = res.service_tier === "priority" ? "fast" : res.service_tier;
-    return tier in TIERS ? tier : "slow";
+    const tier = res.service_tier === "priority" ? "fast" : res.service_tier
+    return tier in TIERS ? tier : "slow"
   }
 
   // the step a stream gave
   export function step(st: State, ask: Ask): Step {
-    const res = st.res ?? { status: "failed", error: st.error, output: [] };
-    const out: any[] = res.output;
-    const calls = out.filter((o) => o.type === "function_call");
-    const uses: Use[] = calls.map((o) => ({ id: o.call_id, name: o.name, input: Agent.parse(o.arguments) }));
-    const ran = OpenAI.tier(res);
-    const note = ran !== (ask.speed ?? "slow") ? "ran at " + ran + " speed" : "";
-    const refusals = out.flatMap((o) => (o.type === "message" ? o.content : [])).filter((c: any) => c.type === "refusal");
-    const step: Step = { out, uses, entries: out.flatMap(OpenAI.entries), stop: "done", why: "", note };
+    const res = st.res ?? {status: "failed", error: st.error, output: []}
+    const out: any[] = res.output
+    const calls = out.filter((o) => o.type === "function_call")
+    const uses: Use[] = calls.map((o) => ({
+      id: o.call_id,
+      name: o.name,
+      input: Agent.parse(o.arguments)
+    }))
+    const ran = OpenAI.tier(res)
+    const note = ran !== (ask.speed ?? "slow") ? "ran at " + ran + " speed" : ""
+    const refusals = out
+      .flatMap((o) => (o.type === "message" ? o.content : []))
+      .filter((c: any) => c.type === "refusal")
+    const step: Step = {
+      out,
+      uses,
+      entries: out.flatMap(OpenAI.entries),
+      stop: "done",
+      why: "",
+      note
+    }
     if (res.status === "failed") {
-      return { ...step, stop: res.error?.code === "server_error" ? "busy" : "fail", why: res.error?.message ?? "failed" };
+      return {
+        ...step,
+        stop: res.error?.code === "server_error" ? "busy" : "fail",
+        why: res.error?.message ?? "failed"
+      }
     }
     if (res.status === "incomplete") {
-      return { ...step, stop: "fail", why: "incomplete: " + res.incomplete_details?.reason };
+      return {
+        ...step,
+        stop: "fail",
+        why: "incomplete: " + res.incomplete_details?.reason
+      }
     }
     if (refusals.length > 0) {
-      return { ...step, stop: "fail", why: "refused: " + refusals.map((c: any) => c.refusal).join(" ") };
+      return {
+        ...step,
+        stop: "fail",
+        why: "refused: " + refusals.map((c: any) => c.refusal).join(" ")
+      }
     }
-    return { ...step, stop: uses.length > 0 ? "tools" : "done" };
+    return {...step, stop: uses.length > 0 ? "tools" : "done"}
   }
 
   // the messages of an output item: a thought; a reply and the web
@@ -173,71 +255,104 @@ export namespace OpenAI {
   export function entries(o: any): Entry[] {
     switch (o.type) {
       case "reasoning": {
-        const text = (o.summary ?? []).map((s: any) => s.text).join("\n\n").trim();
-        return text ? [{ kind: "mind", text }] : [];
+        const text = (o.summary ?? [])
+          .map((s: any) => s.text)
+          .join("\n\n")
+          .trim()
+        return text ? [{kind: "mind", text}] : []
       }
       case "message": {
-        const content = o.content ?? [];
-        const text = content.map((c: any) => c.text ?? "").join("").trim();
-        const urls = content.flatMap((c: any) => c.annotations ?? []).filter((a: any) => a.type === "url_citation");
-        const cited = [...new Set(urls.map((a: any) => a.title + " " + a.url))];
-        const reply: Entry[] = text ? [{ kind: "unii", text }] : [];
-        const sources: Entry[] = cited.length > 0 ? [{ kind: "echo", text: "sources:\n" + cited.join("\n") }] : [];
-        return [...reply, ...sources];
+        const content = o.content ?? []
+        const text = content
+          .map((c: any) => c.text ?? "")
+          .join("")
+          .trim()
+        const urls = content
+          .flatMap((c: any) => c.annotations ?? [])
+          .filter((a: any) => a.type === "url_citation")
+        const cited = [...new Set(urls.map((a: any) => a.title + " " + a.url))]
+        const reply: Entry[] = text ? [{kind: "unii", text}] : []
+        const sources: Entry[] =
+          cited.length > 0
+            ? [{kind: "echo", text: "sources:\n" + cited.join("\n")}]
+            : []
+        return [...reply, ...sources]
       }
       case "function_call": {
-        return [{ kind: "tool", text: o.name + " " + o.arguments, of: o.call_id }];
+        return [{kind: "tool", text: o.name + " " + o.arguments, of: o.call_id}]
       }
       case "web_search_call": {
-        return [{ kind: "tool", text: "web_search " + JSON.stringify(o.action ?? {}) }];
+        return [
+          {kind: "tool", text: "web_search " + JSON.stringify(o.action ?? {})}
+        ]
       }
     }
-    return [];
+    return []
   }
 
   // a recording's words and seconds
-  export async function transcribe(audio: Blob): Promise<Result<{ text: string; seconds: number }, Error>> {
+  export async function transcribe(
+    audio: Blob
+  ): Promise<Result<{text: string; seconds: number}, Error>> {
     // the method chosen bills: a ChatGPT sign-in has no transcription, and
     // no key is used behind it
-    const used = Providers.route(Providers.get("openai")).used;
+    const used = Providers.route(Providers.get("openai")).used
     if (used?.type !== "key") {
-      return new Err(new Error("Voice needs openai on OPENAI_API_KEY: `kazuki auth openai use key`."));
+      return new Err(
+        new Error(
+          "Voice needs openai on OPENAI_API_KEY: `kazuki auth openai use key`."
+        )
+      )
     }
-    const key = config.secret(used.envs[0]);
-    const form = new FormData();
-    form.append("model", TRANSCRIBER);
-    form.append("file", audio, "voice." + audio.type.split(/[/;]/)[1]);
-    const init = { method: "POST", headers: { authorization: "Bearer " + key }, body: form };
+    const key = config.secret(used.envs[0])
+    const form = new FormData()
+    form.append("model", TRANSCRIBER)
+    form.append("file", audio, "voice." + audio.type.split(/[/;]/)[1])
+    const init = {
+      method: "POST",
+      headers: {authorization: "Bearer " + key},
+      body: form
+    }
     try {
-      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", init);
-      const out = await res.json().catch(() => ({}));
+      const res = await fetch(
+        "https://api.openai.com/v1/audio/transcriptions",
+        init
+      )
+      const out = await res.json().catch(() => ({}))
       if (!res.ok) {
-        return new Err(new Error("Transcription failed: " + (out.error?.message ?? "HTTP " + res.status)));
+        return new Err(
+          new Error(
+            "Transcription failed: " +
+              (out.error?.message ?? "HTTP " + res.status)
+          )
+        )
       }
-      return new Ok({ text: out.text, seconds: out.usage.seconds });
+      return new Ok({text: out.text, seconds: out.usage.seconds})
     } catch (e) {
-      return caught(e);
+      return caught(e)
     }
   }
 
   export const wire: Wire<State> = {
-    idle    : 1200e3,
-    url     : "https://api.openai.com/v1/responses",
-    headers : (key) => ({ authorization: "Bearer " + key, "content-type": "application/json" }),
-    body    : OpenAI.body,
-    start   : () => ({ res: null, error: null }),
-    read    : OpenAI.read,
-    begun   : (ev) => ev.type === "response.output_item.added",
-    step    : OpenAI.step,
-  };
+    idle: 1200e3,
+    url: "https://api.openai.com/v1/responses",
+    headers: (key) => ({
+      authorization: "Bearer " + key,
+      "content-type": "application/json"
+    }),
+    body: OpenAI.body,
+    start: () => ({res: null, error: null}),
+    read: OpenAI.read,
+    begun: (ev) => ev.type === "response.output_item.added",
+    step: OpenAI.step
+  }
 
   export const provider: Provider = {
-    id     : "openai",
-    name   : "OpenAI",
-    ttl    : 1800e3,
-    models : MODELS,
-    auth   : [{ type: "key", envs: ["OPENAI_API_KEY"] }],
-    wire   : OpenAI.wire,
-  };
-
+    id: "openai",
+    name: "OpenAI",
+    ttl: 1800e3,
+    models: MODELS,
+    auth: [{type: "key", envs: ["OPENAI_API_KEY"]}],
+    wire: OpenAI.wire
+  }
 }

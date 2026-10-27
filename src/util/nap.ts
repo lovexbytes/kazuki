@@ -8,11 +8,11 @@
 export function nap(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((ok) => {
     const end = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", end);
-      ok();
-    };
-    const timer = setTimeout(end, signal.aborted ? 0 : ms);
-    signal.addEventListener("abort", end, { once: true });
-  });
+      clearTimeout(timer)
+      signal.removeEventListener("abort", end)
+      ok()
+    }
+    const timer = setTimeout(end, signal.aborted ? 0 : ms)
+    signal.addEventListener("abort", end, {once: true})
+  })
 }
