@@ -8,6 +8,8 @@
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid",
     "strict": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
