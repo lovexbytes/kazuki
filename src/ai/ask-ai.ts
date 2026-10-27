@@ -37,7 +37,14 @@ import {noop} from "../util/noop.ts"
 // the user's, an agent's report ("[Name]\n...", a user turn to the
 // model), a thought (shown, never logged), a reply, a tool call, its
 // result, a note from before the chat (imported)
-export type Kind = "user" | "work" | "mind" | "unii" | "tool" | "echo" | "note"
+export type Kind =
+  | "user"
+  | "work"
+  | "mind"
+  | "kazuki"
+  | "tool"
+  | "echo"
+  | "note"
 
 // a provider's id (provider.ts)
 export type Vendor = string

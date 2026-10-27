@@ -149,7 +149,7 @@ export namespace OpenAI {
   export function read(st: State, ev: any, on: Emit): boolean {
     switch (ev.type) {
       case "response.output_text.delta": {
-        on("unii", ev.delta)
+        on("kazuki", ev.delta)
         return false
       }
       case "response.output_item.added": {
@@ -269,7 +269,7 @@ export namespace OpenAI {
           .flatMap((c: any) => c.annotations ?? [])
           .filter((a: any) => a.type === "url_citation")
         const cited = [...new Set(urls.map((a: any) => `${a.title} ${a.url}`))]
-        const reply: Entry[] = text ? [{kind: "unii", text}] : []
+        const reply: Entry[] = text ? [{kind: "kazuki", text}] : []
         const sources: Entry[] =
           cited.length > 0
             ? [{kind: "echo", text: `sources:\n${cited.join("\n")}`}]

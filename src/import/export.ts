@@ -83,7 +83,7 @@ function chat_openai(chat: any): Msg[] {
         ? "user"
         : role === "assistant"
           ? m.recipient === "all"
-            ? "unii"
+            ? "kazuki"
             : "tool"
           : role === "tool"
             ? "echo"
@@ -112,7 +112,7 @@ function chat_claude(chat: any): Msg[] {
   let date = import_date(chat.created_at, "")
   return (chat.chat_messages ?? []).flatMap((m: any) => {
     date = import_date(m.created_at, date)
-    const kind = m.sender === "human" ? "user" : "unii"
+    const kind = m.sender === "human" ? "user" : "kazuki"
     const blocks = Array.isArray(m.content)
       ? m.content
       : [{type: "text", text: String(m.text ?? "")}]

@@ -161,7 +161,7 @@ async function pipe_run(c: Client): Promise<void> {
 // a logged message as a line of plain text ("": not printed)
 function pipe_line(kind: string, text: string): string {
   switch (kind) {
-    case "unii":
+    case "kazuki":
       return text.trim()
     case "work":
       return (Call.report_read(text)?.text ?? text).trim()

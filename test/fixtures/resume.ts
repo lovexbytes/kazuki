@@ -58,7 +58,7 @@ for (const [id, saved] of [
     Memory.load(`${DIR}/users/${id}`, () => SHARE),
     [
       {kind: "user", text: "hi ".repeat(9999)},
-      {kind: "unii", text: "hello ".repeat(9999)}
+      {kind: "kazuki", text: "hello ".repeat(9999)}
     ]
   )
   fs.writeFileSync(file(id), JSON.stringify({a: 0, b: 2, said: 2, why: saved}))

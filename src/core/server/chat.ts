@@ -164,8 +164,8 @@ export namespace Chat {
     }
     if (mem.count === 0) {
       Memory.push(mem, [
-        {kind: "unii", text: HELLO, line: HELLO_LINE},
-        {kind: "unii", text: OPEN_PROMPT}
+        {kind: "kazuki", text: HELLO, line: HELLO_LINE},
+        {kind: "kazuki", text: OPEN_PROMPT}
       ])
     }
     chat.eye = Views.eye(mem, Memory.turn(mem))

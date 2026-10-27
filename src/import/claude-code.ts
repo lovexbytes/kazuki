@@ -34,7 +34,7 @@ export function line_claude(s: Session, j: any, last: string): Msg[] {
   if (j.type === "attachment" && j.attachment?.type === "queued_command") {
     return msgs_of("user", String(j.attachment.prompt ?? ""), date)
   }
-  return blocks_msgs(j.type === "user" ? "user" : "unii", blocks, date)
+  return blocks_msgs(j.type === "user" ? "user" : "kazuki", blocks, date)
 }
 
 // a say's blocks (Claude's shape: texts, images, tool calls and their

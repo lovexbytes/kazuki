@@ -69,7 +69,7 @@ const CALL = /^(\S+) (\{[\s\S]*)$/
 
 // a line of one message kept word for word, by another than a result:
 // no call's result (a call stopped has none; the next message is not it)
-const OTHER = /^(user|unii|note|work|mind|tool): /
+const OTHER = /^(user|kazuki|note|work|mind|tool): /
 const FAIL = "error: "
 const MCP = /^mcp__.+?__/
 

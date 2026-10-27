@@ -178,9 +178,9 @@ test("an import's AI is not Kazuki", () => {
   const show = (kind: any, imported?: boolean) =>
     Memory.show(Memory.root(0, {kind, text: "", imported}))
   expect([
-    show("unii", true),
+    show("kazuki", true),
     show("tool", true),
     show("user", true),
-    show("unii")
-  ]).toEqual(["ai: ", "ai: ", "user: ", "unii: "])
+    show("kazuki")
+  ]).toEqual(["ai: ", "ai: ", "user: ", "kazuki: "])
 })
