@@ -1,5 +1,6 @@
 import {expect, test} from "bun:test"
 import * as Import from "../src/import/import.ts"
+import {import_export} from "../src/import/export.ts"
 import {Memory} from "../src/core/memory.ts"
 
 // a log's odd lines (no object, a null block, a date past JS's) are no
@@ -56,7 +57,7 @@ test("a ZIP64 export imports", async () => {
     "export/conversations.json",
     new TextEncoder().encode(JSON.stringify(chats))
   )
-  const got = await Import.import_export(zip)
+  const got = await import_export(zip)
   expect(got.ok).toBe(true)
   const sessions = got.ok ? got.value() : []
   expect(sessions.map((s) => [s.app, s.where, s.heads.length])).toEqual([

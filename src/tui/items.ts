@@ -47,7 +47,7 @@ export type Item =
       n: number
       text: string
       call: Call.Call | null
-      then: Then | null
+      next: Then | null
     }
   | {$: "Box"; id: number; n: number; items: Item[]}
   | {$: "Opened"; blocks: Block[]; item: Item}
@@ -218,7 +218,7 @@ function item_make(
         n: row.n,
         text: row.text,
         call: row.call,
-        then: null
+        next: null
       }
     }
     case "Box": {
@@ -269,7 +269,7 @@ function pair(call: Msg | Sum, echo: Msg | Sum): Item {
           n: 1,
           text: call.text,
           call: call.call,
-          then: {id: echo.id ?? call.id + 1, text: echo.text}
+          next: {id: echo.id ?? call.id + 1, text: echo.text}
         }
       : tool_of(call.id, call.text, echo.text, false)
   const map = PAIRS.get(call) ?? new WeakMap()

@@ -61,7 +61,7 @@ test("a call's summary and its result's, next to it, join as one summary", () =>
   expect(items[0]).toMatchObject({
     $: "Sum",
     id: 4,
-    then: {id: 5, text: "two files"}
+    next: {id: 5, text: "two files"}
   })
 })
 
@@ -105,7 +105,7 @@ test("a call stopped does not take the next message's summary as its result", ()
     sum(5, 1, "user: stop, do X instead")
   ])
   expect(items).toHaveLength(2)
-  expect(items[0]).toMatchObject({$: "Sum", id: 4, then: null})
+  expect(items[0]).toMatchObject({$: "Sum", id: 4, next: null})
 })
 
 test("a call opened, then its result too, is wrapped anew to shut both", () => {

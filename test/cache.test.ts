@@ -99,6 +99,10 @@ function hash(text: string): string {
 }
 
 // what a request reads, writes and sends uncached, by the cache's rules
+// what the replays broke: more than 4 cache marks, or a summary's request
+// grown on a try after its first
+const BROKEN: string[] = []
+
 function cache_use(body: any): Use {
   const head = JSON.stringify([
     body.model,
@@ -118,9 +122,11 @@ function cache_use(body: any): Use {
       ? [k]
       : []
   )
-  expect(
+  const marked =
     blocks.filter((b) => b.cache_control).length + (body.cache_control ? 1 : 0)
-  ).toBeLessThanOrEqual(4)
+  if (marked > 4) {
+    BROKEN.push(`${marked} cache marks`)
+  }
   const keys: string[] = []
   const ends: number[] = []
   for (const {cache_control, ...b} of blocks) {
@@ -234,7 +240,9 @@ async function replay(logs: Log[]): Promise<Record<string, Use>> {
     const again = first.at(-1).text.startsWith("Too long:")
     if (node !== null) {
       sizes.set(node.join(), sizes.get(node.join()) ?? size)
-      expect(size).toBeLessThanOrEqual(sizes.get(node.join())! + 1000)
+      if (size > sizes.get(node.join())! + 1000) {
+        BROKEN.push(`node ${node.join()} grew to ${size} bytes`)
+      }
     }
     const kind = node === null ? "turn" : "compaction"
     uses[kind] ??= {read: 0, write: 0, input: 0, n: 0}
@@ -339,6 +347,7 @@ test("turns and compactions read >= 95% from the cache", async () => {
       )
       .join("; ")
   )
+  expect(BROKEN).toEqual([])
   expect(share(uses.turn)).toBeGreaterThanOrEqual(0.95)
   expect(share(uses.compaction)).toBeGreaterThanOrEqual(0.95)
 }, 600e3)

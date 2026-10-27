@@ -19,7 +19,7 @@ export namespace Move {
   // on), cutting them asked each again there
   export function give(chat: Chat, peer: Peer, url: string): void {
     Memory.halt(chat.mem)
-    chat.ending = {all: false, then: () => Move.move(chat, peer, url)}
+    chat.ending = {all: false, next: () => Move.move(chat, peer, url)}
     Chat.free(chat)
   }
 

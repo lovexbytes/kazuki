@@ -753,7 +753,7 @@ export namespace Memory {
     const queue = side[l]
     let [a, z] = [0, queue.length]
     while (a < z) {
-      const m = (a + z) >> 1
+      const m = Math.floor((a + z) / 2)
       ;[a, z] = queue[m] < i ? [m + 1, z] : [a, m]
     }
     if (on !== (queue[a] === i)) {
@@ -1002,8 +1002,9 @@ export namespace Memory {
       })
     }
     for (const {l, i} of parts) {
-      const up = {l: l + 1, i: i >> 1}
-      if (Memory.built(mem, l, i ^ 1) && !Memory.built(mem, up.l, up.i)) {
+      const up = {l: l + 1, i: Math.floor(i / 2)}
+      const sibling = i % 2 === 0 ? i + 1 : i - 1
+      if (Memory.built(mem, l, sibling) && !Memory.built(mem, up.l, up.i)) {
         Memory.ready(mem, up, true)
       }
     }
@@ -1144,7 +1145,7 @@ ${Memory.cut(line)}| ← LIMIT`
   export function cover({parts}: View, id: number): number {
     let [a, z] = [0, parts.length]
     while (a < z) {
-      const m = (a + z) >> 1
+      const m = Math.floor((a + z) / 2)
       ;[a, z] = Memory.span(parts[m])[1] < id ? [m + 1, z] : [a, m]
     }
     return a
@@ -1195,10 +1196,10 @@ ${Memory.cut(line)}| ← LIMIT`
       heap.push({d: (t + 1) / 2 ** a.l - a.i, k, a, b})
       for (
         let x = heap.length - 1;
-        x > 0 && over(heap[x], heap[(x - 1) >> 1]);
-        x = (x - 1) >> 1
+        x > 0 && over(heap[x], heap[Math.floor((x - 1) / 2)]);
+        x = Math.floor((x - 1) / 2)
       ) {
-        swap(x, (x - 1) >> 1)
+        swap(x, Math.floor((x - 1) / 2))
       }
     }
     const take = () => {

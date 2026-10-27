@@ -54,7 +54,9 @@ export function clip_end(str: string, at: number): number {
     return str.length
   }
   const nl = str.lastIndexOf("\n", at + CAP - 1)
-  const low = str.charCodeAt(at + CAP) >> 10 === 0x37
+  // a UTF-16 low surrogate: the second half of a character such as an emoji
+  const code = str.charCodeAt(at + CAP)
+  const low = code >= 0xdc_00 && code <= 0xdf_ff
   return nl >= at ? nl + 1 : at + CAP - (low ? 1 : 0)
 }
 
