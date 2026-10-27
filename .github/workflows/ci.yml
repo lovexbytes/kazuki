@@ -2,7 +2,7 @@
 # ==
 # On every pull request and every push to main: `task check` on Linux and
 # macOS. The run's summary shows the e2e lines and the terminal app's
-# screens; the run's folder is kept as the artifact e2e-<runner>.
+# screens; the run's folder is kept 7 days as the artifact e2e-<runner>.
 name: CI
 
 on:
@@ -71,5 +71,9 @@ jobs:
         if: always()
         with:
           name: e2e-${{ matrix.runner }}
-          path: ${{ runner.temp }}/e2e
+          # the logs and screens, not the executable the run builds
+          path: |
+            ${{ runner.temp }}/e2e
+            !${{ runner.temp }}/e2e/kazuki
+          retention-days: 7
           if-no-files-found: ignore
