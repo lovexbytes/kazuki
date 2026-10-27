@@ -534,7 +534,7 @@ export namespace Memory {
       (name) => `\n[image docs/images/${name}]`
     )
     const who =
-      root.imported && (root.kind === "unii" || root.kind === "tool")
+      root.imported && (root.kind === "kazuki" || root.kind === "tool")
         ? "ai"
         : root.kind
     return `${who}: ${root.text}${pics.join("")}`

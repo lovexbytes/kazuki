@@ -178,7 +178,7 @@ function line_msgs(s: Session, line: string, last: string): Msg[] {
 function import_pick(sessions: Session[], want: Want, done: Done): Session[] {
   const old = [...sessions].sort((a, b) => a.start.localeCompare(b.start))
   const keep = (m: Head, last?: string) =>
-    (want.tools || m.kind === "user" || m.kind === "unii") &&
+    (want.tools || m.kind === "user" || m.kind === "kazuki") &&
     m.date >= want.since &&
     import_new(m, last)
   const kept = (s: Session, last?: string) =>

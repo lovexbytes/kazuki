@@ -11,8 +11,7 @@ Kazuki's memory: the whole chat between Kazuki and the user, oldest first, insid
 
 Each message has a kind:
 - user: the user's words
-- unii: the internal serialized kind for Kazuki's replies (Kazuki is the
-  assistant's display name)
+- kazuki: Kazuki's replies
 - tool: Kazuki's tool calls
 - echo: tool results
 - work: an agent's report, starting "[Name]"

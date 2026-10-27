@@ -29,7 +29,7 @@ function item_codex(p: any, date: string): Msg[] {
   switch (p.type) {
     case "message": {
       const kind =
-        p.role === "user" ? "user" : p.role === "assistant" ? "unii" : null
+        p.role === "user" ? "user" : p.role === "assistant" ? "kazuki" : null
       const parts = (p.content ?? []).filter(
         (c: any) => !INJECTED.test(c.text ?? "")
       )

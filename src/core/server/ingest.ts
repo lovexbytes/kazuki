@@ -189,7 +189,7 @@ export namespace Ingest {
   // a message imported (a page); a line with no kind or no text refuses
   // the import whole (ingest reads every line before it logs one)
   export function imported(x: any): Log {
-    const kinds: Kind[] = ["user", "unii", "tool", "echo", "note"]
+    const kinds: Kind[] = ["user", "kazuki", "tool", "echo", "note"]
     if (!kinds.includes(x?.kind)) {
       throw new Error(`An import has no kind ${x?.kind}.`)
     }

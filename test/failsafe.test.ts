@@ -50,7 +50,7 @@ const LIMIT =
 const COUNT = 16
 const REFUSED = 5
 const MSGS = Array.from({length: COUNT}, (_, k) => ({
-  kind: "unii" as const,
+  kind: "kazuki" as const,
   text: `${k} ${"word ".repeat(200)}`
 }))
 
