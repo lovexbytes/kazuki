@@ -1,0 +1,168 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  // Markdown is content: Kazuki's renderer reads *italic*, which Biome would
+  // rewrite as _italic_
+  "files": { "includes": ["**", "!bun.lock", "!**/*.md"] },
+  "assist": { "enabled": false },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "semicolons": "asNeeded",
+      "trailingCommas": "none",
+      "arrowParentheses": "always",
+      "bracketSpacing": false
+    }
+  },
+  "linter": {
+    "enabled": true,
+    // every stable rule, as an error; the a11y group checks web pages, and
+    // OpenTUI's JSX is not one
+    "rules": {
+      "preset": "all",
+      "a11y": "off",
+      "complexity": "error",
+      "correctness": "error",
+      "performance": "error",
+      "security": "error",
+      "style": "error",
+      "suspicious": "error"
+    },
+    // the TUI is Solid on OpenTUI; other frameworks' rules misread its JSX
+    "domains": {
+      "solid": "all",
+      "test": "all",
+      "react": "none",
+      "reactNative": "none",
+      "qwik": "none",
+      "next": "none",
+      "astro": "none",
+      "svelte": "none",
+      "vue": "none"
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          // a Bun CLI needs process, its environment, node: modules and the
+          // console; tsc checks undeclared names
+          "correctness": {
+            "noProcessGlobal": "off",
+            "noNodejsModules": "off",
+            "noUndeclaredVariables": "off"
+          },
+          "suspicious": {
+            "noConsole": "off"
+          },
+          "style": {
+            "noProcessEnv": "off",
+            // owner's choices
+            "noTernary": "off",
+            "useDestructuring": "off",
+            "noExcessiveLinesPerFile": "off",
+            // web-page rules: OpenTUI's JSX has no inline styles or text nodes
+            "noInlineStyles": "off",
+            "noJsxLiterals": "off",
+            "useConsistentTypeDefinitions": {
+              "level": "error",
+              "options": { "style": "type" }
+            }
+          },
+          "complexity": {
+            "noForEach": "off",
+            "noExcessiveLinesPerFunction": "off"
+          },
+          "performance": {
+            // modules are imported whole: import * as Agent from "./agent.ts"
+            "noNamespaceImport": "off"
+          }
+        }
+      }
+    },
+    {
+      // each of these is turned on, its findings fixed, in its own pull
+      // request (the test plan's lint rule PRs)
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNamespace": "off",
+            "useNamingConvention": "off",
+            "noMagicNumbers": "off",
+            "noNonNullAssertion": "off",
+            "noNestedTernary": "off"
+          },
+          "suspicious": {
+            "noShadow": "off",
+            "noExplicitAny": "off",
+            "useIterableCallbackReturn": "off"
+          },
+          "performance": {
+            "noAwaitInLoops": "off"
+          },
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          }
+        }
+      }
+    },
+    {
+      // not chosen by the owner yet: each needs a design change or fights
+      // code written so on purpose (the memory tree's bit math, `void` for a
+      // promise not waited on, `async` so a throw rejects, re-exports, and
+      // expect() in test helpers)
+      "includes": ["**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useUnicodeRegex": "off",
+            "useNamedCaptureGroup": "off",
+            "useExportsLast": "off",
+            "useDefaultSwitchClause": "off",
+            "noContinue": "off",
+            // the tests call test(), never it()
+            "useConsistentTestIt": {
+              "level": "error",
+              "options": { "function": "test", "withinDescribe": "test" }
+            }
+          },
+          "performance": {
+            "useTopLevelRegex": "off",
+            "noBarrelFile": "off"
+          },
+          "complexity": {
+            "useMaxParams": "off",
+            "noVoid": "off"
+          },
+          "suspicious": {
+            "noBitwiseOperators": "off",
+            "noThenProperty": "off",
+            "useAwait": "off",
+            "noMisplacedAssertion": "off",
+            "noConditionalExpect": "off"
+          }
+        }
+      }
+    },
+    {
+      // other modules assign these namespaces' fields (Main.count = …), which
+      // useConst cannot see; goes with the noNamespace pull request
+      "includes": ["src/core/server/handover.ts", "src/core/server/main.ts"],
+      "linter": { "rules": { "style": { "useConst": "off" } } }
+    },
+    {
+      // timeouts, ports and expected values read better bare in tests
+      "includes": ["test/**"],
+      "linter": { "rules": { "style": { "noMagicNumbers": "off" } } }
+    }
+  ]
+}
