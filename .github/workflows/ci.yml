@@ -1,0 +1,75 @@
+# CI
+# ==
+# On every pull request and every push to main: `task check` on Linux and
+# macOS. The run's summary shows the e2e lines and the terminal app's
+# screens; the run's folder is kept as the artifact e2e-<runner>.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+        with:
+          version: 3.48.0
+      - name: Install tmux
+        shell: bash
+        run: |
+          command -v tmux && exit 0
+          if [ "$RUNNER_OS" = macOS ]; then
+            brew install tmux
+          else
+            sudo apt-get update && sudo apt-get install -y tmux
+          fi
+      - run: bun install --frozen-lockfile
+      - name: task check
+        shell: bash
+        run: |
+          set -o pipefail
+          export E2E="$RUNNER_TEMP/e2e"
+          mkdir -p "$E2E"
+          task check 2>&1 | tee "$RUNNER_TEMP/check.txt"
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### e2e"
+            echo '```'
+            grep -E '^(PASS|FAIL|XFAIL|XPASS|ALL PASS|[0-9]+ FAILED)' "$RUNNER_TEMP/check.txt" || echo "the e2e run did not start"
+            echo '```'
+            for f in "$RUNNER_TEMP"/e2e/tui-*.txt; do
+              [ -f "$f" ] || continue
+              echo "#### $(basename "$f" .txt)"
+              echo '```'
+              cat "$f"
+              echo '```'
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: e2e-${{ matrix.runner }}
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
