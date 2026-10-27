@@ -1,3 +1,4 @@
+#!/bin/sh
 # env
 # ===
 # A clean environment for an end-to-end run: `test/e2e/env.sh <command…>`.
