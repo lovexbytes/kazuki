@@ -1,0 +1,40 @@
+# Taskfile
+# ========
+# Every check, by name: `task --list`. CI runs `task check`; run it before
+# a pull request too.
+
+version: "3"
+
+tasks:
+  fmt:
+    desc: Format the code and apply Biome's safe fixes
+    cmds:
+      - bunx biome check --write .
+
+  lint:
+    desc: Check the format and the lint rules, changing nothing
+    cmds:
+      - bunx biome ci .
+
+  typecheck:
+    desc: Check the types with tsc
+    cmds:
+      - bunx tsc --noEmit -p .
+
+  test:
+    desc: Run the unit tests
+    cmds:
+      - bun test --isolate
+
+  e2e:
+    desc: Run the end-to-end test against the mock vendors (needs tmux)
+    cmds:
+      - test/e2e/env.sh bun test/e2e/run.ts
+
+  check:
+    desc: Run every check, in order; CI runs this
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+      - task: e2e
