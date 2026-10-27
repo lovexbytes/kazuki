@@ -9,21 +9,19 @@
 // Types
 // =====
 
-export type Rate = { input: number; write: number; read: number; output: number };
+export type Rate = {input: number; write: number; read: number; output: number}
 
 // Constants
 // =========
 
-const SPEEDS: Record<string, number> = { slow: 1, fast: 2, ultrafast: 6 };
+const SPEEDS: Record<string, number> = {slow: 1, fast: 2, ultrafast: 6}
 
 // Price
 // =====
 
 export namespace Price {
-
   // a speed's factor
   export function times(speed: string): number {
-    return SPEEDS[speed] ?? 1;
+    return SPEEDS[speed] ?? 1
   }
-
 }

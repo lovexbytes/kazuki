@@ -12,41 +12,41 @@
 // answer `{ error? }` (view.ts), a call's end (AskAI.End).
 
 interface OkResult<T> {
-  readonly ok: true;
-  value(): T;
+  readonly ok: true
+  value(): T
 }
 
 interface ErrResult<E> {
-  readonly ok: false;
-  error(): E;
+  readonly ok: false
+  error(): E
 }
 
 export class Ok<T = void> implements OkResult<T> {
-  public ok = true as const;
-  private data: T extends void ? never : T;
+  public ok = true as const
+  private data: T extends void ? never : T
   constructor(data?: T) {
-    this.data = data as T extends void ? never : T;
+    this.data = data as T extends void ? never : T
   }
   value(): T {
-    return this.data as T;
+    return this.data as T
   }
 }
 
 export class Err<E = unknown> implements ErrResult<E> {
-  public ok = false as const;
-  private data: E;
+  public ok = false as const
+  private data: E
   constructor(data: E) {
-    this.data = data;
+    this.data = data
   }
   error(): E {
-    return this.data;
+    return this.data
   }
 }
 
-export type Result<T = void, E = unknown> = OkResult<T> | ErrResult<E>;
+export type Result<T = void, E = unknown> = OkResult<T> | ErrResult<E>
 
 // what a catch got, as an Err: JS may throw anything, an Error is kept
 // whole (its stack, for the log)
 export function caught(e: unknown): Err<Error> {
-  return new Err(e instanceof Error ? e : new Error(String(e)));
+  return new Err(e instanceof Error ? e : new Error(String(e)))
 }

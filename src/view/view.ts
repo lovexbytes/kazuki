@@ -9,54 +9,60 @@
 // agent's page is its log, kept live. The AI notice (AI) opens the chat
 // and comes again before a message in another 3-hour window.
 
-import { live_push, type Live } from "../ai/live.ts";
-import type { Kind } from "../ai/ask-ai.ts";
-import * as Call from "./call.ts";
-import * as Md from "./md.ts";
-import { type Move, type Offer, Pick } from "../ai/pick.ts";
-import { Price } from "../ai/price.ts";
-import type { Result } from "../util/result.ts";
-import { GLYPH, WHO } from "./theme.ts";
-import { answer_read } from "./link.ts";
+import {live_push, type Live} from "../ai/live.ts"
+import type {Kind} from "../ai/ask-ai.ts"
+import * as Call from "./call.ts"
+import * as Md from "./md.ts"
+import {type Move, type Offer, Pick} from "../ai/pick.ts"
+import {Price} from "../ai/price.ts"
+import type {Result} from "../util/result.ts"
+import {GLYPH, WHO} from "./theme.ts"
+import {answer_read} from "./link.ts"
 
 // Types
 // =====
 
 // the n messages from id on (n a power of two)
-export type Part = [number, number];
+export type Part = [number, number]
 
 // a message logged: its kind, its text, its date (ISO), its images
-export type Entry = { kind: Kind; text: string; date?: string; images?: string[] };
+export type Entry = {kind: Kind; text: string; date?: string; images?: string[]}
 
 // a summary: its text, its last message's date
-export type Node = { text: string; to: string };
+export type Node = {text: string; to: string}
 
 // log: null while it loads
-export type Page = { name: string; log: Entry[] | null; live: Live[] };
+export type Page = {name: string; log: Entry[] | null; live: Live[]}
 
 // an import's time done and in all (ingest.ts Ingest.time), why paused, its
 // messages, its nodes not built by level
-export type Progress = { done: number; total: number; why: string | null; msgs: number; open: number[] };
+export type Progress = {
+  done: number
+  total: number
+  why: string | null
+  msgs: number
+  open: number[]
+}
 
 // an import's minutes a unit of its time (micro-USD on the compactor,
 // measured on a real import: 990 s for 162,900)
-const PACE = 1e-4;
+const PACE = 1e-4
 
 // what a turn waits on while nothing streams: nothing (""), SUMMARIES,
 // or the first piece of the model it names (a request out, no tool
 // running; a running tool shows its call)
-export const SUMMARIES = "summaries";
-export type Wait = string;
+export const SUMMARIES = "summaries"
+export type Wait = string
 
 // agents: those at work; providers: those offered (provider.ts)
 export type State = {
-  busy      : boolean;
-  wait      : Wait;
-  agents    : string[];
-  pick      : Pick | null;
-  providers : Offer;
-  importing : Progress | null;
-};
+  busy: boolean
+  wait: Wait
+  agents: string[]
+  pick: Pick | null
+  providers: Offer
+  importing: Progress | null
+}
 
 // fold: the tops shown (null: not folded); nodes and whole: the summaries
 // ("id+n") and messages known; open: the blocks opened (true) or shut by
@@ -64,170 +70,189 @@ export type State = {
 // for; page: the one shown (null: Kazuki's); the Link's: this view's
 // id, acts not answered, socket (up: it showed the chat)
 export type View = State & {
-  parts : Part[];
-  turn  : number;
-  fold  : Part[] | null;
-  nodes : Map<string, Node>;
-  whole : Map<number, Entry>;
-  open  : Map<string, boolean>;
-  live  : Live[];
-  minds : Map<number, string[]>;
-  pages : Map<string, Page>;
-  page  : Page | null;
-  notes : string[];
-  tab   : string;
-  out   : Post[];
-  ws    : WebSocket | null;
-  up    : boolean;
-  flush : () => void;
-};
+  parts: Part[]
+  turn: number
+  fold: Part[] | null
+  nodes: Map<string, Node>
+  whole: Map<number, Entry>
+  open: Map<string, boolean>
+  live: Live[]
+  minds: Map<number, string[]>
+  pages: Map<string, Page>
+  page: Page | null
+  notes: string[]
+  tab: string
+  out: Post[]
+  ws: WebSocket | null
+  up: boolean
+  flush: () => void
+}
 
-export type Pack = { nodes?: Record<string, Node>; whole?: Record<string, Entry> };
+export type Pack = {nodes?: Record<string, Node>; whole?: Record<string, Entry>}
 
 // the server's messages (server.ts documents them)
 export type Server =
-  | ({ $: "know" } & Pack)
-  | { $: "view"; parts: Part[]; turn: number }
-  | { $: "zoom"; id: number; n: number; parts: Part[] }
-  | { $: "root"; parts: Part[] }
-  | ({ $: "entry"; agent?: string; id?: number } & Entry)
-  | { $: "delta"; agent?: string; kind: Kind; text: string; fresh?: boolean }
-  | { $: "live"; agent?: string; live: Live[] }
-  | ({ $: "state" } & State)
-  | { $: "agent"; name: string; found: boolean }
-  | { $: "note"; text: string }
-  | ({ $: "ack"; id: string } & Answer)
-  | { $: "jobs"; ids: string[] }
-  | { $: "job"; id: string; job: unknown };
+  | ({$: "know"} & Pack)
+  | {$: "view"; parts: Part[]; turn: number}
+  | {$: "zoom"; id: number; n: number; parts: Part[]}
+  | {$: "root"; parts: Part[]}
+  | ({$: "entry"; agent?: string; id?: number} & Entry)
+  | {$: "delta"; agent?: string; kind: Kind; text: string; fresh?: boolean}
+  | {$: "live"; agent?: string; live: Live[]}
+  | ({$: "state"} & State)
+  | {$: "agent"; name: string; found: boolean}
+  | {$: "note"; text: string}
+  | ({$: "ack"; id: string} & Answer)
+  | {$: "jobs"; ids: string[]}
+  | {$: "job"; id: string; job: unknown}
 
 // a message a person sends: its text, its images
-export type Sent = { text: string; images?: Blob[] };
+export type Sent = {text: string; images?: Blob[]}
 
 // an act's answer as JSON (on the wire, and kept: Cloud.act_put): why
 // refused (status: HTTP's), a recording's words, an import's still
 // running; a body, made anew for each post (what fetch takes)
-export type Answer = { error?: string; status?: number; text?: string; going?: boolean };
+export type Answer = {
+  error?: string
+  status?: number
+  text?: string
+  going?: boolean
+}
 
 // an act's answer as each side holds it (result.ts): what it said, or
 // why refused (an Error with `status`: HTTP's, else 400)
-export type Said = { text?: string; going?: boolean };
-export type Done = Result<Said, Error & { status?: number }>;
-export type Body   = () => any;
+export type Said = {text?: string; going?: boolean}
+export type Done = Result<Said, Error & {status?: number}>
+export type Body = () => any
 
 // the acts a view sends (out: a job's output): changes, then reads; a
 // message's body is its images (sizes given), then its text
 export type Client =
-  | { $: "say"; sizes: number[]; body: Body }
-  | { $: "import"; body: Body }
-  | { $: "voice"; type: string; body: Body }
-  | { $: "stop"; name?: string } // all work, or the agent named, or TURN
-  | { $: "goal"; text: string | null } // the goal set (/goal), or none (/halt)
-  | { $: "go"; on: boolean } // the import's: resume (true) or pause
-  | { $: "pick"; to: Pick }
-  | { $: "out"; job: string; out: object }
-  | { $: "zoom"; part: Part }
-  | { $: "root" }
-  | { $: "agent"; name: string };
+  | {$: "say"; sizes: number[]; body: Body}
+  | {$: "import"; body: Body}
+  | {$: "voice"; type: string; body: Body}
+  | {$: "stop"; name?: string} // all work, or the agent named, or TURN
+  | {$: "goal"; text: string | null} // the goal set (/goal), or none (/halt)
+  | {$: "go"; on: boolean} // the import's: resume (true) or pause
+  | {$: "pick"; to: Pick}
+  | {$: "out"; job: string; out: object}
+  | {$: "zoom"; part: Part}
+  | {$: "root"}
+  | {$: "agent"; name: string}
 
 // an act not answered: with its id, the socket it went by, what its
 // answer does, what a message said (shown while offline: view_tail)
-export type Post = { msg: Client & { id: string }; ws: WebSocket | null; done: (a: Done) => void; said: string };
+export type Post = {
+  msg: Client & {id: string}
+  ws: WebSocket | null
+  done: (a: Done) => void
+  said: string
+}
 
 // how a view reaches the server: a socket by its query, a post, what it
 // does with a message, and, one lost (up: it showed the chat), whether to
 // open another
 export type Link = {
-  open : (query: string) => WebSocket;
-  post : (path: string, body: any) => Promise<Response>;
-  hear : (msg: Server) => void;
-  lost : (up: boolean) => Promise<boolean>;
-};
+  open: (query: string) => WebSocket
+  post: (path: string, body: any) => Promise<Response>
+  hear: (msg: Server) => void
+  lost: (up: boolean) => Promise<boolean>
+}
 
 // what a person does
 export type Act =
-  | ({ $: "Send" } & Sent)                      // Enter: a message, or, empty, interrupt
-  | { $: "Move"; move: Move; to?: string }      // the pick moves (to: to that value)
-  | { $: "Open"; id: number; n: number }        // a click on a block
-  | { $: "Shut"; id: number; n: number }        // a click on an open block's bar
-  | { $: "Fold"; on: boolean }                  // fold all, unfold all
-  | { $: "Goto"; name: string | null }          // a tab, a name, the logo (null: Kazuki)
+  | ({$: "Send"} & Sent) // Enter: a message, or, empty, interrupt
+  | {$: "Move"; move: Move; to?: string} // the pick moves (to: to that value)
+  | {$: "Open"; id: number; n: number} // a click on a block
+  | {$: "Shut"; id: number; n: number} // a click on an open block's bar
+  | {$: "Fold"; on: boolean} // fold all, unfold all
+  | {$: "Goto"; name: string | null} // a tab, a name, the logo (null: Kazuki)
 
 // what a page draws, top to bottom
 export type Row =
-  | { $: "Sum"; id: number; n: number; text: string; call: Call.Call | null }                     // a block: nx, its summary (call: a tool call's, word for word)
-  | { $: "Box"; id: number; n: number; text: string; rows: Row[] }                              // a block open: its bar
-  | { $: "Msg"; id: number | null; kind: Kind; who: string; text: string; body: Md.Block[]; call: Call.Call | null; images: string[] } // a message whole: 0x (who: its speaker or "↳ result", named on its block; call: a tool call's, drawn as call.ts reads it)
-  | { $: "Cap"; text: string }                                                                  // a line about the page
+  | {$: "Sum"; id: number; n: number; text: string; call: Call.Call | null} // a block: nx, its summary (call: a tool call's, word for word)
+  | {$: "Box"; id: number; n: number; text: string; rows: Row[]} // a block open: its bar
+  | {
+      $: "Msg"
+      id: number | null
+      kind: Kind
+      who: string
+      text: string
+      body: Md.Block[]
+      call: Call.Call | null
+      images: string[]
+    } // a message whole: 0x (who: its speaker or "↳ result", named on its block; call: a tool call's, drawn as call.ts reads it)
+  | {$: "Cap"; text: string} // a line about the page
 
-export type Tab = { name: string | null; here: boolean; text: string };
+export type Tab = {name: string | null; here: boolean; text: string}
 
 // hint: what the knob's value means (a note when it changes)
-export type Knob = { text: string; move: Move; hint: string };
+export type Knob = {text: string; move: Move; hint: string}
 
 // a user's account, as Cloud.data gives it
-export type Account = { name: string };
+export type Account = {name: string}
 
 // Constants
 // =========
 
-export const MAIN = "Kazuki";
+export const MAIN = "Kazuki"
 
 // Kazuki's turn, as a stop names it among the agents at work
-export const TURN = "Kazuki's turn";
+export const TURN = "Kazuki's turn"
 
 // the messages' version, in a view's query; one more for each change an
 // older view would misread
-export const WIRE = 3;
+export const WIRE = 3
 
 // the Link's: the most a live socket hears nothing (ms); the wait to open
 // another; the server's tick; a terminal's close as it quits; the
 // server's close as the chat moves to its next process (a deploy)
-export const PING  = 10000;
-export const RETRY = 1000;
-export const TICK  = "+";
-export const QUIT  = 4000;
-export const MOVE  = 4001;
+export const PING = 10000
+export const RETRY = 1000
+export const TICK = "+"
+export const QUIT = 4000
+export const MOVE = 4001
 
 // the most a socket message may be (bytes; Bun's own cap is 16 MiB): 3x
 // a tool's largest output, a screenshot (computer.ts, at most 1280x800:
 // a screen of noise, the worst case, is 1.33 MB in base64; a real one
 // ~0.15 MB). A bigger one closes its socket (server.ts)
-export const FRAME = 2 ** 22;
+export const FRAME = 2 ** 22
 
-export const HINT = "Message Kazuki";
+export const HINT = "Message Kazuki"
 
 // the disclosure both views show (EU AI Act art. 50, California SB 243,
 // New York GBL art. 47, Anthropic's usage policy)
-export const AI = "Kazuki is an AI, not a person, and can make mistakes.";
+export const AI = "Kazuki is an AI, not a person, and can make mistakes."
 
 // the AI notice's period (ms)
-const NOTICE = 3 * 60 * 60 * 1000;
+const NOTICE = 3 * 60 * 60 * 1000
 
-const WAIT = "compressing…";
-const SUMS = "compressing earlier messages…";
+const WAIT = "compressing…"
+const SUMS = "compressing earlier messages…"
 
 // under the messages sent while offline, still kept to send
-const UNSENT = "Sends once connected.";
+const UNSENT = "Sends once connected."
 
 // the kinds an image may be, each by its mark at a byte of its first HEAD
 const MARKS: Array<[string, number, string]> = [
   ["image/png", 0, "\x89PNG"],
   ["image/jpeg", 0, "\xFF\xD8\xFF"],
   ["image/gif", 0, "GIF8"],
-  ["image/webp", 8, "WEBP"],
-];
-export const HEAD   = 12;
-export const IMAGES = "Images are png, jpeg, gif or webp.";
+  ["image/webp", 8, "WEBP"]
+]
+export const HEAD = 12
+export const IMAGES = "Images are png, jpeg, gif or webp."
 
 // how a line of one tool call starts
-const TOOL = "tool: ";
-const FOLD = "The whole chat, folded into the fewest blocks.";
+const TOOL = "tool: "
+const FOLD = "The whole chat, folded into the fewest blocks."
 
 // Constructors
 // ============
 
 export function Cap(text: string): Row {
-  return { $: "Cap", text };
+  return {$: "Cap", text}
 }
 
 // View
@@ -235,104 +260,104 @@ export function Cap(text: string): Row {
 
 export function view_new(): View {
   return {
-    busy      : false,
-    wait      : "",
-    agents    : [],
-    pick      : null,
-    providers : [],
-    importing : null,
-    parts     : [],
-    turn      : Infinity,
-    fold      : null,
-    nodes     : new Map(),
-    whole     : new Map(),
-    open      : new Map(),
-    live      : [],
-    minds     : new Map(),
-    pages     : new Map(),
-    page      : null,
-    notes     : [],
-    tab       : crypto.randomUUID(),
-    out       : [],
-    ws        : null,
-    up        : false,
-    flush     : () => {},
-  };
+    busy: false,
+    wait: "",
+    agents: [],
+    pick: null,
+    providers: [],
+    importing: null,
+    parts: [],
+    turn: Infinity,
+    fold: null,
+    nodes: new Map(),
+    whole: new Map(),
+    open: new Map(),
+    live: [],
+    minds: new Map(),
+    pages: new Map(),
+    page: null,
+    notes: [],
+    tab: crypto.randomUUID(),
+    out: [],
+    ws: null,
+    up: false,
+    flush: () => {}
+  }
 }
 
 export function view_hear(v: View, msg: Server): Client[] {
   switch (msg.$) {
     case "know": {
-      view_learn(v, msg);
-      return [];
+      view_learn(v, msg)
+      return []
     }
     case "view": {
-      v.parts = msg.parts;
-      v.turn  = msg.turn;
-      return v.fold === null ? [] : [{ $: "root" }];
+      v.parts = msg.parts
+      v.turn = msg.turn
+      return v.fold === null ? [] : [{$: "root"}]
     }
     case "zoom":
     case "jobs":
     case "job": {
-      return [];
+      return []
     }
     case "root": {
-      v.fold = v.fold === null ? null : msg.parts;
-      return [];
+      v.fold = v.fold === null ? null : msg.parts
+      return []
     }
     case "entry": {
-      view_entry(v, msg);
-      return [];
+      view_entry(v, msg)
+      return []
     }
     case "delta": {
-      const live = view_live(v, msg.agent);
+      const live = view_live(v, msg.agent)
       if (live !== null) {
-        live_push(live, msg.kind, msg.text, msg.fresh);
+        live_push(live, msg.kind, msg.text, msg.fresh)
       }
-      return [];
+      return []
     }
     case "live": {
-      const live = view_live(v, msg.agent);
+      const live = view_live(v, msg.agent)
       if (live !== null) {
-        live_set(live, msg.live);
+        live_set(live, msg.live)
       }
-      return [];
+      return []
     }
     case "state": {
-      const { $, ...state } = msg;
-      Object.assign(v, state);
-      return [];
+      const {$, ...state} = msg
+      Object.assign(v, state)
+      return []
     }
     case "agent": {
-      const page = v.pages.get(msg.name);
+      const page = v.pages.get(msg.name)
       if (page === undefined) {
-        return [];
+        return []
       }
       if (msg.found) {
-        page.log = [];
-        return [];
+        page.log = []
+        return []
       }
-      v.pages.delete(msg.name);
+      v.pages.delete(msg.name)
       if (v.page === page) {
-        v.page = null;
+        v.page = null
       }
-      v.notes.push("No agent " + msg.name + ".");
-      return [];
+      v.notes.push("No agent " + msg.name + ".")
+      return []
     }
     case "note": {
-      v.notes.push(msg.text);
-      return [];
+      v.notes.push(msg.text)
+      return []
     }
     case "ack": {
-      const post = v.out.find((p) => p.msg.id === msg.id);
-      v.out = v.out.filter((p) => p !== post);
-      post?.done(answer_read(msg));
-      return [];
+      const post = v.out.find((p) => p.msg.id === msg.id)
+      v.out = v.out.filter((p) => p !== post)
+      post?.done(answer_read(msg))
+      return []
     }
     default: {
       // a kind newer than this view: Kazuki runs the release it was
       // installed with (src/cli.ts), behind the server's
-      return [];
+      return []
     }
   }
 }
@@ -340,209 +365,281 @@ export function view_hear(v: View, msg: Server): Client[] {
 export function view_act(v: View, act: Act): Client[] {
   switch (act.$) {
     case "Send": {
-      const text   = act.text.trim();
-      const images = act.images ?? [];
+      const text = act.text.trim()
+      const images = act.images ?? []
       // a `/word` reaching here is no command (the terminal ran its
       // own), but /goal (a message, sent as typed, set as the goal) and
       // /halt: it errs, never goes to the AI as a message
-      const word   = /^\/[a-z]+(?=\s|$)/i.exec(text)?.[0];
-      const goal   = word === "/goal" ? text.slice(word.length).trim() : null;
+      const word = /^\/[a-z]+(?=\s|$)/i.exec(text)?.[0]
+      const goal = word === "/goal" ? text.slice(word.length).trim() : null
       if (!view_typing(v)) {
-        return [];
+        return []
       }
       if (text === "" && images.length === 0) {
-        return v.busy ? [{ $: "stop", name: TURN }] : [];
+        return v.busy ? [{$: "stop", name: TURN}] : []
       }
       if (word === "/halt") {
-        return [{ $: "goal", text: null }];
+        return [{$: "goal", text: null}]
       }
       if (goal === "") {
-        v.notes.push("/goal needs one: /goal <message>.");
-        return [];
+        v.notes.push("/goal needs one: /goal <message>.")
+        return []
       }
       if (word !== undefined && goal === null) {
-        v.notes.push(word + " is no command; nothing was sent. /help lists the commands.");
-        return [];
+        v.notes.push(
+          word + " is no command; nothing was sent. /help lists the commands."
+        )
+        return []
       }
-      const blob = new Blob([...images, text]);
-      const say: Client = { $: "say", sizes: images.map((b) => b.size), body: () => blob };
-      v.fold = null;
-      return goal === null ? [say] : [{ $: "goal", text: goal }, say];
+      const blob = new Blob([...images, text])
+      const say: Client = {
+        $: "say",
+        sizes: images.map((b) => b.size),
+        body: () => blob
+      }
+      v.fold = null
+      return goal === null ? [say] : [{$: "goal", text: goal}, say]
     }
     case "Move": {
       // from the last pick asked for and not acked, else the chat's
-      const from = v.out.flatMap((p) => (p.msg.$ === "pick" ? [p.msg.to] : [])).at(-1) ?? v.pick;
+      const from =
+        v.out.flatMap((p) => (p.msg.$ === "pick" ? [p.msg.to] : [])).at(-1) ??
+        v.pick
       if (from === null) {
-        v.notes.push("The chat has not loaded yet.");
-        return [];
+        v.notes.push("The chat has not loaded yet.")
+        return []
       }
-      const to = Pick.move(from, act.move, v.providers, act.to);
-      const part = act.move === "up" || act.move === "down" ? "effort" : act.move;
-      if ((part === "effort" || part === "speed") && Pick.options(from, part, v.providers).length <= 1) {
-        v.notes.push(from.model + " does not support " + (part === "speed" ? "speed." : "effort."));
-        return [];
+      const to = Pick.move(from, act.move, v.providers, act.to)
+      const part =
+        act.move === "up" || act.move === "down" ? "effort" : act.move
+      if (
+        (part === "effort" || part === "speed") &&
+        Pick.options(from, part, v.providers).length <= 1
+      ) {
+        v.notes.push(
+          from.model +
+            " does not support " +
+            (part === "speed" ? "speed." : "effort.")
+        )
+        return []
       }
       if (to === null) {
-        const parts = Pick.options(from, act.move, v.providers).map(([part]) => part);
-        v.notes.push("No " + [act.move, act.to].join(" ").trim() + "; one of: " + [...new Set(parts)].join(", ") + ".");
-        return [];
+        const parts = Pick.options(from, act.move, v.providers).map(
+          ([part]) => part
+        )
+        v.notes.push(
+          "No " +
+            [act.move, act.to].join(" ").trim() +
+            "; one of: " +
+            [...new Set(parts)].join(", ") +
+            "."
+        )
+        return []
       }
-      return [{ $: "pick", to }];
+      return [{$: "pick", to}]
     }
     case "Open": {
-      v.open.set(act.id + "+" + act.n, true);
-      return act.n === 1 ? [] : [{ $: "zoom", part: [act.id, act.n] }];
+      v.open.set(act.id + "+" + act.n, true)
+      return act.n === 1 ? [] : [{$: "zoom", part: [act.id, act.n]}]
     }
     case "Shut": {
-      v.open.set(act.id + "+" + act.n, false);
-      return [];
+      v.open.set(act.id + "+" + act.n, false)
+      return []
     }
     case "Fold": {
-      v.open.clear();
-      v.fold = act.on ? [] : null;
-      return act.on ? [{ $: "root" }] : [];
+      v.open.clear()
+      v.fold = act.on ? [] : null
+      return act.on ? [{$: "root"}] : []
     }
     case "Goto": {
       if (act.name === null) {
-        v.page = null;
-        return [];
+        v.page = null
+        return []
       }
-      const known = v.pages.get(act.name);
-      v.page = known ?? { name: act.name, log: null, live: [] };
-      v.pages.set(act.name, v.page);
-      return known === undefined ? [{ $: "agent", name: act.name }] : [];
+      const known = v.pages.get(act.name)
+      v.page = known ?? {name: act.name, log: null, live: []}
+      v.pages.set(act.name, v.page)
+      return known === undefined ? [{$: "agent", name: act.name}] : []
     }
   }
 }
 
 export function view_body(v: View): Row[] {
   if (v.page !== null) {
-    return page_rows(v, v.page);
+    return page_rows(v, v.page)
   }
   if (v.fold !== null) {
-    const tops = v.fold.flatMap(([id, n]) => part_rows(v, id, n, Infinity, false));
-    return [Cap(FOLD), ...tops];
+    const tops = v.fold.flatMap(([id, n]) =>
+      part_rows(v, id, n, Infinity, false)
+    )
+    return [Cap(FOLD), ...tops]
   }
-  return [Cap(AI), ...view_rows(v, v.parts).flat()];
+  return [Cap(AI), ...view_rows(v, v.parts).flat()]
 }
 
 // the chat's parts given, in order, as rows each (part_due)
 export function view_rows(v: View, parts: Part[]): Row[][] {
   return parts.map(([id, n], k) => {
-    const rows = part_rows(v, id, n, v.turn, true);
-    return part_due(v, [id, n], parts[k - 1]) ? [Cap(AI), ...rows] : rows;
-  });
+    const rows = part_rows(v, id, n, v.turn, true)
+    return part_due(v, [id, n], parts[k - 1]) ? [Cap(AI), ...rows] : rows
+  })
 }
 
 // whether rows show a block whose summary isn't known yet (WAIT)
 export function rows_wait(v: View, rows: Row[]): boolean {
-  return rows.some((row) => (row.$ === "Sum" && !v.nodes.has(row.id + "+" + row.n)) || (row.$ === "Box" && rows_wait(v, row.rows)));
+  return rows.some(
+    (row) =>
+      (row.$ === "Sum" && !v.nodes.has(row.id + "+" + row.n)) ||
+      (row.$ === "Box" && rows_wait(v, row.rows))
+  )
 }
 
 // live: what of the stream to draw (the terminal's: what it has not
 // printed yet)
 export function view_tail(v: View, live = view_stream(v)): Row[] {
   if (v.page === null && v.fold !== null) {
-    return [];
+    return []
   }
-  const rows = live.flatMap((l) => entry_rows(null, l.kind, l.text));
-  const load = v.page === null && v.importing !== null ? [Cap(progress_show(v, v.importing))] : [];
-  const said = v.page === null && !v.up ? v.out.flatMap((p) => entry_rows(null, "user", p.said)) : [];
-  const kept = said.length > 0 ? [...said, Cap(UNSENT)] : [];
+  const rows = live.flatMap((l) => entry_rows(null, l.kind, l.text))
+  const load =
+    v.page === null && v.importing !== null
+      ? [Cap(progress_show(v, v.importing))]
+      : []
+  const said =
+    v.page === null && !v.up
+      ? v.out.flatMap((p) => entry_rows(null, "user", p.said))
+      : []
+  const kept = said.length > 0 ? [...said, Cap(UNSENT)] : []
   if (v.page !== null || rows.length > 0 || v.wait === "") {
-    return [...rows, ...kept, ...load];
+    return [...rows, ...kept, ...load]
   }
-  return [Cap(v.wait === SUMMARIES ? SUMS : "waiting for " + v.wait + "…"), ...kept, ...load];
+  return [
+    Cap(v.wait === SUMMARIES ? SUMS : "waiting for " + v.wait + "…"),
+    ...kept,
+    ...load
+  ]
 }
 
 // what streams on the page shown
 export function view_stream(v: View): Live[] {
-  return v.page === null ? v.live : v.page.live;
+  return v.page === null ? v.live : v.page.live
 }
 
 // an import's progress
 export function progress_show(v: State, p: Progress): string {
-  const n = (k: number) => k.toLocaleString("en-US");
-  const merges = p.open.reduce((x, y) => x + y, 0);
-  const phase = p.open[0] > 0 ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs) : "Merging the top of the tree: " + merges + (merges === 1 ? " merge" : " merges") + " left · about " + Math.ceil((p.total - p.done) * PACE) + " min";
-  const why = p.why === null ? "" : " · paused";
-  return phase + why;
+  const n = (k: number) => k.toLocaleString("en-US")
+  const merges = p.open.reduce((x, y) => x + y, 0)
+  const phase =
+    p.open[0] > 0
+      ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs)
+      : "Merging the top of the tree: " +
+        merges +
+        (merges === 1 ? " merge" : " merges") +
+        " left · about " +
+        Math.ceil((p.total - p.done) * PACE) +
+        " min"
+  const why = p.why === null ? "" : " · paused"
+  return phase + why
 }
 
 // the chat, each agent at work, and the page shown while its agent is
 // done (so it can be left: the tabs were the way back, and hid)
 export function view_tabs(v: View): Tab[] {
-  const at    = v.page === null ? null : v.page.name;
-  const names = at === null || v.agents.includes(at) ? v.agents : [...v.agents, at];
+  const at = v.page === null ? null : v.page.name
+  const names =
+    at === null || v.agents.includes(at) ? v.agents : [...v.agents, at]
   return [null, ...names].map((name) => {
-    const here = name === at;
-    const text = (here ? GLYPH.here : GLYPH.tab) + " " + (name ?? MAIN);
-    return { name, here, text };
-  });
+    const here = name === at
+    const text = (here ? GLYPH.here : GLYPH.tab) + " " + (name ?? MAIN)
+    return {name, here, text}
+  })
 }
 
 export function view_typing(v: View): boolean {
-  return v.page === null;
+  return v.page === null
 }
 
 export function view_running(v: View): boolean {
-  return v.busy || v.agents.length > 0;
+  return v.busy || v.agents.length > 0
 }
 
 export function view_pick(v: View): Knob[] {
   if (v.pick === null) {
-    return [];
+    return []
   }
-  const { model, effort, speed } = v.pick;
-  const rate  = Pick.model(v.providers, v.pick.vendor, model)?.rate;
-  const price = rate === undefined ? "" : ": $" + rate.input + "/M tokens in, $" + rate.output + "/M out";
+  const {model, effort, speed} = v.pick
+  const rate = Pick.model(v.providers, v.pick.vendor, model)?.rate
+  const price =
+    rate === undefined
+      ? ""
+      : ": $" + rate.input + "/M tokens in, $" + rate.output + "/M out"
   // a model two vendors offer: its vendor in the hint, not in its name
-  const whose = Pick.twin(v.pick.vendor, model, v.providers) ? ", " + v.pick.vendor : "";
+  const whose = Pick.twin(v.pick.vendor, model, v.providers)
+    ? ", " + v.pick.vendor
+    : ""
   return [
-    { text: model, move: "model", hint: model + whose + price },
-    ...(effort === undefined ? [] : [{ text: effort, move: "effort" as const, hint: effort + " effort: how long it thinks first; more is smarter, slower and costs more" }]),
-    ...(speed === undefined ? [] : [{ text: speed, move: "speed" as const, hint: speed + ": ×" + Price.times(speed) + " the price" }]),
-  ];
+    {text: model, move: "model", hint: model + whose + price},
+    ...(effort === undefined
+      ? []
+      : [
+          {
+            text: effort,
+            move: "effort" as const,
+            hint:
+              effort +
+              " effort: how long it thinks first; more is smarter, slower and costs more"
+          }
+        ]),
+    ...(speed === undefined
+      ? []
+      : [
+          {
+            text: speed,
+            move: "speed" as const,
+            hint: speed + ": ×" + Price.times(speed) + " the price"
+          }
+        ])
+  ]
 }
 
 export function view_count(v: View): number {
-  return v.parts.reduce((end, [id, n]) => Math.max(end, id + n), 0);
+  return v.parts.reduce((end, [id, n]) => Math.max(end, id + n), 0)
 }
 
 function view_learn(v: View, pack: Pack): void {
   for (const [key, node] of Object.entries(pack.nodes ?? {})) {
-    v.nodes.set(key, node);
+    v.nodes.set(key, node)
   }
   for (const [id, entry] of Object.entries(pack.whole ?? {})) {
-    v.whole.set(Number(id), entry);
+    v.whole.set(Number(id), entry)
   }
 }
 
 // a message: on its agent's page, in Kazuki's chat, or, a thought (not
 // logged), after the last message
-function view_entry(v: View, msg: Server & { $: "entry" }): void {
-  const { $, agent, id, ...entry } = msg;
-  const last = v.parts[v.parts.length - 1];
+function view_entry(v: View, msg: Server & {$: "entry"}): void {
+  const {$, agent, id, ...entry} = msg
+  const last = v.parts[v.parts.length - 1]
   if (agent !== undefined) {
-    const log = v.pages.get(agent)?.log;
+    const log = v.pages.get(agent)?.log
     if (Array.isArray(log)) {
-      log.push(entry);
+      log.push(entry)
     }
   } else if (id !== undefined) {
-    v.whole.set(id, entry);
-    v.parts.push([id, 1]);
+    v.whole.set(id, entry)
+    v.parts.push([id, 1])
   } else if (msg.kind === "mind" && last !== undefined) {
-    const at = last[0] + last[1] - 1;
-    v.minds.set(at, [...(v.minds.get(at) ?? []), msg.text]);
+    const at = last[0] + last[1] - 1
+    v.minds.set(at, [...(v.minds.get(at) ?? []), msg.text])
   }
 }
 
 // null: a page not asked for
 function view_live(v: View, agent: string | undefined): Live[] | null {
   if (agent === undefined) {
-    return v.live;
+    return v.live
   }
-  return v.pages.get(agent)?.live ?? null;
+  return v.pages.get(agent)?.live ?? null
 }
 
 // Part
@@ -551,62 +648,87 @@ function view_live(v: View, agent: string | undefined): Live[] | null {
 // a block's name, as /open and /close take it: its first message's id,
 // then its size past 1x
 export function block_name(id: number, n: number): string {
-  return "#" + id + (n === 1 ? "" : "+" + n);
+  return "#" + id + (n === 1 ? "" : "+" + n)
 }
 
 // whether the AI notice comes before part, after the part `before`: a
 // message from the turn on, in another window than that part's
-export function part_due(v: View, part: Part, before: Part | undefined): boolean {
-  const last = before === undefined ? NaN : part_window(v, before);
-  return part[1] === 1 && part[0] >= v.turn && !Number.isNaN(last) && part_window(v, part) !== last;
+export function part_due(
+  v: View,
+  part: Part,
+  before: Part | undefined
+): boolean {
+  const last = before === undefined ? NaN : part_window(v, before)
+  return (
+    part[1] === 1 &&
+    part[0] >= v.turn &&
+    !Number.isNaN(last) &&
+    part_window(v, part) !== last
+  )
 }
 
 // the window (NOTICE) of a part's last date (NaN: not known)
 function part_window(v: View, [id, n]: Part): number {
-  const date = n === 1 ? v.whole.get(id)?.date : v.nodes.get(id + "+" + n)?.to;
-  return Math.floor(Date.parse(date ?? "") / NOTICE);
+  const date = n === 1 ? v.whole.get(id)?.date : v.nodes.get(id + "+" + n)?.to
+  return Math.floor(Date.parse(date ?? "") / NOTICE)
 }
 
 // t: the turn; talk: whether talk opens by itself (not in Fold all). Open:
 // the person's choice (Open, Shut) if made, else a message of the user or
 // Kazuki (tool calls, reports and the rest stay folded)
-function part_rows(v: View, id: number, n: number, t: number, talk: boolean): Row[] {
-  const key   = id + "+" + n;
-  const entry = v.whole.get(id);
-  const half  = n / 2;
+function part_rows(
+  v: View,
+  id: number,
+  n: number,
+  t: number,
+  talk: boolean
+): Row[] {
+  const key = id + "+" + n
+  const entry = v.whole.get(id)
+  const half = n / 2
   if (n === 1 && id >= t && entry !== undefined) {
-    const minds = v.minds.get(id) ?? [];
-    const after = minds.flatMap((x) => entry_rows(null, "mind", x));
-    return [...whole_rows(id, entry), ...after];
+    const minds = v.minds.get(id) ?? []
+    const after = minds.flatMap((x) => entry_rows(null, "mind", x))
+    return [...whole_rows(id, entry), ...after]
   }
-  const open  = talk && n === 1 && ["user", "unii"].includes(entry?.kind ?? "");
+  const open = talk && n === 1 && ["user", "unii"].includes(entry?.kind ?? "")
   if (!(v.open.get(key) ?? open)) {
-    return sum_rows(id, n, v.nodes.get(key));
+    return sum_rows(id, n, v.nodes.get(key))
   }
-  const text = n === 1 ? "fold" : GLYPH.open + " " + n + "x · fold";
+  const text = n === 1 ? "fold" : GLYPH.open + " " + n + "x · fold"
   if (n > 1) {
-    const rows = [...part_rows(v, id, half, t, talk), ...part_rows(v, id + half, half, t, talk)];
-    return [{ $: "Box", id, n, text, rows }];
+    const rows = [
+      ...part_rows(v, id, half, t, talk),
+      ...part_rows(v, id + half, half, t, talk)
+    ]
+    return [{$: "Box", id, n, text, rows}]
   }
-  const rows = entry === undefined ? [] : whole_rows(id, entry);
-  return [{ $: "Box", id, n, text, rows }];
+  const rows = entry === undefined ? [] : whole_rows(id, entry)
+  return [{$: "Box", id, n, text, rows}]
 }
 
 // a message's rows, or a summary's block, made once: neither changes once
 // known, so a redraw remakes only the rows that changed
-const ROWS = new WeakMap<Entry | Node, Row[]>();
+const ROWS = new WeakMap<Entry | Node, Row[]>()
 
 function whole_rows(id: number | null, entry: Entry): Row[] {
-  const rows = ROWS.get(entry) ?? entry_rows(id, entry.kind, entry.text, entry.images);
-  ROWS.set(entry, rows);
-  return rows;
+  const rows =
+    ROWS.get(entry) ?? entry_rows(id, entry.kind, entry.text, entry.images)
+  ROWS.set(entry, rows)
+  return rows
 }
 
 // a block whose summary isn't known yet says WAIT
-function sum_rows(id: number, n: number, node: Node = { text: WAIT, to: "" }): Row[] {
-  const rows = ROWS.get(node) ?? [{ $: "Sum", id, n, text: Md.md_flat(node.text), call: sum_call(n, node.text) }];
-  ROWS.set(node, rows);
-  return rows;
+function sum_rows(
+  id: number,
+  n: number,
+  node: Node = {text: WAIT, to: ""}
+): Row[] {
+  const rows = ROWS.get(node) ?? [
+    {$: "Sum", id, n, text: Md.md_flat(node.text), call: sum_call(n, node.text)}
+  ]
+  ROWS.set(node, rows)
+  return rows
 }
 
 // Page
@@ -614,8 +736,13 @@ function sum_rows(id: number, n: number, node: Node = { text: WAIT, to: "" }): R
 
 // an agent's page, its log (once it comes) from message `from` on
 export function page_rows(v: View, page: Page, from = 0): Row[] {
-  const head = Cap(page.name + (v.agents.includes(page.name) ? " · at work" : " · done"));
-  return [head, ...(page.log ?? []).slice(from).flatMap((e) => whole_rows(null, e))];
+  const head = Cap(
+    page.name + (v.agents.includes(page.name) ? " · at work" : " · done")
+  )
+  return [
+    head,
+    ...(page.log ?? []).slice(from).flatMap((e) => whole_rows(null, e))
+  ]
 }
 
 // Live
@@ -626,17 +753,24 @@ export function page_rows(v: View, page: Page, from = 0): Row[] {
 // the one it was (the terminal prints a message once: src/cli.ts flow), as
 // after a reconnect; another replaces it
 function live_set(live: Live[], now: Live[]): void {
-  const goes = live.every((l, k) => now[k]?.kind === l.kind && now[k].text.startsWith(l.text));
-  const held = goes ? live : [];
-  const next = now.map((l, k) => (k < held.length ? Object.assign(held[k], l) : l));
-  live.splice(0, live.length, ...next);
+  const goes = live.every(
+    (l, k) => now[k]?.kind === l.kind && now[k].text.startsWith(l.text)
+  )
+  const held = goes ? live : []
+  const next = now.map((l, k) =>
+    k < held.length ? Object.assign(held[k], l) : l
+  )
+  live.splice(0, live.length, ...next)
 }
 
 // the call a line of one message holds, when the line is a tool call
 // word for word (the compactor keeps a short message as it is)
 function sum_call(n: number, text: string): Call.Call | null {
-  const call = n === 1 && text.startsWith(TOOL) ? Call.call_parse(text.slice(TOOL.length)) : null;
-  return call === null || call.name === "" ? null : call;
+  const call =
+    n === 1 && text.startsWith(TOOL)
+      ? Call.call_parse(text.slice(TOOL.length))
+      : null
+  return call === null || call.name === "" ? null : call
 }
 
 // Image
@@ -645,39 +779,56 @@ function sum_call(n: number, text: string): Call.Call | null {
 // an image's kind by its first HEAD bytes (each kind's mark, at its
 // byte); null: none of them. Said as IMAGES where one is refused.
 export function image_kind(head: Uint8Array): string | null {
-  const text = String.fromCharCode(...head.subarray(0, HEAD));
-  return MARKS.find(([, at, mark]) => text.slice(at, at + mark.length) === mark)?.[0] ?? null;
+  const text = String.fromCharCode(...head.subarray(0, HEAD))
+  return (
+    MARKS.find(
+      ([, at, mark]) => text.slice(at, at + mark.length) === mark
+    )?.[0] ?? null
+  )
 }
 
 // Entry
 // =====
 
-export function entry_rows(id: number | null, kind: Kind, text: string, images: string[] = []): Row[] {
-  const call = kind === "tool" ? Call.call_parse(text) : null;
-  const report = kind === "work" ? Call.report_read(text) : null;
-  const body = call === null ? entry_body(kind, report?.text ?? text) : [];
-  const who = report?.name ?? WHO[kind] ?? "";
-  return call === null && body.length === 0 && images.length === 0 ? [] : [{ $: "Msg", id, kind, who, text, body, call, images }];
+export function entry_rows(
+  id: number | null,
+  kind: Kind,
+  text: string,
+  images: string[] = []
+): Row[] {
+  const call = kind === "tool" ? Call.call_parse(text) : null
+  const report = kind === "work" ? Call.report_read(text) : null
+  const body = call === null ? entry_body(kind, report?.text ?? text) : []
+  const who = report?.name ?? WHO[kind] ?? ""
+  return call === null && body.length === 0 && images.length === 0
+    ? []
+    : [{$: "Msg", id, kind, who, text, body, call, images}]
 }
 
 // the length of a streaming message's head printed now: all of it once
 // ended, as one block (a frame or fill is drawn whole), else none; none
 // of one logged whole (a call, a result, the user's, a report)
-export function entry_settled(kind: Kind, text: string, ended: boolean): number {
-  return ["user", "work", "echo", "tool"].includes(kind) || !ended ? 0 : text.length;
+export function entry_settled(
+  kind: Kind,
+  text: string,
+  ended: boolean
+): number {
+  return ["user", "work", "echo", "tool"].includes(kind) || !ended
+    ? 0
+    : text.length
 }
 
 function entry_body(kind: Kind, text: string): Md.Block[] {
   switch (kind) {
     case "user":
     case "work": {
-      return Md.md_plain(text);
+      return Md.md_plain(text)
     }
     case "echo": {
-      return Md.md_output(text);
+      return Md.md_output(text)
     }
     default: {
-      return Md.md_parse(text);
+      return Md.md_parse(text)
     }
   }
 }
