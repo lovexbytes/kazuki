@@ -25,10 +25,18 @@ import {
   type Say
 } from "../../ai/ask-ai.ts"
 import {Tools} from "../tools.ts"
-import {Moved, Peer, Away, Gate, LEAVE, ENDED} from "./shared.ts"
+import {
+  type Moved,
+  type Peer,
+  type Away,
+  type Gate,
+  LEAVE,
+  ENDED
+} from "./shared.ts"
 import {Chat} from "./chat.ts"
 import {Move} from "./move.ts"
 import {Main} from "./main.ts"
+import {noop} from "../../util/noop.ts"
 
 export namespace Handover {
   // the process it took its chats from, its address, and the users whose
@@ -66,8 +74,8 @@ export namespace Handover {
   // reach (a call's new process: Handover.far); once it listens, `hand`
   // leads to it, so the next worker k reaches this one
   export function listen(hand: string): void {
-    const temp = hand + ".link"
-    Handover.addr = hand + "." + process.pid
+    const temp = `${hand}.link`
+    Handover.addr = `${hand}.${process.pid}`
     fs.rmSync(Handover.addr, {force: true})
     net
       .createServer((sock) => Handover.peer(sock))
@@ -83,7 +91,7 @@ export namespace Handover {
   // logged, and the rest of the read (the chats moved after it) goes on
   export function peer(sock: net.Socket): Peer {
     const peer: Peer = {
-      send: (msg) => sock.write(JSON.stringify(msg) + "\n"),
+      send: (msg) => sock.write(`${JSON.stringify(msg)}\n`),
       end: (then) => (sock.destroyed ? then() : sock.end(then)),
       feeds: new Map()
     }
@@ -99,7 +107,7 @@ export namespace Handover {
         )
       )
     })
-    sock.on("error", () => {})
+    sock.on("error", noop)
     sock.on("close", () => Handover.lost(peer))
     return peer
   }
@@ -128,7 +136,8 @@ export namespace Handover {
     switch (msg.$) {
       case "go": {
         if (Handover.next !== null) {
-          return peer.end(() => {})
+          peer.end(noop)
+          return
         }
         Handover.next = peer
         Main.server.stop()
@@ -148,7 +157,7 @@ export namespace Handover {
           })
           .catch((err) =>
             console.error(
-              "kazuki: giving the chats failed: " + (err?.stack ?? err)
+              `kazuki: giving the chats failed: ${err?.stack ?? err}`
             )
           )
         return
@@ -194,7 +203,8 @@ export namespace Handover {
       }
       case "gone": {
         if (gate !== undefined) {
-          return Handover.open(msg.call, gate)
+          Handover.open(msg.call, gate)
+          return
         }
         peer.feeds.delete(msg.call)
         Handover.aways.get(msg.call)?.link.send(msg)
@@ -219,7 +229,7 @@ export namespace Handover {
   // origin feeds the chat's process itself (gone)
   export function away(peer: Peer, call: Call): string {
     const ref =
-      Handover.refs.get(call) ?? Handover.addr + "#" + crypto.randomUUID()
+      Handover.refs.get(call) ?? `${Handover.addr}#${crypto.randomUUID()}`
     const away: Away = {call, link: peer}
     const end = (end: End) => {
       Handover.aways.delete(ref)
@@ -341,7 +351,7 @@ export namespace Handover {
   // (the only one on this port since)
   export function pass(req: Request): Promise<Response> {
     const url = new URL(req.url)
-    return fetch("http://127.0.0.1:" + Main.port + url.pathname + url.search, {
+    return fetch(`http://127.0.0.1:${Main.port}${url.pathname}${url.search}`, {
       method: req.method,
       headers: req.headers,
       body: req.body,

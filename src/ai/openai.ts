@@ -81,7 +81,7 @@ export namespace OpenAI {
   ): unknown {
     const tier = TIERS[ask.speed ?? "slow"]
     if (!tier) {
-      throw new Error("OpenAI has no speed " + ask.speed)
+      throw new Error(`OpenAI has no speed ${ask.speed}`)
     }
     const defs: object[] = tools.map((t) => ({
       type: "function",
@@ -96,9 +96,7 @@ export namespace OpenAI {
       role: "developer",
       content: [{type: "input_text", text: ask.system}]
     }
-    const cache = ask.blocks[ask.blocks.length - 1]?.mark
-      ? undefined
-      : {mode: "explicit"}
+    const cache = ask.blocks.at(-1)?.mark ? undefined : {mode: "explicit"}
     return {
       model: ask.model,
       stream: true,
@@ -143,7 +141,7 @@ export namespace OpenAI {
   export function image(img: Img): unknown {
     return {
       type: "input_image",
-      image_url: "data:" + img.type + ";base64," + img.data
+      image_url: `data:${img.type};base64,${img.data}`
     }
   }
 
@@ -190,7 +188,7 @@ export namespace OpenAI {
   // pieces of its arguments
   export function live(item: any, on: Emit): void {
     if (item.type === "function_call") {
-      on("tool", item.name + " ", true)
+      on("tool", `${item.name} `, true)
     }
     if (item.type === "web_search_call") {
       on("tool", "web_search ", true)
@@ -214,7 +212,7 @@ export namespace OpenAI {
       input: Agent.parse(o.arguments)
     }))
     const ran = OpenAI.tier(res)
-    const note = ran !== (ask.speed ?? "slow") ? "ran at " + ran + " speed" : ""
+    const note = ran === (ask.speed ?? "slow") ? "" : `ran at ${ran} speed`
     const refusals = out
       .flatMap((o) => (o.type === "message" ? o.content : []))
       .filter((c: any) => c.type === "refusal")
@@ -237,14 +235,14 @@ export namespace OpenAI {
       return {
         ...step,
         stop: "fail",
-        why: "incomplete: " + res.incomplete_details?.reason
+        why: `incomplete: ${res.incomplete_details?.reason}`
       }
     }
     if (refusals.length > 0) {
       return {
         ...step,
         stop: "fail",
-        why: "refused: " + refusals.map((c: any) => c.refusal).join(" ")
+        why: `refused: ${refusals.map((c: any) => c.refusal).join(" ")}`
       }
     }
     return {...step, stop: uses.length > 0 ? "tools" : "done"}
@@ -270,20 +268,20 @@ export namespace OpenAI {
         const urls = content
           .flatMap((c: any) => c.annotations ?? [])
           .filter((a: any) => a.type === "url_citation")
-        const cited = [...new Set(urls.map((a: any) => a.title + " " + a.url))]
+        const cited = [...new Set(urls.map((a: any) => `${a.title} ${a.url}`))]
         const reply: Entry[] = text ? [{kind: "unii", text}] : []
         const sources: Entry[] =
           cited.length > 0
-            ? [{kind: "echo", text: "sources:\n" + cited.join("\n")}]
+            ? [{kind: "echo", text: `sources:\n${cited.join("\n")}`}]
             : []
         return [...reply, ...sources]
       }
       case "function_call": {
-        return [{kind: "tool", text: o.name + " " + o.arguments, of: o.call_id}]
+        return [{kind: "tool", text: `${o.name} ${o.arguments}`, of: o.call_id}]
       }
       case "web_search_call": {
         return [
-          {kind: "tool", text: "web_search " + JSON.stringify(o.action ?? {})}
+          {kind: "tool", text: `web_search ${JSON.stringify(o.action ?? {})}`}
         ]
       }
     }
@@ -307,10 +305,10 @@ export namespace OpenAI {
     const key = config.secret(used.envs[0])
     const form = new FormData()
     form.append("model", TRANSCRIBER)
-    form.append("file", audio, "voice." + audio.type.split(/[/;]/)[1])
+    form.append("file", audio, `voice.${audio.type.split(/[/;]/)[1]}`)
     const init = {
       method: "POST",
-      headers: {authorization: "Bearer " + key},
+      headers: {authorization: `Bearer ${key}`},
       body: form
     }
     try {
@@ -323,7 +321,7 @@ export namespace OpenAI {
         return new Err(
           new Error(
             "Transcription failed: " +
-              (out.error?.message ?? "HTTP " + res.status)
+              (out.error?.message ?? `HTTP ${res.status}`)
           )
         )
       }
@@ -337,7 +335,7 @@ export namespace OpenAI {
     idle: 1200e3,
     url: "https://api.openai.com/v1/responses",
     headers: (key) => ({
-      authorization: "Bearer " + key,
+      authorization: `Bearer ${key}`,
       "content-type": "application/json"
     }),
     body: OpenAI.body,

@@ -1,5 +1,6 @@
 import {afterAll, expect, test} from "bun:test"
 import * as fs from "node:fs"
+import {noop} from "../src/util/noop.ts"
 
 process.env.KAZUKI_DIR = fs.mkdtempSync("/tmp/cloud-test-")
 const {Cloud, LOCAL} = await import("../src/core/cloud.ts")
@@ -7,7 +8,7 @@ const {Cloud, LOCAL} = await import("../src/core/cloud.ts")
 function cloud_new() {
   fs.rmSync(process.env.KAZUKI_DIR ?? "", {recursive: true, force: true})
   fs.mkdirSync(process.env.KAZUKI_DIR ?? "", {recursive: true})
-  return Cloud.open(() => {})
+  return Cloud.open(noop)
 }
 
 afterAll(() =>

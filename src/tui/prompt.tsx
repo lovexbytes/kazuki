@@ -64,8 +64,14 @@ export function Prompt(props: {
   // typed before going back
   let at = -1
   let draft = ""
-  const typing = () => (c.rev(), View.view_typing(c.v))
-  const matches = createMemo(() => (c.rev(), cmd_match(c, text())))
+  const typing = () => {
+    c.rev()
+    return View.view_typing(c.v)
+  }
+  const matches = createMemo(() => {
+    c.rev()
+    return cmd_match(c, text())
+  })
   const listed = createMemo(() => {
     const all = matches()
     const from = Math.max(0, Math.min(pick() - LISTED + 1, all.length - LISTED))
@@ -75,7 +81,7 @@ export function Prompt(props: {
   })
   const hint = () =>
     typing()
-      ? View.HINT + " · / for commands"
+      ? `${View.HINT} · / for commands`
       : "Viewing " +
         (c.v.page?.name ?? "") +
         "'s chat · Tab goes back · commands only"
@@ -128,7 +134,7 @@ export function Prompt(props: {
       props.onSent()
       return
     }
-    set(word + " ")
+    set(`${word} `)
   }
 
   // Up, Down: the history, at the input's first or last line; the list's
@@ -261,7 +267,9 @@ export function Prompt(props: {
         flexShrink={0}
       >
         <textarea
-          ref={(r: TextareaRenderable) => (input = r)}
+          ref={(r: TextareaRenderable) => {
+            input = r
+          }}
           focused={true}
           minHeight={1}
           maxHeight={10}

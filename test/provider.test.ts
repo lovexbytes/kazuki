@@ -18,7 +18,7 @@ import * as os from "node:os"
 import type {OAuth} from "../src/ai/provider.ts"
 import {Ok} from "../src/util/result.ts"
 
-const DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-provider-")
+const DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-provider-`)
 process.env.KAZUKI_DIR = DIR
 delete process.env.KAZUKI_PICK
 delete process.env.KAZUKI_COMPACTOR
@@ -28,7 +28,7 @@ delete process.env.KAZUKI_MODELS
 // a known copy of models.dev's prices, read before the snapshot
 const COST = {input: 1, cache_write: 2, output: 4}
 fs.writeFileSync(
-  DIR + "/models.json",
+  `${DIR}/models.json`,
   JSON.stringify({
     at: Date.now(),
     body: {

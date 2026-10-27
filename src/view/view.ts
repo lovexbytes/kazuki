@@ -18,6 +18,7 @@ import {Price} from "../ai/price.ts"
 import type {Result} from "../util/result.ts"
 import {GLYPH, WHO} from "./theme.ts"
 import {answer_read} from "./link.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -207,7 +208,7 @@ export const WIRE = 3
 // the Link's: the most a live socket hears nothing (ms); the wait to open
 // another; the server's tick; a terminal's close as it quits; the
 // server's close as the chat moves to its next process (a deploy)
-export const PING = 10000
+export const PING = 10_000
 export const RETRY = 1000
 export const TICK = "+"
 export const QUIT = 4000
@@ -235,8 +236,9 @@ const SUMS = "compressing earlier messages…"
 const UNSENT = "Sends once connected."
 
 // the kinds an image may be, each by its mark at a byte of its first HEAD
-const MARKS: Array<[string, number, string]> = [
+const MARKS: [string, number, string][] = [
   ["image/png", 0, "\x89PNG"],
+  // biome-ignore lint/security/noSecrets: a JPEG file's first bytes
   ["image/jpeg", 0, "\xFF\xD8\xFF"],
   ["image/gif", 0, "GIF8"],
   ["image/webp", 8, "WEBP"]
@@ -267,7 +269,7 @@ export function view_new(): View {
     providers: [],
     importing: null,
     parts: [],
-    turn: Infinity,
+    turn: Number.POSITIVE_INFINITY,
     fold: null,
     nodes: new Map(),
     whole: new Map(),
@@ -281,7 +283,7 @@ export function view_new(): View {
     out: [],
     ws: null,
     up: false,
-    flush: () => {}
+    flush: noop
   }
 }
 
@@ -341,7 +343,7 @@ export function view_hear(v: View, msg: Server): Client[] {
       if (v.page === page) {
         v.page = null
       }
-      v.notes.push("No agent " + msg.name + ".")
+      v.notes.push(`No agent ${msg.name}.`)
       return []
     }
     case "note": {
@@ -387,7 +389,7 @@ export function view_act(v: View, act: Act): Client[] {
       }
       if (word !== undefined && goal === null) {
         v.notes.push(
-          word + " is no command; nothing was sent. /help lists the commands."
+          `${word} is no command; nothing was sent. /help lists the commands.`
         )
         return []
       }
@@ -439,11 +441,11 @@ export function view_act(v: View, act: Act): Client[] {
       return [{$: "pick", to}]
     }
     case "Open": {
-      v.open.set(act.id + "+" + act.n, true)
+      v.open.set(`${act.id}+${act.n}`, true)
       return act.n === 1 ? [] : [{$: "zoom", part: [act.id, act.n]}]
     }
     case "Shut": {
-      v.open.set(act.id + "+" + act.n, false)
+      v.open.set(`${act.id}+${act.n}`, false)
       return []
     }
     case "Fold": {
@@ -470,7 +472,7 @@ export function view_body(v: View): Row[] {
   }
   if (v.fold !== null) {
     const tops = v.fold.flatMap(([id, n]) =>
-      part_rows(v, id, n, Infinity, false)
+      part_rows(v, id, n, Number.POSITIVE_INFINITY, false)
     )
     return [Cap(FOLD), ...tops]
   }
@@ -489,7 +491,7 @@ export function view_rows(v: View, parts: Part[]): Row[][] {
 export function rows_wait(v: View, rows: Row[]): boolean {
   return rows.some(
     (row) =>
-      (row.$ === "Sum" && !v.nodes.has(row.id + "+" + row.n)) ||
+      (row.$ === "Sum" && !v.nodes.has(`${row.id}+${row.n}`)) ||
       (row.$ === "Box" && rows_wait(v, row.rows))
   )
 }
@@ -514,7 +516,7 @@ export function view_tail(v: View, live = view_stream(v)): Row[] {
     return [...rows, ...kept, ...load]
   }
   return [
-    Cap(v.wait === SUMMARIES ? SUMS : "waiting for " + v.wait + "…"),
+    Cap(v.wait === SUMMARIES ? SUMS : `waiting for ${v.wait}…`),
     ...kept,
     ...load
   ]
@@ -526,12 +528,12 @@ export function view_stream(v: View): Live[] {
 }
 
 // an import's progress
-export function progress_show(v: State, p: Progress): string {
+export function progress_show(_v: State, p: Progress): string {
   const n = (k: number) => k.toLocaleString("en-US")
   const merges = p.open.reduce((x, y) => x + y, 0)
   const phase =
     p.open[0] > 0
-      ? "Summarizing messages: " + n(p.msgs - p.open[0]) + " of " + n(p.msgs)
+      ? `Summarizing messages: ${n(p.msgs - p.open[0])} of ${n(p.msgs)}`
       : "Merging the top of the tree: " +
         merges +
         (merges === 1 ? " merge" : " merges") +
@@ -550,7 +552,7 @@ export function view_tabs(v: View): Tab[] {
     at === null || v.agents.includes(at) ? v.agents : [...v.agents, at]
   return [null, ...names].map((name) => {
     const here = name === at
-    const text = (here ? GLYPH.here : GLYPH.tab) + " " + (name ?? MAIN)
+    const text = `${here ? GLYPH.here : GLYPH.tab} ${name ?? MAIN}`
     return {name, here, text}
   })
 }
@@ -572,10 +574,10 @@ export function view_pick(v: View): Knob[] {
   const price =
     rate === undefined
       ? ""
-      : ": $" + rate.input + "/M tokens in, $" + rate.output + "/M out"
+      : `: $${rate.input}/M tokens in, $${rate.output}/M out`
   // a model two vendors offer: its vendor in the hint, not in its name
   const whose = Pick.twin(v.pick.vendor, model, v.providers)
-    ? ", " + v.pick.vendor
+    ? `, ${v.pick.vendor}`
     : ""
   return [
     {text: model, move: "model", hint: model + whose + price},
@@ -596,7 +598,7 @@ export function view_pick(v: View): Knob[] {
           {
             text: speed,
             move: "speed" as const,
-            hint: speed + ": ×" + Price.times(speed) + " the price"
+            hint: `${speed}: ×${Price.times(speed)} the price`
           }
         ])
   ]
@@ -619,7 +621,7 @@ function view_learn(v: View, pack: Pack): void {
 // logged), after the last message
 function view_entry(v: View, msg: Server & {$: "entry"}): void {
   const {$, agent, id, ...entry} = msg
-  const last = v.parts[v.parts.length - 1]
+  const last = v.parts.at(-1)
   if (agent !== undefined) {
     const log = v.pages.get(agent)?.log
     if (Array.isArray(log)) {
@@ -648,7 +650,7 @@ function view_live(v: View, agent: string | undefined): Live[] | null {
 // a block's name, as /open and /close take it: its first message's id,
 // then its size past 1x
 export function block_name(id: number, n: number): string {
-  return "#" + id + (n === 1 ? "" : "+" + n)
+  return `#${id}${n === 1 ? "" : `+${n}`}`
 }
 
 // whether the AI notice comes before part, after the part `before`: a
@@ -658,7 +660,7 @@ export function part_due(
   part: Part,
   before: Part | undefined
 ): boolean {
-  const last = before === undefined ? NaN : part_window(v, before)
+  const last = before === undefined ? Number.NaN : part_window(v, before)
   return (
     part[1] === 1 &&
     part[0] >= v.turn &&
@@ -669,7 +671,7 @@ export function part_due(
 
 // the window (NOTICE) of a part's last date (NaN: not known)
 function part_window(v: View, [id, n]: Part): number {
-  const date = n === 1 ? v.whole.get(id)?.date : v.nodes.get(id + "+" + n)?.to
+  const date = n === 1 ? v.whole.get(id)?.date : v.nodes.get(`${id}+${n}`)?.to
   return Math.floor(Date.parse(date ?? "") / NOTICE)
 }
 
@@ -683,7 +685,7 @@ function part_rows(
   t: number,
   talk: boolean
 ): Row[] {
-  const key = id + "+" + n
+  const key = `${id}+${n}`
   const entry = v.whole.get(id)
   const half = n / 2
   if (n === 1 && id >= t && entry !== undefined) {
@@ -695,7 +697,7 @@ function part_rows(
   if (!(v.open.get(key) ?? open)) {
     return sum_rows(id, n, v.nodes.get(key))
   }
-  const text = n === 1 ? "fold" : GLYPH.open + " " + n + "x · fold"
+  const text = n === 1 ? "fold" : `${GLYPH.open} ${n}x · fold`
   if (n > 1) {
     const rows = [
       ...part_rows(v, id, half, t, talk),

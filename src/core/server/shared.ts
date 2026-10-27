@@ -2,13 +2,13 @@
 // ======
 // The types and constants the server files share.
 
-import * as fs from "node:fs"
+import type * as fs from "node:fs"
 import type {ServerWebSocket} from "bun"
-import {type Call, type Sink} from "../../ai/ask-ai.ts"
-import {type User} from "../cloud.ts"
-import {type Given} from "../memory.ts"
-import {type Live, type Moved as Kit} from "../tools.ts"
-import {type Part} from "../../view/view.ts"
+import type {Call, Sink} from "../../ai/ask-ai.ts"
+import type {User} from "../cloud.ts"
+import type {Given} from "../memory.ts"
+import type {Live, Moved as Kit} from "../tools.ts"
+import type {Part} from "../../view/view.ts"
 import * as config from "../../config.ts"
 import hello_md from "../hello.md" with {type: "text"}
 
@@ -99,14 +99,14 @@ export type Limit = {
 // Constants
 // =========
 
-export const LOCK = config.DIR + "/lock"
+export const LOCK = `${config.DIR}/lock`
 // what the config set and lost, as last told (Chat.lost)
 export const LOST: {told: string[]} = {told: []}
 // how long the supervisor waits to start again a worker whose start failed
 export const RETRY = 5e3
 // where worker k's successor reaches it, HAND + k (Handover.listen); how
 // often one that gave its chats looks whether its last requests ended
-export const HAND = config.DIR + "/hand"
+export const HAND = `${config.DIR}/hand`
 export const LEAVE = 500
 // how a call ends whose process ended first (a crash)
 export const ENDED = "the server process that ran it ended"
@@ -161,7 +161,7 @@ export const SOCKETS = 32
 export const NETS: Limit = {rate: 100, most: 1000, keys: new Map()}
 
 // the model requests a worker may have open at once (Bun's fetch: 256)
-export const FETCHES = 65535
+export const FETCHES = 65_535
 
 // the local chat's paths, besides /api/ and /image/
 export const OWN = ["/ws", "/tree", "/export"]

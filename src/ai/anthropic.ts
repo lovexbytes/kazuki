@@ -81,14 +81,14 @@ export namespace Anthropic {
     const messages: any[] = []
     for (const item of items) {
       const msg = Anthropic.message(item)
-      const top = messages[messages.length - 1]
+      const top = messages.at(-1)
       if (top?.role === msg.role) {
         top.content.push(...msg.content)
       } else {
         messages.push(msg)
       }
     }
-    const cache = ask.blocks[ask.blocks.length - 1]?.mark ? MARK : undefined
+    const cache = ask.blocks.at(-1)?.mark ? MARK : undefined
     return {
       model: ask.model,
       max_tokens: max,
@@ -216,7 +216,7 @@ export namespace Anthropic {
     const block = ev.content_block ?? {}
     const delta = ev.delta ?? {}
     if (ev.type === "content_block_start" && block.type.endsWith("tool_use")) {
-      on("tool", block.name + " ", true)
+      on("tool", `${block.name} `, true)
     }
     if (delta.type === "thinking_delta") {
       on("mind", delta.thinking)
@@ -245,7 +245,7 @@ export namespace Anthropic {
     })
     const out = st.blocks.filter((b) => b.type !== "text" || b.text)
     const slow = ask.speed === "fast" && st.speed !== "fast"
-    const note = slow ? "ran at " + st.speed + " speed" : ""
+    const note = slow ? `ran at ${st.speed} speed` : ""
     const step: Step = {
       out,
       uses,
@@ -258,7 +258,7 @@ export namespace Anthropic {
       return {
         ...step,
         stop: "busy",
-        why: st.error.type + ": " + st.error.message
+        why: `${st.error.type}: ${st.error.message}`
       }
     }
     switch (st.stop) {
@@ -274,7 +274,7 @@ export namespace Anthropic {
     return {
       ...step,
       stop: "fail",
-      why: "stopped: " + st.stop + (why ? " (" + why + ")" : "")
+      why: `stopped: ${st.stop}${why ? ` (${why})` : ""}`
     }
   }
 
@@ -284,7 +284,7 @@ export namespace Anthropic {
     const entries: Entry[] = []
     for (const b of out) {
       const entry = Anthropic.entry(b)
-      const top = entries[entries.length - 1]
+      const top = entries.at(-1)
       if (entry?.kind === "unii" && top?.kind === "unii") {
         top.text += entry.text
       } else if (entry !== null) {
@@ -310,7 +310,7 @@ export namespace Anthropic {
       case "server_tool_use": {
         return {
           kind: "tool",
-          text: b.name + " " + JSON.stringify(b.input),
+          text: `${b.name} ${JSON.stringify(b.input)}`,
           of: b.id
         }
       }
@@ -331,10 +331,10 @@ export namespace Anthropic {
   // would wait to the turn's end, below the reply
   export function result(c: any): string {
     if (Array.isArray(c)) {
-      return c.map((r: any) => r.title + " " + r.url).join("\n")
+      return c.map((r: any) => `${r.title} ${r.url}`).join("\n")
     }
     if (String(c?.type).startsWith("encrypted")) {
-      return ("(output encrypted by the API)\n" + (c.stderr ?? "")).trim()
+      return `(output encrypted by the API)\n${c.stderr ?? ""}`.trim()
     }
     if (typeof c?.stdout === "string") {
       return (c.stdout + (c.stderr ?? "")).trim()

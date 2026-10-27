@@ -7,15 +7,16 @@
 import {expect, test} from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
+import {noop} from "../src/util/noop.ts"
 
-process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-crash-")
+process.env.KAZUKI_DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-crash-`)
 
-const {Agent} = await import("../src/ai/agent.ts")
+await import("../src/ai/agent.ts")
 const {Tools} = await import("../src/core/tools.ts")
 
 test("a worker outlives a failure no one owned", async () => {
   const code = `
-    const { Main } = await import(${JSON.stringify(import.meta.dir + "/../src/core/server.ts")});
+    const { Main } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
     process.on("unhandledRejection", Main.unowned);
     Promise.reject(new Error("nobody's"));
     setTimeout(() => { console.log("alive"); process.exit(0); }, 100);
@@ -43,8 +44,10 @@ test("an agent whose run throws still reports", async () => {
       change: () => {
         throw new Error("boom")
       },
-      on: () => {},
-      report: (_agent: unknown, text: string) => (told = text)
+      on: noop,
+      report: (_agent: unknown, text: string) => {
+        told = text
+      }
     }
   }
   const agent: any = {name: "Probe", call: null, replies: [], stop: false}

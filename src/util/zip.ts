@@ -10,16 +10,16 @@
 export async function zip_file(zip: Blob, name: string): Promise<Blob | null> {
   const view = async (at: number, n: number) =>
     new DataView(await zip.slice(at, at + n).arrayBuffer())
-  const back = Math.min(zip.size, 65577)
+  const back = Math.min(zip.size, 65_577)
   const tail = await view(zip.size - back, back)
   let end = tail.byteLength - 22
-  while (end >= 0 && tail.getUint32(end, true) !== 0x06054b50) {
+  while (end >= 0 && tail.getUint32(end, true) !== 0x06_05_4b_50) {
     end -= 1
   }
   if (end < 0) {
     return null
   }
-  const wide = end >= 20 && tail.getUint32(end - 20, true) === 0x07064b50
+  const wide = end >= 20 && tail.getUint32(end - 20, true) === 0x07_06_4b_50
   const z64 = wide
     ? await view(Number(tail.getBigUint64(end - 12, true)), 56)
     : null
@@ -36,12 +36,12 @@ export async function zip_file(zip: Blob, name: string): Promise<Blob | null> {
       ? tail.getUint32(end + 16, true)
       : Number(z64.getBigUint64(48, true))
   const dir = await view(from, size)
-  for (let p = 0, k = 0; k < count; k++) {
+  for (let p = 0, k = 0; k < count; k += 1) {
     const entry = new TextDecoder().decode(
       new Uint8Array(dir.buffer, p + 46, dir.getUint16(p + 28, true))
     )
     const [, packed, at] = zip_sizes(dir, p)
-    if (entry === name || entry.endsWith("/" + name)) {
+    if (entry === name || entry.endsWith(`/${name}`)) {
       const head = await view(at, 30)
       const data = zip
         .slice(at + 30 + head.getUint16(26, true) + head.getUint16(28, true))
@@ -76,7 +76,12 @@ function zip_sizes(dir: DataView, p: number): number[] {
     x += 4 + dir.getUint16(x + 2, true)
   }
   let k = 0
-  return short.map((n) =>
-    n === 0xffffffff ? Number(dir.getBigUint64(x + 4 + 8 * k++, true)) : n
-  )
+  return short.map((n) => {
+    if (n !== 0xff_ff_ff_ff) {
+      return n
+    }
+    const big = Number(dir.getBigUint64(x + 4 + 8 * k, true))
+    k += 1
+    return big
+  })
 }

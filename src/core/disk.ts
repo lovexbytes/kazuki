@@ -73,7 +73,7 @@ export namespace Disk {
       WAITS = []
       const flushed = await Disk.flush(files)
       if (!flushed.ok) {
-        console.error("disk: a flush failed: " + flushed.error().message)
+        console.error(`disk: a flush failed: ${flushed.error().message}`)
       }
       waits.forEach((ok) => ok())
     }
@@ -85,7 +85,8 @@ export namespace Disk {
       return Disk.each(files)
     }
     try {
-      const shell = (SHELL ??= Disk.shell())
+      SHELL ??= Disk.shell()
+      const shell = SHELL
       shell.stdin.write("\n")
       shell.stdin.flush()
       while (!shell.got.includes("\n")) {
@@ -101,7 +102,7 @@ export namespace Disk {
       shell.got = shell.got.slice(code.length + 1)
       return code === "0"
         ? new Ok()
-        : new Err(new Error("sync -f " + config.DIR + " exited " + code))
+        : new Err(new Error(`sync -f ${config.DIR} exited ${code}`))
     } catch (e) {
       return caught(e)
     }

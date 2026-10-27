@@ -8,7 +8,7 @@ import {Cloud, type User} from "../cloud.ts"
 import {Memory} from "../memory.ts"
 import {answer_json} from "../../view/link.ts"
 import * as config from "../../config.ts"
-import {Sock, OWN, PIECE, SOCKETS, USERS, local_request} from "./shared.ts"
+import {type Sock, OWN, PIECE, SOCKETS, USERS, local_request} from "./shared.ts"
 import {Chat} from "./chat.ts"
 import {Handover} from "./handover.ts"
 import {Ingest} from "./ingest.ts"
@@ -26,7 +26,7 @@ export namespace Http {
       .trim()
       .toLowerCase()
     if (confirm !== user.name.toLowerCase()) {
-      const name = 'type "' + user.name + '".'
+      const name = `type "${user.name}".`
       const error =
         "Deleting the local chat erases Kazuki's memory for good. To confirm, " +
         name
@@ -36,7 +36,7 @@ export namespace Http {
     const chat = Chat.chats.get(user.id)
     await (chat === undefined ? Promise.resolve() : Chat.end(chat))
     Cloud.close(cloud, user)
-    fs.rmSync(config.DIR + "/users/" + user.id, {recursive: true, force: true})
+    fs.rmSync(`${config.DIR}/users/${user.id}`, {recursive: true, force: true})
     return new Response(null, {status: 204})
   }
 
@@ -77,11 +77,10 @@ export namespace Http {
         })
       }
       case "/export": {
-        const name =
-          "kazuki-memory-" + new Date().toISOString().slice(0, 10) + ".json"
+        const name = `kazuki-memory-${new Date().toISOString().slice(0, 10)}.json`
         const json = {
           "content-type": "application/json",
-          "content-disposition": 'attachment; filename="' + name + '"'
+          "content-disposition": `attachment; filename="${name}"`
         }
         return new Response(
           Http.stream(Memory.dump(mem, await Cloud.data(Chat.cloud, user))),
@@ -172,9 +171,7 @@ export namespace Http {
         return await Http.close(req)
       }
       if (
-        !OWN.includes(p) &&
-        !p.startsWith("/image/") &&
-        !p.startsWith("/api/")
+        !(OWN.includes(p) || p.startsWith("/image/") || p.startsWith("/api/"))
       ) {
         return new Response("not found", {status: 404})
       }
@@ -209,9 +206,9 @@ export namespace Http {
         return await Handover.pass(req)
       }
       chat.posts += 1
-      const res = await Http.page(chat, user, p, req).finally(
-        () => (chat.posts -= 1)
-      )
+      const res = await Http.page(chat, user, p, req).finally(() => {
+        chat.posts -= 1
+      })
       Chat.free(chat)
       return res
     } catch (err: any) {

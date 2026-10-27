@@ -103,7 +103,7 @@ function User(props: {text: string; images: number}): JSX.Element {
       </text>
       <Show when={props.images > 0}>
         <text fg={p.muted}>
-          {"▣ " + props.images + (props.images === 1 ? " image" : " images")}
+          {`▣ ${props.images}${props.images === 1 ? " image" : " images"}`}
         </text>
       </Show>
     </box>
@@ -162,7 +162,7 @@ function Thinking(props: {text: string; live: boolean}): JSX.Element {
         </text>
         <Show when={more() > 0}>
           <text fg={p.faint}>
-            {"· " + more() + (more() === 1 ? " more line" : " more lines")}
+            {`· ${more()}${more() === 1 ? " more line" : " more lines"}`}
           </text>
         </Show>
       </box>
@@ -194,8 +194,8 @@ function Report(props: {text: string}): JSX.Element {
       flexShrink={0}
     >
       <text fg={p.agent}>
-        <b>{"◆ " + report().name}</b>
-        <span style={{fg: p.faint}}>{" reported"}</span>
+        <b>{`◆ ${report().name}`}</b>
+        <span style={{fg: p.faint}}> reported</span>
       </text>
       <markdown
         syntaxStyle={ctx.syntax}
@@ -287,7 +287,7 @@ function Sum(props: {
       onMouseUp={(e: MouseEvent) => click(e, open, r)}
     >
       <text flexShrink={0} fg={p.faint}>
-        {("▸ " + size_show(props.n)).trimEnd()}
+        {`▸ ${size_show(props.n)}`.trimEnd()}
       </text>
       <Show
         when={props.call}
@@ -308,7 +308,7 @@ function Sum(props: {
             <Show when={props.then}>
               {(then) => (
                 <text fg={p.faint} wrapMode="word" maxHeight={1}>
-                  {"↳ " + then().text.replace(/^echo: /, "")}
+                  {`↳ ${then().text.replace(/^echo: /, "")}`}
                 </text>
               )}
             </Show>
@@ -346,7 +346,7 @@ function Box(props: {id: number; n: number; items: Item[]}): JSX.Element {
           }
         >
           <text fg={hover() ? p.text : p.faint}>
-            {"▾ " + size_show(props.n)}
+            {`▾ ${size_show(props.n)}`}
           </text>
           <text fg={p.faint} flexGrow={1}>
             {"messages " +
@@ -400,5 +400,5 @@ function Opened(props: {blocks: Block[]; item: Item}): JSX.Element {
 
 // how many messages a block holds, as it shows: "8x" (one: none)
 function size_show(n: number): string {
-  return n === 1 ? "" : n + "x"
+  return n === 1 ? "" : `${n}x`
 }

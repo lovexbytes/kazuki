@@ -244,17 +244,13 @@ function Output(props: {
         flexShrink={0}
       >
         <Show when={more() > 0 && props.tail}>
-          <text fg={p.faint}>
-            {"… " + more() + " lines above · click to show"}
-          </text>
+          <text fg={p.faint}>{`… ${more()} lines above · click to show`}</text>
         </Show>
         <text fg={props.fail ? p.error : p.muted} wrapMode="char">
           {shown().join("\n")}
         </text>
         <Show when={more() > 0 && !props.tail}>
-          <text fg={p.faint}>
-            {"… " + more() + " more lines · click to show"}
-          </text>
+          <text fg={p.faint}>{`… ${more()} more lines · click to show`}</text>
         </Show>
       </box>
     </Show>
@@ -282,7 +278,7 @@ function Shell(props: {t: Tool}): JSX.Element {
         ? "stopped"
         : e === null
           ? ""
-          : (e[1] === "exit 0" ? "" : e[1] + " · ") + e[2]
+          : (e[1] === "exit 0" ? "" : `${e[1]} · `) + e[2]
     return [props.t.call.device, ends].filter((x) => x !== "").join(" · ")
   }
   const failed = () =>
@@ -327,8 +323,8 @@ function Shell(props: {t: Tool}): JSX.Element {
         open={open()}
         fail={props.t.fail && exit() === null}
         most={SHELL - rows()}
-        tail
-        flat
+        tail={true}
+        flat={true}
       />
     </Card>
   )
@@ -424,7 +420,7 @@ function Change(props: {t: Tool}): JSX.Element {
       onToggle={toggle}
     >
       <Show when={props.t.fail}>
-        <Output text={result()} open={true} fail />
+        <Output text={result()} open={true} fail={true} />
       </Show>
       <Show when={diff() !== ""}>
         <Diff text={diff()} path={path()} open={open()} />
@@ -469,9 +465,7 @@ function Diff(props: {text: string; path: string; open: boolean}): JSX.Element {
         diff={shown()}
       />
       <Show when={more() > 0}>
-        <text fg={p.faint}>
-          {"… " + more() + " more lines · click to show"}
-        </text>
+        <text fg={p.faint}>{`… ${more()} more lines · click to show`}</text>
       </Show>
     </box>
   )
@@ -515,7 +509,7 @@ function Task(props: {t: Tool}): JSX.Element {
           <box flexDirection="row" flexShrink={0}>
             <text flexShrink={0} fg={p.agent}>
               {props.t.call.blocks.length > 1
-                ? String(k() + 1).padStart(2) + ". "
+                ? `${String(k() + 1).padStart(2)}. `
                 : "  "}
             </text>
             <text
@@ -637,12 +631,12 @@ function diff_count(diff: string): string {
   let [add, del] = [0, 0]
   for (const l of diff.split("\n")) {
     if (l.startsWith("+") && !l.startsWith("+++")) {
-      add++
+      add += 1
     } else if (l.startsWith("-") && !l.startsWith("---")) {
-      del++
+      del += 1
     }
   }
-  return diff === "" ? "" : "+" + add + " −" + del
+  return diff === "" ? "" : `+${add} −${del}`
 }
 
 // a diff's first `most` lines, its last hunk's header counts cut to
@@ -661,7 +655,7 @@ function diff_fold(lines: string[], most: number): string {
     .slice(head + 1)
     .filter(
       (l) =>
-        !l.startsWith("\\") && !l.startsWith("--- ") && !l.startsWith("+++ ")
+        !(l.startsWith("\\") || l.startsWith("--- ") || l.startsWith("+++ "))
     )
   const olds = body.filter((l) => !l.startsWith("+")).length
   const news = body.filter((l) => !l.startsWith("-")).length
@@ -669,8 +663,7 @@ function diff_fold(lines: string[], most: number): string {
   if (m === null) {
     return kept.join("\n")
   }
-  kept[head] =
-    "@@ -" + m[1] + "," + olds + " +" + m[2] + "," + news + " @@" + m[3]
+  kept[head] = `@@ -${m[1]},${olds} +${m[2]},${news} @@${m[3]}`
   return kept.join("\n")
 }
 

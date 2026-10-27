@@ -12,12 +12,14 @@ function counted(): {ctl: AbortController; on: () => number} {
   let n = 0
   const add = ctl.signal.addEventListener.bind(ctl.signal)
   const remove = ctl.signal.removeEventListener.bind(ctl.signal)
-  ctl.signal.addEventListener = ((type: string, fn: any, opts?: any) => (
-    (n += 1), add(type, fn, opts)
-  )) as any
-  ctl.signal.removeEventListener = ((type: string, fn: any, opts?: any) => (
-    (n -= 1), remove(type, fn, opts)
-  )) as any
+  ctl.signal.addEventListener = ((type: string, fn: any, opts?: any) => {
+    n += 1
+    return add(type, fn, opts)
+  }) as any
+  ctl.signal.removeEventListener = ((type: string, fn: any, opts?: any) => {
+    n -= 1
+    return remove(type, fn, opts)
+  }) as any
   return {ctl, on: () => n}
 }
 

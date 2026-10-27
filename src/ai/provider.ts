@@ -67,7 +67,7 @@ const ALL = new Map<Vendor, Provider>()
 export namespace Providers {
   export function add(p: Provider): void {
     if (ALL.has(p.id)) {
-      throw new Error("provider " + p.id + " is added twice")
+      throw new Error(`provider ${p.id} is added twice`)
     }
     ALL.set(p.id, p)
   }
@@ -75,7 +75,7 @@ export namespace Providers {
   export function get(id: Vendor): Provider {
     const p = ALL.get(id)
     if (p === undefined) {
-      throw new Error("no provider " + id)
+      throw new Error(`no provider ${id}`)
     }
     return p
   }

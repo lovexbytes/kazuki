@@ -23,14 +23,14 @@ export function line_claude(s: Session, j: any, last: string): Msg[] {
     !j.isSidechain &&
     !j.isCompactSummary
   const content = j.message?.content
-  const blocks = !own
-    ? []
-    : typeof content === "string"
+  const blocks = own
+    ? typeof content === "string"
       ? [{type: "text", text: content}]
       : Array.isArray(content)
         ? content
         : []
-  s.where ||= j.cwd ? "session in " + j.cwd : ""
+    : []
+  s.where ||= j.cwd ? `session in ${j.cwd}` : ""
   if (j.type === "attachment" && j.attachment?.type === "queued_command") {
     return msgs_of("user", String(j.attachment.prompt ?? ""), date)
   }
@@ -46,7 +46,7 @@ export function blocks_msgs(kind: Kind, blocks: any[], date: string): Msg[] {
   )
   const tools = blocks.flatMap((b) =>
     b.type === "tool_use"
-      ? msgs_of("tool", b.name + " " + JSON.stringify(b.input), date)
+      ? msgs_of("tool", `${b.name} ${JSON.stringify(b.input)}`, date)
       : b.type === "tool_result"
         ? msgs_of("echo", parts_text(b.content), date)
         : []

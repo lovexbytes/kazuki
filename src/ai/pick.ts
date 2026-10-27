@@ -109,12 +109,12 @@ export namespace Pick {
   // the one of the lowest output price (unpriced: the dearest); a tie,
   // the first
   export function cheapest(models: Model[]): Model {
-    const out = (m: Model) => m.rate?.output ?? Infinity
+    const out = (m: Model) => m.rate?.output ?? Number.POSITIVE_INFINITY
     return models.reduce((a, b) => (out(b) < out(a) ? b : a))
   }
 
   // the models offered, each with its vendor
-  export function models(offer: Offer): Array<[Vendor, Model]> {
+  export function models(offer: Offer): [Vendor, Model][] {
     return offer.flatMap((p) => p.models.map((m): [Vendor, Model] => [p.id, m]))
   }
 
@@ -123,7 +123,7 @@ export namespace Pick {
     pick: Pick,
     move: Move,
     offer: Offer
-  ): Array<[string, Pick]> {
+  ): [string, Pick][] {
     const model = Pick.model(offer, pick.vendor, pick.model)
     switch (move) {
       case "next":
@@ -162,7 +162,7 @@ export namespace Pick {
     const next = ends ? Math.max(0, Math.min(n - 1, at + d)) : (at + d + n) % n
     const mine = ([, p]: [string, Pick]) => p.vendor === pick.vendor
     const same = list.filter(
-      ([part, p]) => part === to || p.vendor + ":" + part === to
+      ([part, p]) => part === to || `${p.vendor}:${part}` === to
     )
     const like = list.filter(([part]) =>
       part.toLowerCase().includes(String(to).toLowerCase())

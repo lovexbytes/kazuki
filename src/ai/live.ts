@@ -22,7 +22,7 @@ export function live_push(
   text: string,
   fresh = false
 ): void {
-  const top = live[live.length - 1]
+  const top = live.at(-1)
   if (top !== undefined && top.kind === kind && !fresh) {
     top.text += text
   } else {

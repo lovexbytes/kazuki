@@ -27,7 +27,7 @@ type Done = {w: number; h: number; scale: number; text: string}
 // Constants
 // =========
 
-const HOME = os.homedir() + "/.kazuki"
+const HOME = `${os.homedir()}/.kazuki`
 
 // how long the screen gets to show the last action before a screenshot,
 // in ms (Anthropic's reference computer use tool waits too)
@@ -50,7 +50,7 @@ export namespace Computer {
     const done = got.value()
     await Bun.sleep(SETTLE)
     const shot = await Computer.shot([], done.w, done.h)
-    return {...shot, text: done.text + "\n" + shot.text}
+    return {...shot, text: `${done.text}\n${shot.text}`}
   }
 
   // an action, done
@@ -111,12 +111,11 @@ export namespace Computer {
     name: string,
     input: unknown
   ): Promise<Result<Done, Error>> {
-    const bin = HOME + "/computer"
-    const src = bin + ".swift"
+    const bin = `${HOME}/computer`
+    const src = `${bin}.swift`
     try {
       if (
-        !fs.existsSync(bin) ||
-        !fs.existsSync(src) ||
+        !(fs.existsSync(bin) && fs.existsSync(src)) ||
         fs.readFileSync(src, "utf8") !== SOURCE
       ) {
         fs.mkdirSync(HOME, {recursive: true})
@@ -139,7 +138,7 @@ export namespace Computer {
     w: number,
     h: number
   ): Promise<Out> {
-    const file = os.tmpdir() + "/kazuki-" + crypto.randomUUID() + ".jpg"
+    const file = `${os.tmpdir()}/kazuki-${crypto.randomUUID()}.jpg`
     try {
       const taken = await Computer.exec([
         "screencapture",
@@ -157,7 +156,7 @@ export namespace Computer {
       }
       const data = fs.readFileSync(file).toString("base64")
       return {
-        text: "[image " + w + "x" + h + "]",
+        text: `[image ${w}x${h}]`,
         fail: false,
         imgs: [{type: "image/jpeg", data}]
       }
@@ -180,7 +179,7 @@ export namespace Computer {
       const code = await proc.exited
       if (code !== 0) {
         return new Err(
-          new Error((err || out).trim() || argv[0] + ": exit " + code)
+          new Error((err || out).trim() || `${argv[0]}: exit ${code}`)
         )
       }
       return new Ok(out.trim())

@@ -7,7 +7,7 @@ import * as Md from "../src/view/md.ts"
 
 const kinds = (src: string) =>
   Md.md_parse(src).map((b) =>
-    b.$ === "List" ? "List:" + (b.k ? "1." : "-") + b.x.length : b.$
+    b.$ === "List" ? `List:${b.k ? "1." : "-"}${b.x.length}` : b.$
   )
 
 // a list is of one kind: numbered items after bullets start a list of

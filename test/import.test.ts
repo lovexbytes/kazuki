@@ -17,7 +17,7 @@ test("odd log lines are skipped, not fatal", async () => {
     JSON.stringify({type: "user", timestamp: 1e20, message: {content: "x"}})
   ]
   const s = await Import.import_session(
-    new Blob([[say("a"), ...odd, say("b")].join("\n") + "\n"]),
+    new Blob([`${[say("a"), ...odd, say("b")].join("\n")}\n`]),
     "log"
   )
   expect(s?.heads.map((h) => h.kind)).toEqual(["user", "user"])
@@ -34,7 +34,10 @@ test("a session's key is the same in any time zone", () => {
     file: new Blob([]),
     heads: []
   }
-  const key = (tz: string) => ((process.env.TZ = tz), Import.import_id(s))
+  const key = (tz: string) => {
+    process.env.TZ = tz
+    return Import.import_id(s)
+  }
   expect(key("America/Sao_Paulo")).toBe(key("America/Los_Angeles"))
 })
 
@@ -62,7 +65,7 @@ test("a ZIP64 export imports", async () => {
 })
 
 // little-endian fields, each its width in bytes and its value
-function bytes(fields: Array<[number, number]>): Uint8Array<ArrayBuffer> {
+function bytes(fields: [number, number][]): Uint8Array<ArrayBuffer> {
   const out = new DataView(new ArrayBuffer(fields.reduce((n, [w]) => n + w, 0)))
   let at = 0
   for (const [w, x] of fields) {
@@ -81,9 +84,9 @@ function bytes(fields: Array<[number, number]>): Uint8Array<ArrayBuffer> {
 // a ZIP64 of one file, stored
 function zip64(name: string, data: Uint8Array<ArrayBuffer>): Blob {
   const path = new TextEncoder().encode(name)
-  const [crc, max] = [Bun.hash.crc32(data), 0xffffffff]
+  const [crc, max] = [Bun.hash.crc32(data), 0xff_ff_ff_ff]
   const local = bytes([
-    [4, 0x04034b50],
+    [4, 0x04_03_4b_50],
     [2, 45],
     [2, 0],
     [2, 0],
@@ -108,7 +111,7 @@ function zip64(name: string, data: Uint8Array<ArrayBuffer>): Blob {
   ]
   const at = head.reduce((n, b) => n + b.length, 0)
   const entry = bytes([
-    [4, 0x02014b50],
+    [4, 0x02_01_4b_50],
     [2, 45],
     [2, 45],
     [2, 0],
@@ -139,7 +142,7 @@ function zip64(name: string, data: Uint8Array<ArrayBuffer>): Blob {
   ]
   const size = dir.reduce((n, b) => n + b.length, 0)
   const end64 = bytes([
-    [4, 0x06064b50],
+    [4, 0x06_06_4b_50],
     [8, 44],
     [2, 45],
     [2, 45],
@@ -151,17 +154,17 @@ function zip64(name: string, data: Uint8Array<ArrayBuffer>): Blob {
     [8, at]
   ])
   const locator = bytes([
-    [4, 0x07064b50],
+    [4, 0x07_06_4b_50],
     [4, 0],
     [8, at + size],
     [4, 1]
   ])
   const end = bytes([
-    [4, 0x06054b50],
-    [2, 0xffff],
-    [2, 0xffff],
-    [2, 0xffff],
-    [2, 0xffff],
+    [4, 0x06_05_4b_50],
+    [2, 0xff_ff],
+    [2, 0xff_ff],
+    [2, 0xff_ff],
+    [2, 0xff_ff],
     [4, max],
     [4, max],
     [2, 0]

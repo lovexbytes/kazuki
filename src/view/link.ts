@@ -27,7 +27,7 @@ import {
 // at once, unseen: no link was lost.
 
 export function link_open(v: View, link: Link): void {
-  const ws = link.open("?tab=" + v.tab + "&wire=" + WIRE)
+  const ws = link.open(`?tab=${v.tab}&wire=${WIRE}`)
   let heard = Date.now()
   const tick = setInterval(() => Date.now() - heard > PING && drop(), PING / 2)
   async function drop(moved = false): Promise<void> {
@@ -57,13 +57,13 @@ export function link_open(v: View, link: Link): void {
   async function upload(post: Post): Promise<void> {
     const {body, ...rest} = post.msg as any
     const query = Object.entries(rest).map(
-      ([k, x]) => k + "=" + encodeURIComponent(String(x))
+      ([k, x]) => `${k}=${encodeURIComponent(String(x))}`
     )
     const res = await link
-      .post("/api/act?" + query.join("&"), await body())
+      .post(`/api/act?${query.join("&")}`, await body())
       .catch(() => null)
     const out = await res?.json().catch(() => null)
-    if (out != null) {
+    if (out !== null && out !== undefined) {
       link.hear({$: "ack", id: post.msg.id, ...out})
     } else if (post.ws === ws && v.ws === ws) {
       drop()
@@ -152,5 +152,5 @@ export async function post(
   const out = await res.json().catch(() => null)
   return res.ok
     ? new Ok(out ?? {})
-    : new Err(new Error(out?.error ?? "HTTP " + res.status))
+    : new Err(new Error(out?.error ?? `HTTP ${res.status}`))
 }

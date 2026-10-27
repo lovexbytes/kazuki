@@ -58,12 +58,12 @@ import {
   type Served
 } from "../ai/ask-ai.ts"
 import {clip_page, clip_pages} from "../util/clip.ts"
-import * as config from "../config.ts"
 import {Disk} from "./disk.ts"
 import {Err, Ok, type Result} from "../util/result.ts"
 import {Providers} from "../ai/provider.ts"
 import * as names from "../util/names.ts"
 import {image_kind} from "../view/view.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -108,7 +108,7 @@ type Stream = "main" | "tree"
 type End = [number, number]
 
 // a view in view.json
-type Kept = {parts: Array<[number, number]>; batch: boolean}
+type Kept = {parts: [number, number][]; batch: boolean}
 
 // view.json: the chat's view, the compactions' (none: the chat's)
 type Saved = Kept & {
@@ -167,8 +167,8 @@ export const JOBS = 64
 const TRIES = 5
 // a view past its `high` merges to half: the chat's 64-128 KB (96 KB on
 // average), the compactions' 16-32 KB (24 KB)
-const HIGH = 128000
-const SEEN = 32000
+const HIGH = 128_000
+const SEEN = 32_000
 const BLOCK = 4
 const SLOT = 16
 const DAY = 864e5
@@ -219,7 +219,7 @@ export namespace Memory {
   export function load(
     dir: string,
     share: Memory["share"],
-    acted: Memory["acted"] = () => {}
+    acted: Memory["acted"] = noop
   ): Memory {
     const mem: Memory = {
       dir,
@@ -250,7 +250,7 @@ export namespace Memory {
     mem.work = saved?.work ?? []
     mem.ends.main = Memory.index(mem, "main", saved?.main ?? [0, 0])
     mem.ends.tree = Memory.index(mem, "tree", saved?.tree ?? [0, 0])
-    mem.count = fs.statSync(dir + "/main.index").size / SLOT
+    mem.count = fs.statSync(`${dir}/main.index`).size / SLOT
     while (Memory.message(mem, mem.count - 1)?.more) {
       mem.count -= 1
     }
@@ -267,7 +267,7 @@ export namespace Memory {
   // view.json; null: none, or unreadable
   export function saved(dir: string): Saved | null {
     try {
-      return JSON.parse(fs.readFileSync(dir + "/view.json", "utf8"))
+      return JSON.parse(fs.readFileSync(`${dir}/view.json`, "utf8"))
     } catch {
       return null
     }
@@ -288,7 +288,7 @@ export namespace Memory {
 
   // written whole, then moved in place; flushed soon (disk.ts)
   export function save(mem: Memory): void {
-    const file = mem.dir + "/view.json"
+    const file = `${mem.dir}/view.json`
     const [chat, seen] = [mem.view, mem.seen].map(
       (view): Kept => ({
         parts: view.parts.map((part) => [part.l, part.i]),
@@ -296,7 +296,7 @@ export namespace Memory {
       })
     )
     fs.writeFileSync(
-      file + ".new",
+      `${file}.new`,
       JSON.stringify({
         ...chat,
         seen,
@@ -306,19 +306,19 @@ export namespace Memory {
         ...mem.ends
       })
     )
-    fs.renameSync(file + ".new", file)
+    fs.renameSync(`${file}.new`, file)
     Disk.wrote(file)
   }
 
   // indexes the log's lines past `from` (none, or no index: all, in an
   // index made anew); answers how far
   export function index(mem: Memory, stream: Stream, from: End): End {
-    const file = mem.dir + "/" + stream + ".index"
+    const file = `${mem.dir}/${stream}.index`
     let end: End = fs.existsSync(file) ? from : [0, 0]
-    fs.mkdirSync(mem.dir + "/" + stream, {recursive: true})
+    fs.mkdirSync(`${mem.dir}/${stream}`, {recursive: true})
     const fd = fs.openSync(file, end[0] === 0 ? "w+" : "r+")
     const days = fs
-      .readdirSync(mem.dir + "/" + stream)
+      .readdirSync(`${mem.dir}/${stream}`)
       .map((f) => Date.parse(f.slice(0, 10)) / DAY)
     try {
       for (const day of days
@@ -355,7 +355,7 @@ export namespace Memory {
       k = nl + 1
     }
     if (k < data.length) {
-      console.error("skipped the last line of " + file + ": cut short")
+      console.error(`skipped the last line of ${file}: cut short`)
       fs.appendFileSync(file, "\n")
       return at + data.length + 1
     }
@@ -399,7 +399,7 @@ export namespace Memory {
   // the record at a slot of a log; null: none
   export function read(mem: Memory, stream: Stream, slot: number): any {
     const rec = Memory.pread(
-      Memory.fd(mem, mem.dir + "/" + stream + ".index"),
+      Memory.fd(mem, `${mem.dir}/${stream}.index`),
       slot * SLOT,
       SLOT
     )
@@ -472,7 +472,7 @@ export namespace Memory {
       return JSON.parse(line)
     } catch {
       if (line !== "") {
-        console.error("skipped a line of " + file + ": not JSON")
+        console.error(`skipped a line of ${file}: not JSON`)
       }
       return null
     }
@@ -483,7 +483,7 @@ export namespace Memory {
     const day = Date.parse(new Date().toLocaleDateString("sv-SE")) / DAY
     const lines = recs.map((rec) => JSON.stringify(rec))
     let at = Memory.append(Memory.path(mem, stream, day), lines)
-    const fd = fs.openSync(mem.dir + "/" + stream + ".index", "r+")
+    const fd = fs.openSync(`${mem.dir}/${stream}.index`, "r+")
     try {
       for (const [k, line] of lines.entries()) {
         Memory.place(mem, fd, stream, recs[k], day, at, Memory.bytes(line))
@@ -500,7 +500,7 @@ export namespace Memory {
     const fd = fs.openSync(file, "a")
     try {
       const at = fs.fstatSync(fd).size
-      fs.writeSync(fd, lines.map((line) => line + "\n").join(""))
+      fs.writeSync(fd, lines.map((line) => `${line}\n`).join(""))
       return at
     } finally {
       fs.closeSync(fd)
@@ -531,13 +531,13 @@ export namespace Memory {
   // AI (its say and calls) is "ai", not Kazuki
   export function show(root: Root): string {
     const pics = (root.images ?? []).map(
-      (name) => "\n[image docs/images/" + name + "]"
+      (name) => `\n[image docs/images/${name}]`
     )
     const who =
       root.imported && (root.kind === "unii" || root.kind === "tool")
         ? "ai"
         : root.kind
-    return who + ": " + root.text + pics.join("")
+    return `${who}: ${root.text}${pics.join("")}`
   }
 
   // message i, from its file; null: none
@@ -593,7 +593,7 @@ export namespace Memory {
   // whole in a call: HIGH bytes, PICS images (the last always)
   export function whole(mem: Memory, from: number): number {
     let [k, size, pics] = [mem.count, 0, 0]
-    for (; k > from; k--) {
+    for (; k > from; k -= 1) {
       const root = Memory.message(mem, k - 1)!
       size += root.size
       pics += root.images?.length ?? 0
@@ -636,7 +636,7 @@ export namespace Memory {
       hash.update(bytes.subarray(at, at + PIECE))
       await new Promise((ok) => setImmediate(ok))
     }
-    const name = hash.digest("hex").slice(0, 16) + "." + kind.split("/")[1]
+    const name = `${hash.digest("hex").slice(0, 16)}.${kind.split("/")[1]}`
     const k = Math.min(1, FIT / Math.max(size.width, size.height))
     const fit =
       (k < 1 || bytes.length > IMAGE) && size.width * size.height <= PIXELS
@@ -645,8 +645,8 @@ export namespace Memory {
       const out = img
         .resize(Math.round(size.width * k), Math.round(size.height * k))
         .jpeg({quality: 85})
-      await Bun.write(mem.dir + IMAGES + name + ".jpg", await out.bytes())
-      Disk.wrote(mem.dir + IMAGES + name + ".jpg")
+      await Bun.write(`${mem.dir + IMAGES + name}.jpg`, await out.bytes())
+      Disk.wrote(`${mem.dir + IMAGES + name}.jpg`)
     }
     await Bun.write(mem.dir + IMAGES + name, bytes)
     Disk.wrote(mem.dir + IMAGES + name)
@@ -664,11 +664,11 @@ export namespace Memory {
   export function images(mem: Memory, id: number): Img[] {
     const names = Memory.message(mem, id)?.images ?? []
     return names.map((name) => {
-      const fit = fs.existsSync(mem.dir + IMAGES + name + ".jpg")
+      const fit = fs.existsSync(`${mem.dir + IMAGES + name}.jpg`)
       const data = fs
         .readFileSync(mem.dir + IMAGES + name + (fit ? ".jpg" : ""))
         .toString("base64")
-      return {type: fit ? "image/jpeg" : "image/" + name.split(".")[1], data}
+      return {type: fit ? "image/jpeg" : `image/${name.split(".")[1]}`, data}
     })
   }
 
@@ -689,7 +689,7 @@ export namespace Memory {
   // the tree's roots: a node per power of two in the count, largest first
   export function roots(count: number): Part[] {
     const out: Part[] = []
-    for (let l = 30, id = 0; l >= 0; l--) {
+    for (let l = 30, id = 0; l >= 0; l -= 1) {
       if (id + 2 ** l <= count) {
         out.push({l, i: id / 2 ** l})
         id += 2 ** l
@@ -733,7 +733,7 @@ export namespace Memory {
     const [a, b] = Memory.halves({l, i}).map((half) => Memory.node(mem, half))
     return a === null || b === null
       ? null
-      : Memory.flat(a) + "\n" + Memory.flat(b)
+      : `${Memory.flat(a)}\n${Memory.flat(b)}`
   }
 
   export function ctx(l: number, i: number): number {
@@ -748,7 +748,9 @@ export namespace Memory {
 
   // a node ready (on), or no more (built)
   export function ready(mem: Memory, {l, i}: Part, on: boolean): void {
-    const queue = (mem.ready[Memory.side(mem, l, i)][l] ??= [])
+    const side = mem.ready[Memory.side(mem, l, i)]
+    side[l] ??= []
+    const queue = side[l]
     let [a, z] = [0, queue.length]
     while (a < z) {
       const m = (a + z) >> 1
@@ -799,7 +801,7 @@ export namespace Memory {
         for (
           let k = 0;
           k < queue.length && Memory.ctx(l, queue[k]) <= end;
-          k++
+          k += 1
         ) {
           next.push({l, i: queue[k]})
         }
@@ -863,9 +865,7 @@ export namespace Memory {
     Memory.build(mem, l, i, text, call)
       .then((built) => {
         if (!built.ok) {
-          console.error(
-            "compactor: node " + l + "/" + i + ": " + built.error().message
-          )
+          console.error(`compactor: node ${l}/${i}: ${built.error().message}`)
         }
       })
       .finally(() => {
@@ -874,9 +874,7 @@ export namespace Memory {
         Memory.fit(mem)
       })
       .catch((err) => {
-        console.error(
-          "compactor: node " + l + "/" + i + ": " + (err?.stack ?? err)
-        )
+        console.error(`compactor: node ${l}/${i}: ${err?.stack ?? err}`)
       })
   }
 
@@ -931,7 +929,7 @@ export namespace Memory {
     text: string,
     call: Call | null
   ): Promise<Result<void, Error>> {
-    const task = {text: Memory.task(l, i) + text + "\n</input>", mark: false}
+    const task = {text: `${Memory.task(l, i) + text}\n</input>`, mark: false}
     const upto = Math.min(
       Memory.ctx(l, i),
       Memory.first(mem, 0, Memory.side(mem, l, i))
@@ -999,11 +997,9 @@ export namespace Memory {
       Memory.ready(mem, {l, i}, false)
       mem.nodes.set(Memory.slot(l, i), text)
       mem.sides.delete((i + 1) * 2 ** l - 1)
-      ;[mem.view, mem.seen].forEach(
-        (view) =>
-          (view.size +=
-            l === 0 && i < Memory.end(view) ? Memory.bytes(text) : 0)
-      )
+      ;[mem.view, mem.seen].forEach((view) => {
+        view.size += l === 0 && i < Memory.end(view) ? Memory.bytes(text) : 0
+      })
     }
     for (const {l, i} of parts) {
       const up = {l: l + 1, i: i >> 1}
@@ -1019,7 +1015,7 @@ export namespace Memory {
     mem: Memory,
     l: number,
     i: number,
-    text: string,
+    _text: string,
     blocks: Block[]
   ): Call {
     return AskAI.ask(
@@ -1030,7 +1026,7 @@ export namespace Memory {
         patient: true,
         yields: Memory.served(mem, l, i) === "import" ? mem.dir : undefined
       },
-      () => {}
+      noop
     )
   }
 
@@ -1049,9 +1045,9 @@ export namespace Memory {
   export function task(l: number, i: number): string {
     const [a, z] = Memory.span({l, i})
     const n = 2 ** l / 2
-    const fill: Array<[string, string]> = [
-      ["{a}", a + "+" + n],
-      ["{b}", a + n + "+" + n],
+    const fill: [string, string][] = [
+      ["{a}", `${a}+${n}`],
+      ["{b}", `${a + n}+${n}`],
       ["{id}", String(a)],
       ["{end}", String(z)]
     ]
@@ -1132,7 +1128,7 @@ ${Memory.cut(line)}| ← LIMIT`
     for (const part of view.parts.splice(Memory.cover(view, end))) {
       view.size -= Memory.size(mem, part)
     }
-    for (let i = Memory.end(view); i < end; i++) {
+    for (let i = Memory.end(view); i < end; i += 1) {
       view.parts.push({l: 0, i})
       view.size += Memory.size(mem, {l: 0, i})
     }
@@ -1140,7 +1136,8 @@ ${Memory.cut(line)}| ← LIMIT`
 
   // the message after a view's last line
   export function end({parts}: View): number {
-    return parts.length === 0 ? 0 : Memory.span(parts[parts.length - 1])[1] + 1
+    const last = parts.at(-1)
+    return last === undefined ? 0 : Memory.span(last)[1] + 1
   }
 
   // the index of a view's line holding message id (past its end: none)
@@ -1179,8 +1176,9 @@ ${Memory.cut(line)}| ← LIMIT`
     const heap: Array<{d: number; k: number; a: Part; b: Part}> = []
     const over = (x: (typeof heap)[0], y: (typeof heap)[0]) =>
       x.d > y.d || (x.d === y.d && x.k < y.k)
-    const swap = (x: number, y: number) =>
-      ([heap[x], heap[y]] = [heap[y], heap[x]])
+    const swap = (x: number, y: number) => {
+      ;[heap[x], heap[y]] = [heap[y], heap[x]]
+    }
     const offer = (k: number) => {
       const [a, b] = [view[k], view[next[k]]]
       if (
@@ -1280,11 +1278,11 @@ ${Memory.cut(line)}| ← LIMIT`
 
   // its zoom target, "id+n"
   export function ref(part: Part): string {
-    return part.i * 2 ** part.l + "+" + 2 ** part.l
+    return `${part.i * 2 ** part.l}+${2 ** part.l}`
   }
 
   export function line(part: Part, text: string): string {
-    return Memory.ref(part) + "|" + Memory.flat(text)
+    return `${Memory.ref(part)}|${Memory.flat(text)}`
   }
 
   export function before(view: Part[], end: number): Part[] {
@@ -1302,17 +1300,17 @@ ${Memory.cut(line)}| ← LIMIT`
   ): Block[] {
     const lines = Memory.before(parts, end)
       .filter((part) => Memory.built(mem, part.l, part.i))
-      .map((part) => Memory.line(part, Memory.text(mem, part)) + "\n")
+      .map((part) => `${Memory.line(part, Memory.text(mem, part))}\n`)
     const whole = Math.floor(lines.length / BLOCK)
     const blocks: Block[] = [{text: "<chat>\n", mark: whole === 0}]
-    for (let k = 0; k < whole; k++) {
+    for (let k = 0; k < whole; k += 1) {
       blocks.push({
         text: lines.slice(k * BLOCK, (k + 1) * BLOCK).join(""),
         mark: k === whole - 1
       })
     }
     blocks.push({
-      text: lines.slice(whole * BLOCK).join("") + "</chat>\n",
+      text: `${lines.slice(whole * BLOCK).join("")}</chat>\n`,
       mark: false
     })
     return blocks
@@ -1364,7 +1362,7 @@ ${Memory.cut(line)}| ← LIMIT`
   export function date(mem: Memory, id: number): string {
     const root = Memory.message(mem, id)
     return root === null
-      ? "No message " + id + "."
+      ? `No message ${id}.`
       : new Date(root.date).toLocaleString("sv-SE")
   }
 
@@ -1388,7 +1386,7 @@ ${Memory.cut(line)}| ← LIMIT`
 
   // level l's nodes built, in order
   export function* level(mem: Memory, l: number): Generator<[Part, string]> {
-    for (let i = 0; (i + 1) * 2 ** l <= mem.count; i++) {
+    for (let i = 0; (i + 1) * 2 ** l <= mem.count; i += 1) {
       const text = Memory.node(mem, {l, i})
       if (text !== null) {
         yield [{l, i}, text]
@@ -1402,8 +1400,8 @@ ${Memory.cut(line)}| ← LIMIT`
     const ls = (sub: string) =>
       fs.existsSync(mem.dir + sub) ? fs.readdirSync(mem.dir + sub).sort() : []
     let sep = "\n"
-    yield '{"account": ' + JSON.stringify(account) + ',\n"messages": ['
-    for (let i = 0; i < mem.count; i++) {
+    yield `{"account": ${JSON.stringify(account)},\n"messages": [`
+    for (let i = 0; i < mem.count; i += 1) {
       const {kind, text, date, images, more} = Memory.message(mem, i)!
       yield (i === 0 ? "\n" : ",\n") +
         JSON.stringify({id: i, kind, text, date, images, more})
@@ -1428,7 +1426,7 @@ ${Memory.cut(line)}| ← LIMIT`
         text,
         date
       }))
-      yield sep + JSON.stringify(name) + ": " + JSON.stringify(entries)
+      yield `${sep + JSON.stringify(name)}: ${JSON.stringify(entries)}`
       sep = ",\n"
     }
     yield '},\n"images": {'
@@ -1438,7 +1436,7 @@ ${Memory.cut(line)}| ← LIMIT`
       if (file === null) {
         continue
       }
-      yield sep + JSON.stringify(name) + ': "'
+      yield `${sep + JSON.stringify(name)}: "`
       for (
         let at = 0, size = fs.statSync(file).size;
         at < size;
@@ -1456,22 +1454,22 @@ ${Memory.cut(line)}| ← LIMIT`
   export function* page(mem: Memory): Generator<string> {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
     const item = (head: string[], text: string) =>
-      "<h4>" + esc(head.join(" · ")) + "</h4><pre>" + esc(text) + "</pre>"
+      `<h4>${esc(head.join(" · "))}</h4><pre>${esc(text)}</pre>`
     const date = (id: number) =>
       new Date(Memory.message(mem, id)!.date).toLocaleString("sv-SE")
     const when = (a: number, b: number) =>
-      date(a) + (a === b ? "" : " – " + date(b))
+      date(a) + (a === b ? "" : ` – ${date(b)}`)
     const node = (part: Part, text: string) => {
       const [a, b] = Memory.span(part)
       const head = [
-        "LVL" + part.l + " #" + a + "-" + b,
+        `LVL${part.l} #${a}-${b}`,
         when(a, b),
-        Memory.bytes(text) + " B"
+        `${Memory.bytes(text)} B`
       ]
       return item(head, text)
     }
     const levels = Memory.levels(mem)
-    const menu = ["VIEW", "ROOT", ...levels.map((l) => "LVL" + l)].map(
+    const menu = ["VIEW", "ROOT", ...levels.map((l) => `LVL${l}`)].map(
       (name) => `<a href="#${name}">${name}</a>`
     )
     yield `<!doctype html><meta charset="utf-8"><title>Kazuki memory</title>
@@ -1487,12 +1485,12 @@ h4 { margin: .8em 0 .2em; color: #888; font-weight: normal; } pre { margin: 0; w
       .map((part) => node(part, Memory.text(mem, part)))
       .join("")
     yield '</section>\n<section id="ROOT">'
-    for (let i = 0; i < mem.count; i++) {
+    for (let i = 0; i < mem.count; i += 1) {
       const r = Memory.message(mem, i)!
-      yield item(["ROOT #" + i, when(i, i), r.kind, r.size + " B"], r.text)
+      yield item([`ROOT #${i}`, when(i, i), r.kind, `${r.size} B`], r.text)
     }
     for (const l of levels) {
-      yield '</section>\n<section id="LVL' + l + '">'
+      yield `</section>\n<section id="LVL${l}">`
       for (const [part, text] of Memory.level(mem, l)) {
         yield node(part, text)
       }
@@ -1505,7 +1503,7 @@ h4 { margin: .8em 0 .2em; color: #888; font-weight: normal; } pre { margin: 0; w
 
   // read whole; a name is letters and hyphens, never a path
   export function agent(mem: Memory, name: string): Root[] | null {
-    const file = mem.dir + AGENTS + name + ".jsonl"
+    const file = `${mem.dir + AGENTS + name}.jsonl`
     return /^[A-Za-z-]+$/.test(name) && fs.existsSync(file)
       ? Memory.file(file)
       : null
@@ -1515,7 +1513,7 @@ h4 { margin: .8em 0 .2em; color: #888; font-weight: normal; } pre { margin: 0; w
     const name = names.name_random()
     fs.mkdirSync(mem.dir + AGENTS, {recursive: true})
     try {
-      fs.writeFileSync(mem.dir + AGENTS + name + ".jsonl", "", {flag: "wx"})
+      fs.writeFileSync(`${mem.dir + AGENTS + name}.jsonl`, "", {flag: "wx"})
     } catch (err: any) {
       if (err.code === "EEXIST") {
         return Memory.agent_new(mem)
@@ -1535,7 +1533,7 @@ h4 { margin: .8em 0 .2em; color: #888; font-weight: normal; } pre { margin: 0; w
   ): number {
     const n = mem.agents.get(name) ?? Memory.agent(mem, name)?.length ?? 0
     const root = Memory.root(n, {kind, text})
-    Memory.append(mem.dir + AGENTS + name + ".jsonl", [JSON.stringify(root)])
+    Memory.append(`${mem.dir + AGENTS + name}.jsonl`, [JSON.stringify(root)])
     mem.agents.set(name, n + 1)
     return root.i
   }
@@ -1543,11 +1541,11 @@ h4 { margin: .8em 0 .2em; color: #888; font-weight: normal; } pre { margin: 0; w
   export function agent_show(mem: Memory, name: string): string {
     return (
       Memory.agent(mem, name)?.map(Memory.agent_line).join("\n\n") ??
-      "No agent " + name + "."
+      `No agent ${name}.`
     )
   }
 
   export function agent_line(root: Root): string {
-    return root.i + "|" + Memory.show(root)
+    return `${root.i}|${Memory.show(root)}`
   }
 }

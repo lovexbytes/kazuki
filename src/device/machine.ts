@@ -16,6 +16,7 @@ import * as path from "node:path"
 import type {Out, Spec} from "../ai/agent.ts"
 import {CAP, clip, clip_end} from "../util/clip.ts"
 import {Computer} from "./computer.ts"
+import {noop} from "../util/noop.ts"
 
 // Types
 // =====
@@ -233,7 +234,7 @@ export namespace Machine {
           return Machine.read(
             file,
             Number(input.offset ?? 1),
-            Number(input.limit ?? Infinity),
+            Number(input.limit ?? Number.POSITIVE_INFINITY),
             Number(input.at ?? 0)
           )
         }
@@ -247,7 +248,7 @@ export namespace Machine {
           return await Computer.act(input, signal)
         }
         default: {
-          return {text: "No tool " + job.name + ".", fail: true}
+          return {text: `No tool ${job.name}.`, fail: true}
         }
       }
     } catch (err: any) {
@@ -267,8 +268,8 @@ export namespace Machine {
   ): Promise<Out> {
     SHELLS.forEach((p) => Machine.group(p) || SHELLS.delete(p))
     const start = performance.now()
-    const proc = Bun.spawn([SHELL, "-c", "exec 2>&1\n" + command], {
-      cwd: cwd,
+    const proc = Bun.spawn([SHELL, "-c", `exec 2>&1\n${command}`], {
+      cwd,
       env: {...process.env, KAZUKI_RUN: RUN},
       stdin: "ignore",
       stdout: "pipe",
@@ -280,7 +281,7 @@ export namespace Machine {
     const reader = proc.stdout.pipeThrough(new TextDecoderStream()).getReader()
     const kill = () => {
       Machine.kill(-proc.pid)
-      reader.cancel().catch(() => {})
+      reader.cancel().catch(noop)
     }
     signal.addEventListener("abort", kill, {once: true})
     try {
@@ -291,18 +292,20 @@ export namespace Machine {
       ) {
         out.add(got.value)
       }
-    } catch {}
+    } catch {
+      // a kill cancels the reader, and its error ends the loop
+    }
     signal.removeEventListener("abort", kill)
     const code = await proc.exited
-    const time = ((performance.now() - start) / 1000).toFixed(1) + " s"
+    const time = `${((performance.now() - start) / 1000).toFixed(1)} s`
     const exit = signal.aborted
       ? "stopped"
       : proc.signalCode
-        ? "killed by " + proc.signalCode
-        : "exit " + code
+        ? `killed by ${proc.signalCode}`
+        : `exit ${code}`
     const text = out.text().replace(/\n$/, "")
     return {
-      text: (text === "" ? "" : text + "\n") + "(" + exit + " in " + time + ")",
+      text: `${text === "" ? "" : `${text}\n`}(${exit} in ${time})`,
       fail: exit !== "exit 0"
     }
   }
@@ -328,7 +331,9 @@ export namespace Machine {
   export function kill(pid: number): void {
     try {
       process.kill(pid, "SIGKILL")
-    } catch {}
+    } catch {
+      // the process is gone already
+    }
   }
 
   // as this Kazuki quits: kills every shell's process group (a job still in
@@ -342,7 +347,7 @@ export namespace Machine {
     }
     const ps = Bun.spawnSync(PS).stdout.toString()
     for (const line of ps.split("\n")) {
-      if (line.includes("KAZUKI_RUN=" + RUN)) {
+      if (line.includes(`KAZUKI_RUN=${RUN}`)) {
         Machine.kill(Number(line.trim().split(" ")[0]))
       }
     }
@@ -358,15 +363,14 @@ export namespace Machine {
   ): Out {
     const data = fs.readFileSync(file)
     if (data.includes(0)) {
-      return {text: "A binary file of " + data.length + " bytes.", fail: true}
+      return {text: `A binary file of ${data.length} bytes.`, fail: true}
     }
     const lines = data.toString("utf8").replace(/\n$/, "").split("\n")
     const from = Math.max(1, offset)
     const rows = lines.slice(from - 1, from - 1 + limit)
     if (rows.length === 0) {
       return {
-        text:
-          "No lines from line " + from + ": the file has " + lines.length + ".",
+        text: `No lines from line ${from}: the file has ${lines.length}.`,
         fail: true
       }
     }
@@ -375,13 +379,13 @@ export namespace Machine {
     const whole = end === text.length
     const head = text.slice(0, end).split("\n")
     const next = from + head.length - 1
-    const col = head[head.length - 1].length
+    // split gives one piece at least
+    const col = (head.at(-1) ?? "").length
     const last = whole ? from + rows.length - 1 : col === 0 ? next - 1 : next
     const go = whole
       ? ""
-      : "; go on with offset " + next + (col === 0 ? "" : ", at " + col)
-    const shown =
-      "\n[lines " + from + "-" + last + " of " + lines.length + go + "]"
+      : `; go on with offset ${next}${col === 0 ? "" : `, at ${col}`}`
+    const shown = `\n[lines ${from}-${last} of ${lines.length}${go}]`
     return {text: text.slice(at, end).replace(/\n$/, "") + shown, fail: false}
   }
 
@@ -416,7 +420,7 @@ export namespace Machine {
           : count === 0
             ? "old was not found"
             : count > 1 && e.all !== true
-              ? "old matches " + count + " times; give more context, or all"
+              ? `old matches ${count} times; give more context, or all`
               : ""
       if (why !== "") {
         return {
@@ -473,7 +477,7 @@ function text_diff(file: string, was: string, now: string): string {
   const keys = ops.flatMap((op, k) => (op.s === " " ? [] : [k]))
   const hunks: [number, number][] = []
   for (const k of keys) {
-    const top = hunks[hunks.length - 1]
+    const top = hunks.at(-1)
     if (top !== undefined && k - top[1] <= 2 * CONTEXT) {
       top[1] = k + 1
     } else {
@@ -481,10 +485,10 @@ function text_diff(file: string, was: string, now: string): string {
     }
   }
   if (hunks.length === 0) {
-    return file + " is unchanged."
+    return `${file} is unchanged.`
   }
   const out = clip()
-  out.add("--- " + file + "\n+++ " + file)
+  out.add(`--- ${file}\n+++ ${file}`)
   for (const [lo, hi] of hunks) {
     const a = Math.max(0, lo - CONTEXT)
     const b = Math.min(ops.length, hi + CONTEXT)
@@ -504,7 +508,7 @@ function text_diff(file: string, was: string, now: string): string {
     out.add(
       "\n" +
         head +
-        run.map((op) => "\n" + op.s + op.x.replace(/\n$/, "")).join("")
+        run.map((op) => `\n${op.s}${op.x.replace(/\n$/, "")}`).join("")
     )
   }
   return out.text()
@@ -545,7 +549,7 @@ function ops_push(
   i: number,
   j: number
 ): Op[] {
-  for (let k = i; k < j; k++) {
+  for (let k = i; k < j; k += 1) {
     ops.push({s, x: xs[k]})
   }
   return ops
@@ -564,21 +568,21 @@ function lines_match(
 ): [number, number][] {
   let [a0, a1, b0, b1] = box
   let tail = 0
-  for (; a0 < a1 && b0 < b1 && a[a0] === b[b0]; a0++, b0++) {
+  for (; a0 < a1 && b0 < b1 && a[a0] === b[b0]; a0 += 1, b0 += 1) {
     pairs.push([a0, b0])
   }
-  for (; a0 < a1 && b0 < b1 && a[a1 - 1] === b[b1 - 1]; a1--, b1--) {
-    tail++
+  for (; a0 < a1 && b0 < b1 && a[a1 - 1] === b[b1 - 1]; a1 -= 1, b1 -= 1) {
+    tail += 1
   }
   if (a0 < a1 && b0 < b1) {
     const [x, u, y, v] = box_snake(a, b, [a0, a1, b0, b1])
     lines_match(a, b, [a0, x, b0, y], pairs)
-    for (let k = 0; k < u - x; k++) {
+    for (let k = 0; k < u - x; k += 1) {
       pairs.push([x + k, y + k])
     }
     lines_match(a, b, [u, a1, v, b1], pairs)
   }
-  for (let k = 0; k < tail; k++) {
+  for (let k = 0; k < tail; k += 1) {
     pairs.push([a1 + k, b1 + k])
   }
   return pairs
@@ -589,7 +593,7 @@ function lines_match(
 function text_lines(text: string): string[] {
   const lines = text.match(/[^\n]*\n|[^\n]+$/g) ?? []
   return lines.map((l) =>
-    l.endsWith("\n") ? l : l + "\n\\ No newline at end of file"
+    l.endsWith("\n") ? l : `${l}\n\\ No newline at end of file`
   )
 }
 
@@ -603,7 +607,7 @@ function box_snake(a: string[], b: string[], [a0, a1, b0, b1]: Box): Box {
   const off = n + m + 1
   const vf = new Int32Array(2 * off + 1)
   const vb = new Int32Array(2 * off + 1)
-  for (let d = 0; ; d++) {
+  for (let d = 0; ; d += 1) {
     for (let k = -d; k <= d; k += 2) {
       let x =
         k === -d || (k !== d && vf[off + k - 1] < vf[off + k + 1])
@@ -611,7 +615,7 @@ function box_snake(a: string[], b: string[], [a0, a1, b0, b1]: Box): Box {
           : vf[off + k - 1] + 1
       const x0 = x
       while (x < n && x - k < m && a[a0 + x] === b[b0 + x - k]) {
-        x++
+        x += 1
       }
       vf[off + k] = x
       const c = delta - k
@@ -626,7 +630,7 @@ function box_snake(a: string[], b: string[], [a0, a1, b0, b1]: Box): Box {
           : vb[off + c - 1] + 1
       const x0 = x
       while (x < n && x - c < m && a[a1 - 1 - x] === b[b1 - 1 - x + c]) {
-        x++
+        x += 1
       }
       vb[off + c] = x
       const k = delta - c

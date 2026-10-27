@@ -3,12 +3,12 @@
 // an import: the messages of a body logged, summarized and shown.
 
 import * as fs from "node:fs"
-import {type Kind} from "../../ai/ask-ai.ts"
+import type {Kind} from "../../ai/ask-ai.ts"
 import * as Import from "../../import/import.ts"
 import {JOBS, Memory, type Msg as Log} from "../memory.ts"
-import {type Done} from "../../view/view.ts"
+import type {Done} from "../../view/view.ts"
 import {Err, Ok} from "../../util/result.ts"
-import {Body, Kept, Batch, BATCH} from "./shared.ts"
+import {type Body, type Kept, type Batch, BATCH} from "./shared.ts"
 import {Chat} from "./chat.ts"
 import {Views} from "./views.ts"
 
@@ -121,10 +121,10 @@ export namespace Ingest {
     const file = chat.mem.dir + BATCH
     const {a, b, said} = batch
     fs.writeFileSync(
-      file + ".new",
+      `${file}.new`,
       JSON.stringify({a, b, said, why: chat.mem.paused ? "paused" : null})
     )
-    fs.renameSync(file + ".new", file)
+    fs.renameSync(`${file}.new`, file)
   }
 
   // the import a chat ran when let go (BATCH); null: none
@@ -175,7 +175,7 @@ export namespace Ingest {
   export function done(chat: Chat): Import.Done {
     const done: Import.Done = {}
     let key = ""
-    for (let i = 0; i < chat.mem.count; i++) {
+    for (let i = 0; i < chat.mem.count; i += 1) {
       const m = Memory.message(chat.mem, i)!
       if (m.imported && m.kind === "note") {
         key = Import.import_key(m)
@@ -191,10 +191,10 @@ export namespace Ingest {
   export function imported(x: any): Log {
     const kinds: Kind[] = ["user", "unii", "tool", "echo", "note"]
     if (!kinds.includes(x?.kind)) {
-      throw new Error("An import has no kind " + x?.kind + ".")
+      throw new Error(`An import has no kind ${x?.kind}.`)
     }
     if (typeof x.text !== "string") {
-      throw new Error("An import has a " + x.kind + " message with no text.")
+      throw new Error(`An import has a ${x.kind} message with no text.`)
     }
     const date = Number.isNaN(Date.parse(x.date))
       ? undefined
@@ -210,7 +210,7 @@ export namespace Ingest {
     }
     const [a] = Memory.span({l, i})
     for (const sock of chat.socks) {
-      if (sock.data.seen.has(a + "+" + 2 ** l)) {
+      if (sock.data.seen.has(`${a}+${2 ** l}`)) {
         Views.know(chat, sock, a, 2 ** l)
       }
     }
@@ -224,7 +224,8 @@ export namespace Ingest {
       return
     }
     if (batch.open.every((n) => n === 0)) {
-      return Ingest.digest(chat, batch)
+      Ingest.digest(chat, batch)
+      return
     }
     Ingest.keep(batch, chat)
     Views.all(chat, Views.state(chat))
@@ -235,7 +236,7 @@ export namespace Ingest {
     fs.rmSync(chat.mem.dir + BATCH, {force: true})
     chat.eye = Views.eye(chat.mem, Math.max(chat.eye.from, batch.b))
     chat.socks.forEach((sock) => Views.show(chat, sock))
-    const said = "Imported " + Import.import_count(batch.said, "") + "."
+    const said = `Imported ${Import.import_count(batch.said, "")}.`
     Views.all(chat, {$: "note", text: said})
     Views.change(chat)
   }

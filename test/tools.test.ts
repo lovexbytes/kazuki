@@ -9,7 +9,7 @@ import {expect, test} from "bun:test"
 import * as fs from "node:fs"
 import * as os from "node:os"
 
-process.env.KAZUKI_DIR = fs.mkdtempSync(os.tmpdir() + "/kazuki-tools-")
+process.env.KAZUKI_DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-tools-`)
 
 const {Tools} = await import("../src/core/tools.ts")
 
@@ -26,7 +26,7 @@ test("a call's MCP requests follow its chat past a process that ended", async ()
     hostname: "127.0.0.1",
     fetch: () => new Response("b")
   })
-  const at_b = "http://127.0.0.1:" + b.port + "/"
+  const at_b = `http://127.0.0.1:${b.port}/`
   Tools.give(tools, at_b, () => "")
   expect(await (await ask()).text()).toBe("b")
   b.stop(true)
@@ -35,9 +35,9 @@ test("a call's MCP requests follow its chat past a process that ended", async ()
   const c = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
-    fetch: (req) => new Response("c " + new URL(req.url).pathname)
+    fetch: (req) => new Response(`c ${new URL(req.url).pathname}`)
   })
-  Tools.went(tools.key, "http://127.0.0.1:" + c.port + "/")
-  expect(await (await ask()).text()).toBe("c /" + tools.key + "/main")
+  Tools.went(tools.key, `http://127.0.0.1:${c.port}/`)
+  expect(await (await ask()).text()).toBe(`c /${tools.key}/main`)
   c.stop(true)
 })

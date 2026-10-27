@@ -2,14 +2,15 @@
 // ------
 // a chat given to another process and taken from one.
 
-import {type Call, type Event} from "../../ai/ask-ai.ts"
+import type {Call, Event} from "../../ai/ask-ai.ts"
 import {Memory} from "../memory.ts"
 import {Tools} from "../tools.ts"
 import {MOVE} from "../../view/view.ts"
-import {Moved, Peer} from "./shared.ts"
+import type {Moved, Peer} from "./shared.ts"
 import {Chat} from "./chat.ts"
 import {Handover} from "./handover.ts"
 import {Ingest} from "./ingest.ts"
+import {noop} from "../../util/noop.ts"
 
 export namespace Move {
   // the chat moves to `peer`'s process, whose tools are at `url`, once no
@@ -65,14 +66,15 @@ export namespace Move {
       Handover.far(peer, id, chat.tools.key, on)
     Object.assign(chat, turn)
     Tools.take(chat.tools, moved.tools, far)
-    Memory.take(chat.mem, moved.sums, (id) => far(id, () => {}))
+    Memory.take(chat.mem, moved.sums, (id) => far(id, noop))
     if (turn.busy) {
       const run =
-        call === null
-          ? null
-          : (chat.call = far(call, (ev) => Chat.on(chat, null, ev)))
+        call === null ? null : far(call, (ev) => Chat.on(chat, null, ev))
+      if (run !== null) {
+        chat.call = run
+      }
       const checking = check
-        ? {call: far(check.call, () => {}), goal: check.goal}
+        ? {call: far(check.call, noop), goal: check.goal}
         : null
       Chat.turn(
         chat,

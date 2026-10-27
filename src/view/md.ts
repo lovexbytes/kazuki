@@ -46,7 +46,7 @@ export type Block =
 // Constants
 // =========
 
-const NAME = new RegExp("\\[(" + Names.NAME + ")\\]", "g")
+const NAME = new RegExp(`\\[(${Names.NAME})\\]`, "g")
 const SPAN = new RegExp(
   [
     /`([^`\n]+)`/.source,
@@ -150,7 +150,8 @@ function plain_line(s: string): Span[] {
 // Diff, the text around them a File named "result" (none if blank)
 export function md_output(s: string): Block[] {
   const lines = s.replace(/\r/g, "").split("\n")
-  const read = READ.exec(lines[lines.length - 1])
+  // split gives one line at least
+  const read = READ.exec(lines.at(-1) ?? "")
   if (read !== null) {
     return [{$: "File", k: read[1], n: Number(read[2]), x: lines.slice(0, -1)}]
   }
@@ -206,24 +207,27 @@ function diff_parse(lines: string[], i: number): [Block | null, number] {
 // null: the lines from j don't fill the header's counts
 function hunk_parse(
   lines: string[],
-  j: number,
+  start: number,
   h: RegExpExecArray
 ): [Line[] | null, number] {
+  let j = start
   let [olds, news] = [Number(h[2] ?? 1), Number(h[4] ?? 1)]
   let [o, n] = [Number(h[1]), Number(h[3])]
   const out: Line[] = []
-  for (; olds > 0 || news > 0; j++) {
+  for (; olds > 0 || news > 0; j += 1) {
     const s = lines[j]?.[0]
     const x = lines[j]?.slice(1) ?? ""
     if (s === " " && olds > 0 && news > 0) {
-      out.push({s, n: n++, x})
-      ;[o, olds, news] = [o + 1, olds - 1, news - 1]
+      out.push({s, n, x})
+      ;[o, n, olds, news] = [o + 1, n + 1, olds - 1, news - 1]
     } else if (s === "-" && olds > 0) {
-      out.push({s, n: o++, x})
-      olds--
+      out.push({s, n: o, x})
+      o += 1
+      olds -= 1
     } else if (s === "+" && news > 0) {
-      out.push({s, n: n++, x})
-      news--
+      out.push({s, n, x})
+      n += 1
+      news -= 1
     } else if (s !== "\\") {
       return [null, j]
     }
@@ -281,7 +285,7 @@ function block_parse(lines: string[], i: number): [Block | null, number] {
       if (item(l)) {
         items.push(l.replace(LIST, ""))
       } else {
-        items[items.length - 1] += " " + l.trim()
+        items[items.length - 1] += ` ${l.trim()}`
       }
     }
     return [{$: "List", k: numbered, x: items.map(span_parse)}, end]
@@ -303,7 +307,7 @@ function lines_run(
 ): number {
   let j = i + 1
   while (j < lines.length && test(lines[j], j)) {
-    j++
+    j += 1
   }
   return j
 }

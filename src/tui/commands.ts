@@ -33,11 +33,11 @@ export type Cmd = {
 // =========
 
 // where Claude Code and Codex keep their sessions
-const CODEX = process.env.CODEX_HOME ?? os.homedir() + "/.codex"
+const CODEX = process.env.CODEX_HOME ?? `${os.homedir()}/.codex`
 const IMPORTS = [
-  (process.env.CLAUDE_CONFIG_DIR ?? os.homedir() + "/.claude") + "/projects",
-  CODEX + "/sessions",
-  CODEX + "/archived_sessions"
+  `${process.env.CLAUDE_CONFIG_DIR ?? `${os.homedir()}/.claude`}/projects`,
+  `${CODEX}/sessions`,
+  `${CODEX}/archived_sessions`
 ]
 
 // what /import takes: its day; a site's export (its zip, or its
@@ -47,7 +47,7 @@ const EXPORT = /\.(zip|json)$/i
 const HOW =
   "Pick with `/import [claude] [chatgpt] [since 2026-06-01] [tools] [sessions] [-#n] [<export>.zip] [go]` (-#n: not session n; go: import); `/import pause` or `resume`: the import running.\n\nExports, on each website: " +
   Object.entries(Import.EXPORTS)
-    .map(([app, how]) => "**" + app + "**: " + how)
+    .map(([app, how]) => `**${app}**: ${how}`)
     .join("; ") +
   "; it emails you a zip."
 
@@ -79,7 +79,7 @@ export const KEYS: [keys: string, text: string][] = [
 // ========
 
 // all a person can type, by group
-export function cmd_groups(c: Client): [group: string, cmds: Cmd[]][] {
+export function cmd_groups(_c: Client): [group: string, cmds: Cmd[]][] {
   return [
     [
       "Chat",
@@ -87,7 +87,7 @@ export function cmd_groups(c: Client): [group: string, cmds: Cmd[]][] {
         {
           use: "/goal <message>",
           text: "send a message as the goal: at each turn's end, Kazuki asks itself if it is met, and goes on till it is",
-          run: (c, a) => void client_act(c, {$: "Send", text: "/goal " + a})
+          run: (c, a) => void client_act(c, {$: "Send", text: `/goal ${a}`})
         },
         {
           use: "/halt",
@@ -127,7 +127,7 @@ export function cmd_groups(c: Client): [group: string, cmds: Cmd[]][] {
         {
           use: "/tree",
           text: "the whole memory, in the browser",
-          run: (c) => cmd_browse(c, "The memory tree", c.url + "/tree")
+          run: (c) => cmd_browse(c, "The memory tree", `${c.url}/tree`)
         },
         {
           use: "/quit",
@@ -227,10 +227,10 @@ export function cmd_match(c: Client, typed: string): Cmd[] {
 // ----
 
 function cmd_help(c: Client): void {
-  const row = (a: string, b: string) => "| `" + a + "` | " + b + " |"
+  const row = (a: string, b: string) => `| \`${a}\` | ${b} |`
   const cmds = cmd_groups(c).flatMap(([name, cmds]) => [
     "",
-    "**" + name + "**",
+    `**${name}**`,
     "",
     "| Command | |",
     "|---|---|",
@@ -256,18 +256,18 @@ function cmd_help(c: Client): void {
 // kind is refused here
 export async function cmd_image(c: Client, arg: string): Promise<void> {
   const file = path_read(arg)
-  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-    c.hooks.note("No file " + arg + ".")
+  if (!(fs.existsSync(file) && fs.statSync(file).isFile())) {
+    c.hooks.note(`No file ${arg}.`)
     return
   }
   const bytes = await Bun.file(file).bytes()
   if (View.image_kind(bytes) === null) {
-    c.hooks.note("Not attached: " + arg + " is no image. " + View.IMAGES)
+    c.hooks.note(`Not attached: ${arg} is no image. ${View.IMAGES}`)
     return
   }
   c.setImgs([...c.imgs(), new Blob([bytes])])
   c.hooks.note(
-    "Attached " + file.split("/").pop() + "; it goes with the next message."
+    `Attached ${file.split("/").pop()}; it goes with the next message.`
   )
 }
 
@@ -283,7 +283,7 @@ function cmd_block(c: Client, arg: string, open: boolean): void {
         ? "Which block? " +
             (open ? "/open" : "/close") +
             " #id, as each block shows it."
-        : "No block " + arg + " here."
+        : `No block ${arg} here.`
     )
     return
   }
@@ -316,15 +316,15 @@ export function cmd_fold(c: Client): void {
 
 async function cmd_export(c: Client): Promise<void> {
   const res = await client_get(c, "/export", "export")
-  const file = process.cwd() + "/kazuki-memory.json"
+  const file = `${process.cwd()}/kazuki-memory.json`
   if (res !== null) {
     await Bun.write(file, res)
-    c.hooks.note("Your data is in " + file + ".")
+    c.hooks.note(`Your data is in ${file}.`)
   }
 }
 
 function cmd_browse(c: Client, what: string, url: string): void {
-  c.hooks.note(what + ": " + url)
+  c.hooks.note(`${what}: ${url}`)
   browse(url)
 }
 
@@ -354,11 +354,13 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
   if (
     words.some(
       (w) =>
-        !/^(tools|sessions|go|-#\d+)$/.test(w) &&
-        !Import.APPS.some((app) => app.toLowerCase() === w)
+        !(
+          /^(tools|sessions|go|-#\d+)$/.test(w) ||
+          Import.APPS.some((app) => app.toLowerCase() === w)
+        )
     )
   ) {
-    c.hooks.sheet("Import", "Not understood.\n\n" + HOW)
+    c.hooks.sheet("Import", `Not understood.\n\n${HOW}`)
     return
   }
   c.hooks.note("Looking for Claude and ChatGPT chats on this computer…")
@@ -368,7 +370,7 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
   ])
   const failed = read.find((r) => !r.ok)
   if (failed !== undefined && !failed.ok) {
-    c.hooks.note("Not imported: " + failed.error().message)
+    c.hooks.note(`Not imported: ${failed.error().message}`)
     return
   }
   const sessions = read
@@ -386,14 +388,14 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
     View.view_count(c.v)
   ).sessions
   want.off = shown
-    .filter((_, k) => words.includes("-#" + (k + 1)))
+    .filter((_, k) => words.includes(`-#${k + 1}`))
     .map(Import.import_id)
   const plan = Import.import_plan(sessions, want, old, View.view_count(c.v))
-  const found = "Found " + Import.import_count(plan.msgs, "new ") + "."
+  const found = `Found ${Import.import_count(plan.msgs, "new ")}.`
   if (plan.msgs === 0) {
     c.hooks.sheet(
       "Import",
-      plan.first === "" ? Import.OLD : found + "\n\n" + HOW
+      plan.first === "" ? Import.OLD : `${found}\n\n${HOW}`
     )
     return
   }
@@ -417,12 +419,12 @@ async function cmd_import(c: Client, arg: string): Promise<void> {
       "Importing them costs about " +
       Import.guess_usd(plan.guess) +
       " at API prices. To import them, type:\n\n```\n/import " +
-      (arg + " go").trim() +
+      `${arg} go`.trim() +
       "\n```"
-    c.hooks.sheet("Import", found + which + "\n\n" + cost + "\n\n" + HOW)
+    c.hooks.sheet("Import", `${found + which}\n\n${cost}\n\n${HOW}`)
     return
   }
-  c.hooks.note(found + " Sending them…")
+  c.hooks.note(`${found} Sending them…`)
   client_send(c, {$: "import", body: () => Import.import_body(plan.picked)})
 }
 
@@ -434,7 +436,7 @@ async function import_sessions(
     const files = fs.existsSync(dir)
       ? fs
           .readdirSync(dir, {recursive: true})
-          .map((f) => dir + "/" + f)
+          .map((f) => `${dir}/${f}`)
           .filter(Import.import_file)
       : []
     const found: Import.Session[] = []
@@ -456,7 +458,7 @@ async function export_sessions(
   path: string
 ): Promise<Result<Import.Session[], Error>> {
   if (!fs.existsSync(path)) {
-    return new Err(new Error("no file " + path))
+    return new Err(new Error(`no file ${path}`))
   }
   return Import.import_export(Bun.file(path))
 }
@@ -492,7 +494,7 @@ export function pick_options(
   const seen = new Set<string>()
   return Pick.options(pick, move, c.v.providers).flatMap(([part, p]) => {
     const twin = move === "model" && Pick.twin(p.vendor, part, c.v.providers)
-    const to = twin ? p.vendor + ":" + part : part
+    const to = twin ? `${p.vendor}:${part}` : part
     if (seen.has(to)) {
       return []
     }
@@ -503,9 +505,7 @@ export function pick_options(
         ? Pick.model(c.v.providers, p.vendor, p.model)?.rate
         : undefined
     const cost =
-      rate === undefined
-        ? ""
-        : "$" + rate.input + "/M in, $" + rate.output + "/M out"
+      rate === undefined ? "" : `$${rate.input}/M in, $${rate.output}/M out`
     return [
       {
         text: part,
@@ -547,7 +547,7 @@ export function cmd_cycle(c: Client): void {
 function cmd_stop(c: Client, arg: string): void {
   const name = agent_named(c, arg)
   if (arg !== "" && !c.v.agents.includes(name)) {
-    c.hooks.note("No agent " + arg + " at work.")
+    c.hooks.note(`No agent ${arg} at work.`)
     return
   }
   client_send(c, arg === "" ? {$: "stop"} : {$: "stop", name})

@@ -11,19 +11,20 @@
 // processes a Result is plain JSON, made again on arrival: an act's
 // answer `{ error? }` (view.ts), a call's end (AskAI.End).
 
-interface OkResult<T> {
+// biome-ignore lint/style/noExcessiveClassesPerFile: Ok and Err are the two halves of one type
+type OkResult<T> = {
   readonly ok: true
-  value(): T
+  value: () => T
 }
 
-interface ErrResult<E> {
+type ErrResult<E> = {
   readonly ok: false
-  error(): E
+  error: () => E
 }
 
 export class Ok<T = void> implements OkResult<T> {
-  public ok = true as const
-  private data: T extends void ? never : T
+  ok = true as const
+  private readonly data: T extends void ? never : T
   constructor(data?: T) {
     this.data = data as T extends void ? never : T
   }
@@ -33,8 +34,8 @@ export class Ok<T = void> implements OkResult<T> {
 }
 
 export class Err<E = unknown> implements ErrResult<E> {
-  public ok = false as const
-  private data: E
+  ok = false as const
+  private readonly data: E
   constructor(data: E) {
     this.data = data
   }

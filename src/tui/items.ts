@@ -10,7 +10,7 @@ import * as Call from "../view/call.ts"
 import type {Kind} from "../ai/ask-ai.ts"
 import type {Live} from "../ai/live.ts"
 import {WHO} from "../view/theme.ts"
-import * as View from "../view/view.ts"
+import type * as View from "../view/view.ts"
 
 // Types
 // =====
@@ -100,7 +100,7 @@ export function items_of(
     }
   }
   const out: Item[] = []
-  for (let k = 0; k < rows.length; k++) {
+  for (let k = 0; k < rows.length; k += 1) {
     const row = rows[k]
     const next = rows[k + 1]
     const both =
@@ -186,9 +186,9 @@ function item(
   }
   const key =
     row.$ === "Cap"
-      ? "cap\0" + row.text
+      ? `cap\0${row.text}`
       : row.$ === "Msg" && row.id === null
-        ? row.kind + "\0" + row.text
+        ? `${row.kind}\0${row.text}`
         : null
   const known = key === null ? undefined : SAID.get(key)
   const out = known ?? item_make(row, opened)
@@ -225,7 +225,7 @@ function item_make(
       // a box is drawn anew at each view: the same box holding the same
       // items is the one made before
       const items = items_of(row.rows, opened)
-      const key = row.id + "+" + row.n
+      const key = `${row.id}+${row.n}`
       const was = BOXES.get(key)
       if (
         was?.$ === "Box" &&
@@ -296,7 +296,7 @@ export function tool_of(
   const call = bare ? {...named, name: word.replace(MCP, ""), head: ""} : named
   const m = CALL.exec(text)
   const input = m === null ? null : json_object(m[2])
-  const fail = result !== null && result.startsWith(FAIL)
+  const fail = result?.startsWith(FAIL) ?? false
   const out = result === null ? null : fail ? result.slice(FAIL.length) : result
   return {
     $: "Tool",

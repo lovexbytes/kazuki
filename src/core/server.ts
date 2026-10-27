@@ -55,12 +55,12 @@ export async function serve(port: number, run: string[] | null): Promise<void> {
   }
   const picks = config.config_picks(Providers.offer(), Providers.catalog())
   if (!picks.ok) {
-    console.error("kazuki: " + picks.error().message)
+    console.error(`kazuki: ${picks.error().message}`)
     process.exitCode = 1
     return
   }
   LOST.told = Providers.picks().lost
-  LOST.told.forEach((text) => console.error("kazuki: config: " + text))
+  LOST.told.forEach((text) => console.error(`kazuki: config: ${text}`))
   config.config_hide(Providers.envs())
   const worker = process.env.KAZUKI_WORKER
   Main.count = run === null ? 1 : config.WORKERS
