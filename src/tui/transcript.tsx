@@ -42,7 +42,7 @@ function ItemView(props: {item: Item}): JSX.Element {
       return <Cap text={it.text} />
     case "Sum":
       return (
-        <Sum id={it.id} n={it.n} text={it.text} call={it.call} then={it.then} />
+        <Sum id={it.id} n={it.n} text={it.text} call={it.call} next={it.next} />
       )
     case "Box":
       return <Box id={it.id} n={it.n} items={it.items} />
@@ -262,7 +262,7 @@ function Sum(props: {
   n: number
   text: string
   call: Call.Call | null
-  then: Then | null
+  next: Then | null
 }): JSX.Element {
   const ctx = useCtx()
   const p = ctx.p
@@ -270,8 +270,8 @@ function Sum(props: {
   const [hover, setHover] = createSignal(false)
   const open = () => {
     client_act(ctx.c, {$: "Open", id: props.id, n: props.n})
-    if (props.then !== null) {
-      client_act(ctx.c, {$: "Open", id: props.then.id, n: 1})
+    if (props.next !== null) {
+      client_act(ctx.c, {$: "Open", id: props.next.id, n: 1})
     }
   }
   return (
@@ -305,7 +305,7 @@ function Sum(props: {
         {(call) => (
           <box flexGrow={1}>
             <CallLine call={call()} />
-            <Show when={props.then}>
+            <Show when={props.next}>
               {(then) => (
                 <text fg={p.faint} wrapMode="word" maxHeight={1}>
                   {`↳ ${then().text.replace(/^echo: /, "")}`}

@@ -16,7 +16,7 @@ const {Tools} = await import("../src/core/tools.ts")
 
 test("a worker outlives a failure no one owned", async () => {
   const code = `
-    const { Main } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+    const { Main } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/main.ts`)});
     process.on("unhandledRejection", Main.unowned);
     Promise.reject(new Error("nobody's"));
     setTimeout(() => { console.log("alive"); process.exit(0); }, 100);

@@ -35,14 +35,6 @@ import * as config from "../config.ts"
 import {LOST} from "./server/shared.ts"
 import {Main} from "./server/main.ts"
 
-export {Chat} from "./server/chat.ts"
-export {Handover} from "./server/handover.ts"
-export {Http} from "./server/http.ts"
-export {Ingest} from "./server/ingest.ts"
-export {Move} from "./server/move.ts"
-export {Views} from "./server/views.ts"
-export {Main} from "./server/main.ts"
-
 // run: the command that starts this server again, to start a worker
 // (null: the server is one process: no workers, or `kazuki serve`)
 export async function serve(port: number, run: string[] | null): Promise<void> {

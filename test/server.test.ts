@@ -295,7 +295,8 @@ test("the local user needs no session and hostile origins are refused", async ()
 // names the model the running one asked. Its own process, as config is
 // read once a process (another test file's dir is not this one's)
 const TURN = `
-const { Chat, Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
+const { Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/views.ts`)});
 const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
 const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
 const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
@@ -339,7 +340,9 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
 // with no call, its calls never ending, so it still runs at the reads
 const RESUME = `
 const fs = await import("node:fs");
-const { Chat, Ingest, Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
+const { Ingest } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/ingest.ts`)});
+const { Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/views.ts`)});
 const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
 const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
 const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
@@ -389,7 +392,7 @@ test("an import's pause survives its chat opening again", async () => {
 
 test("a worker that dies starts again; one that fails in its place, after a pause", async () => {
   process.env.KAZUKI_DIR = fs.mkdtempSync(`${os.tmpdir()}/kazuki-died-`)
-  const {Main} = await import("../src/core/server.ts")
+  const {Main} = await import("../src/core/server/main.ts")
   delete process.env.KAZUKI_DIR
   const proc = (exitCode: number | null) =>
     ({exitCode, signalCode: null}) as Bun.Subprocess
@@ -412,7 +415,7 @@ test("a worker that dies starts again; one that fails in its place, after a paus
 // a chat open as its provider disconnects runs, from its next turn, on
 // a model connected now, and says so
 const MOVED = `
-const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server.ts`)});
+const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
 const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
 const config = await import(${JSON.stringify(`${import.meta.dir}/../src/config.ts`)});
 const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});

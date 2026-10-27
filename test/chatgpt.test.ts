@@ -12,6 +12,11 @@ import * as os from "node:os"
 import {Ok} from "../src/util/result.ts"
 import {noop} from "../src/util/noop.ts"
 
+// a file's permission bits: its mode's last three octal digits
+function perms(path: string): number {
+  return fs.statSync(path).mode % 0o1000
+}
+
 // Fake
 // ====
 
@@ -367,7 +372,7 @@ test("a token about to expire is refreshed first and the new tokens saved", asyn
   expect(saved.tokens.access_token).toBe(
     fake.requests[0].headers.authorization.slice(7)
   )
-  expect(fs.statSync(FILE).mode & 0o777).toBe(0o600)
+  expect(perms(FILE)).toBe(0o600)
 })
 
 test("a 401 refreshes the token and sends again, once", async () => {
@@ -481,8 +486,8 @@ test("a first sign-in makes the file's missing dir, owner only", async () => {
     "https://auth.openai.com/deviceauth/callback",
     "v"
   )
-  expect(fs.statSync(DIR).mode & 0o777).toBe(0o700)
-  expect(fs.statSync(FILE).mode & 0o777).toBe(0o600)
+  expect(perms(DIR)).toBe(0o700)
+  expect(perms(FILE)).toBe(0o600)
 })
 
 test("a usage limit is down at once, till it resets", async () => {

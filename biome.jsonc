@@ -61,7 +61,10 @@
             "noUndeclaredVariables": "off"
           },
           "suspicious": {
-            "noConsole": "off"
+            "noConsole": "off",
+            // owner's choices
+            "useAwait": "off",
+            "noConditionalExpect": "off"
           },
           "style": {
             "noProcessEnv": "off",
@@ -69,6 +72,15 @@
             "noTernary": "off",
             "useDestructuring": "off",
             "noExcessiveLinesPerFile": "off",
+            "useUnicodeRegex": "off",
+            "useNamedCaptureGroup": "off",
+            "useExportsLast": "off",
+            "noContinue": "off",
+            // the tests call test(), never it()
+            "useConsistentTestIt": {
+              "level": "error",
+              "options": { "function": "test", "withinDescribe": "test" }
+            },
             // web-page rules: OpenTUI's JSX has no inline styles or text nodes
             "noInlineStyles": "off",
             "noJsxLiterals": "off",
@@ -78,8 +90,10 @@
             }
           },
           "complexity": {
+            // owner's choices
             "noForEach": "off",
-            "noExcessiveLinesPerFunction": "off"
+            "noExcessiveLinesPerFunction": "off",
+            "noVoid": "off"
           },
           "performance": {
             // modules are imported whole: import * as Agent from "./agent.ts"
@@ -99,7 +113,8 @@
             "useNamingConvention": "off",
             "noMagicNumbers": "off",
             "noNonNullAssertion": "off",
-            "noNestedTernary": "off"
+            "noNestedTernary": "off",
+            "useDefaultSwitchClause": "off"
           },
           "suspicious": {
             "noShadow": "off",
@@ -107,48 +122,12 @@
             "useIterableCallbackReturn": "off"
           },
           "performance": {
-            "noAwaitInLoops": "off"
+            "noAwaitInLoops": "off",
+            "useTopLevelRegex": "off"
           },
           "complexity": {
-            "noExcessiveCognitiveComplexity": "off"
-          }
-        }
-      }
-    },
-    {
-      // not chosen by the owner yet: each needs a design change or fights
-      // code written so on purpose (the memory tree's bit math, `void` for a
-      // promise not waited on, `async` so a throw rejects, re-exports, and
-      // expect() in test helpers)
-      "includes": ["**"],
-      "linter": {
-        "rules": {
-          "style": {
-            "useUnicodeRegex": "off",
-            "useNamedCaptureGroup": "off",
-            "useExportsLast": "off",
-            "useDefaultSwitchClause": "off",
-            "noContinue": "off",
-            // the tests call test(), never it()
-            "useConsistentTestIt": {
-              "level": "error",
-              "options": { "function": "test", "withinDescribe": "test" }
-            }
-          },
-          "performance": {
-            "useTopLevelRegex": "off",
-            "noBarrelFile": "off"
-          },
-          "complexity": {
-            "useMaxParams": "off",
-            "noVoid": "off"
-          },
-          "suspicious": {
-            "noBitwiseOperators": "off",
-            "noThenProperty": "off",
-            "useAwait": "off",
-            "noMisplacedAssertion": "off",
-            "noConditionalExpect": "off"
+            "noExcessiveCognitiveComplexity": "off",
+            "useMaxParams": "off"
           }
         }
       }

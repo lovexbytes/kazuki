@@ -74,7 +74,7 @@ export type Chat = {
   eye: Eye
   after: Promise<void>
   batch: Batch | null
-  ending: {all: boolean; then: () => void} | null
+  ending: {all: boolean; next: () => void} | null
   writes: Promise<unknown>
   held: Array<() => void> | null
 }
@@ -256,7 +256,7 @@ export namespace Chat {
       (!ending.all || Chat.idle(chat))
     ) {
       chat.ending = null
-      ending.then()
+      ending.next()
     }
     if (
       ending !== null ||
@@ -289,11 +289,11 @@ export namespace Chat {
     Chat.stop(chat, null)
     Memory.stop(chat.mem)
     return new Promise((done) => {
-      const then = () => {
+      const next = () => {
         Tools.close(chat.tools)
         done()
       }
-      chat.ending = {all: true, then}
+      chat.ending = {all: true, next}
       Chat.free(chat)
     })
   }

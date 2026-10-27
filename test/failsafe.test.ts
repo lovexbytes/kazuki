@@ -124,9 +124,13 @@ function nodes(mem: any): [{l: number; i: number}, string | null][] {
   return out
 }
 
-// once the vendor answers: the tree completes by itself, each node the
-// model's line but the refused one, clipped
-async function completes(mem: any): Promise<void> {
+// once the vendor answers, the tree completes by itself: its nodes, the
+// refused node's source, and the log's clipped lines
+async function completes(mem: any): Promise<{
+  done: ReturnType<typeof nodes>
+  source: string
+  clipped: string[]
+}> {
   for (
     let t = 0;
     t < 100 && nodes(mem).some(([, text]) => text === null);
@@ -135,17 +139,13 @@ async function completes(mem: any): Promise<void> {
     await sleep(50)
   }
   const source = Memory.flat(Memory.source(mem, 0, REFUSED)!)
-  for (const [{l, i}, text] of nodes(mem)) {
-    expect(text).toEqual(
-      l === 0 && i === REFUSED
-        ? Memory.cut(source)
-        : expect.stringMatching(/^line for Compaction:/)
-    )
-  }
-  expect(logged.filter((line) => line.includes("clipped"))).toEqual([
-    `compactor: node 0/${REFUSED}: stopped: refusal; clipped`
-  ])
+  const done = nodes(mem)
   Memory.stop(mem)
+  return {
+    done,
+    source,
+    clipped: logged.filter((line) => line.includes("clipped"))
+  }
 }
 
 // runs `go` with timers 1000 times fast, the fake vendor, the log kept
@@ -184,7 +184,18 @@ test("an outage delays summaries, never clips them; a refusal clips", () =>
     })
 
     broke = false
-    await completes(mem)
+    // each node is the model's line but the refused one, clipped
+    const {done, source, clipped} = await completes(mem)
+    for (const [{l, i}, text] of done) {
+      expect(text).toEqual(
+        l === 0 && i === REFUSED
+          ? Memory.cut(source)
+          : expect.stringMatching(/^line for Compaction:/)
+      )
+    }
+    expect(clipped).toEqual([
+      `compactor: node 0/${REFUSED}: stopped: refusal; clipped`
+    ])
   }))
 
 // two calls of one prefix (as every new chat's first summaries share),

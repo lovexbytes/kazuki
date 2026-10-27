@@ -6,6 +6,7 @@
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as Import from "../import/import.ts"
+import {import_export} from "../import/export.ts"
 import {Pick, type Move} from "../ai/pick.ts"
 import * as View from "../view/view.ts"
 import {browse} from "../util/browse.ts"
@@ -460,7 +461,7 @@ async function export_sessions(
   if (!fs.existsSync(path)) {
     return new Err(new Error(`no file ${path}`))
   }
-  return Import.import_export(Bun.file(path))
+  return import_export(Bun.file(path))
 }
 
 // Pick
