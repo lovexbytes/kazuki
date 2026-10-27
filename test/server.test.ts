@@ -291,41 +291,21 @@ test("the local user needs no session and hostile origins are refused", async ()
   expect((await server_get(9483, {}, "/terms.html")).status).toBe(404)
 })
 
-// a /model while the turn's call runs picks the next call's: the wait
-// names the model the running one asked. Its own process, as config is
-// read once a process (another test file's dir is not this one's)
-const TURN = `
-const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
-const { Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/views.ts`)});
-const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
-const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
-const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
-const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
-Plugin.load();
-Chat.cloud = Cloud.open(() => {});
-const chat = Chat.open({ id: "u1", name: "a@b.c" });
-AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
-Chat.take(chat, Chat.push(chat, null, "user", "hi"));
-await Bun.sleep(10);
-const model = chat.pick.model;
-const waited = Views.waits(chat);
-const to = { ...chat.pick, model: model === "opus-5.5" ? "haiku-5.5" : "opus-5.5" };
-const acted = (await Views.act(chat, "pick", { $: "pick", to }, "")).ok;
-console.log(JSON.stringify({ model, waited, acted, picked: chat.pick.model, to: to.model, after: Views.waits(chat) }));
-process.exit(0);
-`
-
-test("a turn's wait names the model it runs on, not one picked since", async () => {
+// test/fixtures/<name>.ts run in its own process on a fresh dir (config
+// is read once a process): the JSON line it prints last
+async function fixture(name: string): Promise<Record<string, unknown>> {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
-  fs.writeFileSync(`${dir}/turn.ts`, TURN)
-  const proc = Bun.spawn([process.execPath, `${dir}/turn.ts`], {
-    env: {...process.env, KAZUKI_DIR: dir},
-    stdout: "pipe",
-    stderr: "inherit"
-  })
-  const out = JSON.parse(
-    (await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}"
+  const proc = Bun.spawn(
+    [process.execPath, `${import.meta.dir}/fixtures/${name}.ts`],
+    {env: {...process.env, KAZUKI_DIR: dir}, stdout: "pipe", stderr: "inherit"}
   )
+  const out = await new Response(proc.stdout).text()
+  return JSON.parse(out.trim().split("\n").at(-1) ?? "{}")
+}
+
+// a /model while the turn's call runs picks the next call's (fixtures/turn.ts)
+test("a turn's wait names the model it runs on, not one picked since", async () => {
+  const out = await fixture("turn")
   expect(out.model).toMatch(/\w/)
   expect(out.to).not.toBe(out.model)
   expect(out.waited).toBe(out.model)
@@ -334,51 +314,9 @@ test("a turn's wait names the model it runs on, not one picked since", async () 
   expect(out.after).toBe(out.model)
 })
 
-// an import paused stays paused once its chat opens again (import.json
-// keeps why); one not paused (why null) goes on, though a chat loads
-// paused (Memory.load). Each imports 2 messages too long to summarize
-// with no call, its calls never ending, so it still runs at the reads
-const RESUME = `
-const fs = await import("node:fs");
-const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
-const { Ingest } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/ingest.ts`)});
-const { Views } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/views.ts`)});
-const { AskAI } = await import(${JSON.stringify(`${import.meta.dir}/../src/ai/ask-ai.ts`)});
-const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
-const { Memory } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/memory.ts`)});
-const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
-Plugin.load();
-Chat.cloud = Cloud.open(() => {});
-AskAI.ask = (ask, on) => AskAI.tie(on, () => {}, () => {})[0];
-const file = (id) => process.env.KAZUKI_DIR + "/users/" + id + "/import.json";
-const why = (id) => JSON.parse(fs.readFileSync(file(id), "utf8")).why;
-for (const [id, saved] of [["u1", "paused"], ["u2", null]]) {
-  fs.mkdirSync(process.env.KAZUKI_DIR + "/users/" + id, { recursive: true });
-  Memory.push(Memory.load(process.env.KAZUKI_DIR + "/users/" + id, () => ({})), [{ kind: "user", text: "hi ".repeat(9999) }, { kind: "assistant", text: "hello ".repeat(9999) }]);
-  fs.writeFileSync(file(id), JSON.stringify({ a: 0, b: 2, said: 2, why: saved }));
-}
-const [held, goes] = [Chat.open({ id: "u1", name: "a" }), Chat.open({ id: "u2", name: "b" })];
-await Bun.sleep(10);
-const out = { held: Views.state(held).importing?.why, goes: Views.state(goes).importing?.why, paused: [held.mem.paused, goes.mem.paused] };
-out.on = Ingest.go(held, true).ok;
-out.went = why("u1");
-out.off = Ingest.go(held, false).ok;
-out.kept = why("u1");
-console.log(JSON.stringify(out));
-process.exit(0);
-`
-
+// fixtures/resume.ts
 test("an import's pause survives its chat opening again", async () => {
-  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
-  fs.writeFileSync(`${dir}/resume.ts`, RESUME)
-  const proc = Bun.spawn([process.execPath, `${dir}/resume.ts`], {
-    env: {...process.env, KAZUKI_DIR: dir},
-    stdout: "pipe",
-    stderr: "inherit"
-  })
-  const out = JSON.parse(
-    (await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}"
-  )
+  const out = await fixture("resume")
   expect(out).toEqual({
     held: "paused",
     goes: null,
@@ -412,37 +350,9 @@ test("a worker that dies starts again; one that fails in its place, after a paus
   expect(starts.n).toBe(2)
 }, 15e3)
 
-// a chat open as its provider disconnects runs, from its next turn, on
-// a model connected now, and says so
-const MOVED = `
-const { Chat } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/chat.ts`)});
-const { Cloud } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/cloud.ts`)});
-const config = await import(${JSON.stringify(`${import.meta.dir}/../src/config.ts`)});
-const { Plugin } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/plugin.ts`)});
-Plugin.load();
-Chat.cloud = Cloud.open(() => {});
-config.SECRETS.set("ANTHROPIC_API_KEY", "test");
-config.SECRETS.set("OPENAI_API_KEY", "test");
-const chat = Chat.open({ id: "u1", name: "a" });
-const was = chat.pick.vendor;
-config.SECRETS.set("ANTHROPIC_API_KEY", "");
-Chat.repick(chat);
-const notes = chat.mem.count;
-console.log(JSON.stringify({ was, now: chat.pick.vendor, saved: chat.mem.pick.vendor, told: notes > 2 }));
-process.exit(0);
-`
-
+// fixtures/moved.ts
 test("a chat whose provider disconnects runs on one connected now", async () => {
-  const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-server-`)
-  fs.writeFileSync(`${dir}/moved.ts`, MOVED)
-  const proc = Bun.spawn([process.execPath, `${dir}/moved.ts`], {
-    env: {...process.env, KAZUKI_DIR: dir},
-    stdout: "pipe",
-    stderr: "inherit"
-  })
-  const out = JSON.parse(
-    (await new Response(proc.stdout).text()).trim().split("\n").at(-1) ?? "{}"
-  )
+  const out = await fixture("moved")
   expect(out).toEqual({
     was: "anthropic",
     now: "openai",

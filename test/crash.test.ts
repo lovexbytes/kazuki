@@ -15,17 +15,14 @@ await import("../src/ai/agent.ts")
 const {Tools} = await import("../src/core/tools.ts")
 
 test("a worker outlives a failure no one owned", async () => {
-  const code = `
-    const { Main } = await import(${JSON.stringify(`${import.meta.dir}/../src/core/server/main.ts`)});
-    process.on("unhandledRejection", Main.unowned);
-    Promise.reject(new Error("nobody's"));
-    setTimeout(() => { console.log("alive"); process.exit(0); }, 100);
-  `
-  const proc = Bun.spawn([process.execPath, "-e", code], {
-    env: {...process.env},
-    stdout: "pipe",
-    stderr: "pipe"
-  })
+  const proc = Bun.spawn(
+    [process.execPath, `${import.meta.dir}/fixtures/unowned.ts`],
+    {
+      env: {...process.env},
+      stdout: "pipe",
+      stderr: "pipe"
+    }
+  )
   const [out, err, exit] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
