@@ -57,9 +57,10 @@ jobs:
           {
             echo "### e2e"
             echo '```'
-            grep -E '^(PASS|FAIL|XFAIL|XPASS|ALL PASS|[0-9]+ FAILED)' "$RUNNER_TEMP/check.txt" || echo "the e2e run did not start"
+            # from the first e2e file on: its name, each test, the counts
+            awk '/\.e2e\.ts:$/ { on = 1 } on && /^(test\/e2e\/|\((pass|fail|skip|todo)\)| *[0-9]+ (pass|fail)$|Ran )/' "$RUNNER_TEMP/check.txt" | grep . || echo "the e2e run did not start"
             echo '```'
-            for f in "$RUNNER_TEMP"/e2e/tui-*.txt; do
+            for f in "$RUNNER_TEMP"/e2e/tui/screen-*.txt; do
               [ -f "$f" ] || continue
               echo "#### $(basename "$f" .txt)"
               echo '```'
@@ -74,6 +75,6 @@ jobs:
           # the logs and screens, not the executable the run builds
           path: |
             ${{ runner.temp }}/e2e
-            !${{ runner.temp }}/e2e/kazuki
+            !${{ runner.temp }}/e2e/binary/kazuki
           retention-days: 7
           if-no-files-found: ignore

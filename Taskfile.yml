@@ -27,9 +27,10 @@ tasks:
       - bun test --isolate
 
   e2e:
-    desc: Run the end-to-end test against the mock vendors (needs tmux)
+    desc: Run the end-to-end tests against fake vendors (needs tmux)
     cmds:
-      - test/e2e/env.sh bun test/e2e/run.ts
+      # by path: bun test finds only *.test.ts, so a bare `bun test` skips these
+      - bun test --timeout 60000 ./test/e2e/*.e2e.ts
 
   check:
     desc: Run every check, in order; CI runs this
