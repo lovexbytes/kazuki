@@ -9,8 +9,9 @@
 // one naming no model is an error, a sign-in file without its tokens
 // connects nothing, the keys leave the environment, with none connected
 // the server doesn't start, a call names its model as the method
-// used names it, a ping says why a provider fails, and voice bills
-// only a key chosen.
+// used names it, a ping says why a provider fails, voice bills
+// only a key chosen, and a provider's addresses in auth.json outlast a
+// choice.
 
 import {expect, test} from "bun:test"
 import * as fs from "node:fs"
@@ -214,6 +215,30 @@ test("a provider runs on the method chosen, never on another one", () => {
   Providers.choose("openai", "oauth", false)
   expect(Providers.active(openai)?.type).toBe("key")
   expect(Providers.chosen()).toEqual({})
+})
+
+test("a provider's addresses outlast a choice; an older entry counts as none", () => {
+  fs.writeFileSync(
+    config.AUTH,
+    JSON.stringify({
+      anthropic: {urls: {api: "http://127.0.0.1:1/"}},
+      openai: "oauth"
+    })
+  )
+  expect(Providers.chosen()).toEqual({})
+  expect(Providers.url("anthropic", "api", "https://a")).toBe(
+    "http://127.0.0.1:1"
+  )
+  expect(Providers.url("anthropic", "other", "https://a")).toBe("https://a")
+  Providers.choose("anthropic", "key", true)
+  Providers.choose("openai", "key", true)
+  expect(Providers.chosen()).toEqual({anthropic: "key", openai: "key"})
+  Providers.choose("anthropic", "key", false)
+  Providers.choose("openai", "key", false)
+  expect(Providers.url("anthropic", "api", "https://a")).toBe(
+    "http://127.0.0.1:1"
+  )
+  fs.rmSync(config.AUTH)
 })
 
 test("a provider id is added once", () => {

@@ -23,7 +23,7 @@ import {
   type Wire
 } from "./agent.ts"
 import {EFFORTS} from "./pick.ts"
-import type {Provider} from "./provider.ts"
+import {Providers, type Provider} from "./provider.ts"
 
 // Types
 // =====
@@ -43,6 +43,7 @@ type State = {
 // Constants
 // =========
 
+const API = Providers.url("anthropic", "api", "https://api.anthropic.com")
 const MARK = {type: "ephemeral"}
 const WEB = {type: "web_search_20260318", name: "web_search"}
 const FAST = "fast-mode-2026-02-01"
@@ -344,7 +345,7 @@ export namespace Anthropic {
 
   export const wire: Wire<State> = {
     idle: 300e3,
-    url: "https://api.anthropic.com/v1/messages",
+    url: `${API}/v1/messages`,
     headers: Anthropic.headers,
     body: Anthropic.body,
     start: () => ({

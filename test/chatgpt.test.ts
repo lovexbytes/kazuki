@@ -243,8 +243,18 @@ const server = Bun.serve({
 })
 
 process.env.KAZUKI_DIR = DIR
-process.env.KAZUKI_CHATGPT_ISSUER = `http://127.0.0.1:${server.port}`
-process.env.KAZUKI_CHATGPT_URL = `http://127.0.0.1:${server.port}/codex`
+// the sign-in and its calls go to the server above
+fs.writeFileSync(
+  `${DIR}/auth.json`,
+  JSON.stringify({
+    openai: {
+      urls: {
+        chatgpt_issuer: `http://127.0.0.1:${server.port}`,
+        chatgpt: `http://127.0.0.1:${server.port}/codex`
+      }
+    }
+  })
+)
 
 const config = await import("../src/config.ts")
 const {ChatGPT} = await import("../src/ai/chatgpt.ts")

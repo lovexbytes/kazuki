@@ -8,14 +8,12 @@
 // The body is Codex's: openai's parts (openai.ts), the system prompt
 // as `instructions`, no max_output_tokens. A usage limit (429) is told to
 // the user as such, with its reset time (agent.ts, ask-ai.ts).
-// config `chatgpt_issuer` and `chatgpt_url` point it elsewhere (tests).
 
 import type {Ask} from "./ask-ai.ts"
 import type {Emit, Item, Refusal, Tool, Wire} from "./agent.ts"
 import {ChatGPTAuth, CLAIMS} from "./chatgpt-auth.ts"
 import {MODELS, OpenAI, type State} from "./openai.ts"
-import type {OAuth} from "./provider.ts"
-import * as config from "../config.ts"
+import {Providers, type OAuth} from "./provider.ts"
 
 // a stream read so far, the items it gave
 type Sub = State & {items: any[]}
@@ -23,9 +21,11 @@ type Sub = State & {items: any[]}
 // Constants
 // =========
 
-const RESPONSES = `${config
-  .config_get("chatgpt_url", "https://chatgpt.com/backend-api/codex")
-  .replace(/\/$/, "")}/responses`
+const RESPONSES = `${Providers.url(
+  "openai",
+  "chatgpt",
+  "https://chatgpt.com/backend-api/codex"
+)}/responses`
 
 // 429s whose limit lasts, and what the user reads of each
 const LIMITS: Record<string, string> = {

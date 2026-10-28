@@ -40,9 +40,11 @@ export type Auth = {
 // Codex CLI's OAuth client
 // biome-ignore lint/security/noSecrets: the sign-in's public client id, not a secret
 const CLIENT = "app_EMoamEEZ73f0CkXaXp7hrann"
-const ISSUER = config
-  .config_get("chatgpt_issuer", "https://auth.openai.com")
-  .replace(/\/$/, "")
+const ISSUER = Providers.url(
+  "openai",
+  "chatgpt_issuer",
+  "https://auth.openai.com"
+)
 
 // how close to its expiry a token is refreshed; how old a token with no
 // expiry may get; the longest a request to the issuer takes; how long a
