@@ -40,6 +40,8 @@ const TIERS: Record<string, string> = {
   ultrafast: "ultrafast"
 }
 
+const API = Providers.url("openai", "api", "https://api.openai.com")
+
 const MARK = {mode: "explicit"}
 
 export const TRANSCRIBER = "gpt-transcribe"
@@ -312,10 +314,7 @@ export namespace OpenAI {
       body: form
     }
     try {
-      const res = await fetch(
-        "https://api.openai.com/v1/audio/transcriptions",
-        init
-      )
+      const res = await fetch(`${API}/v1/audio/transcriptions`, init)
       const out = await res.json().catch(() => ({}))
       if (!res.ok) {
         return new Err(
@@ -333,7 +332,7 @@ export namespace OpenAI {
 
   export const wire: Wire<State> = {
     idle: 1200e3,
-    url: "https://api.openai.com/v1/responses",
+    url: `${API}/v1/responses`,
     headers: (key) => ({
       authorization: `Bearer ${key}`,
       "content-type": "application/json"

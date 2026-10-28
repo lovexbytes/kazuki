@@ -16,6 +16,8 @@
 // `models` names, if it names any. A provider's own models are priced as
 // models.dev prices them (models-dev.ts), unless it gives a price; a
 // method's models as it gives them (a ChatGPT sign-in's: none).
+// config.AUTH also keeps, per provider, the addresses it calls in place
+// of its vendor's (urls, by the names its plugin reads: Providers.url).
 
 import type {Wire} from "./agent.ts"
 import type {Vendor} from "./ask-ai.ts"
@@ -56,6 +58,9 @@ export type Provider = {
   wire: Wire<any>
 }
 
+// a provider's entry in config.AUTH: the method chosen, the addresses
+type Entry = {use?: Auth["type"]; urls?: Record<string, string>}
+
 // Constants
 // =========
 
@@ -63,6 +68,24 @@ const ALL = new Map<Vendor, Provider>()
 
 // Providers
 // =========
+
+// config.AUTH's entries, by provider
+function entries(): Record<Vendor, Entry> {
+  try {
+    const all = JSON.parse(fs.readFileSync(config.AUTH, "utf8")) ?? {}
+    // an entry of another shape (an older file's) counts as none
+    return Object.fromEntries(
+      Object.entries(all).filter(([, e]) => typeof e === "object" && e !== null)
+    ) as Record<Vendor, Entry>
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") {
+      console.error(
+        `kazuki: ${config.AUTH} unreadable, no method chosen: ${err.message}`
+      )
+    }
+    return {}
+  }
+}
 
 export namespace Providers {
   export function add(p: Provider): void {
@@ -102,19 +125,16 @@ export namespace Providers {
 
   // each provider's chosen method, by its type
   export function chosen(): Record<Vendor, Auth["type"]> {
-    try {
-      return JSON.parse(fs.readFileSync(config.AUTH, "utf8")) ?? {}
-    } catch (err: any) {
-      if (err?.code !== "ENOENT") {
-        console.error(
-          "kazuki: " +
-            config.AUTH +
-            " unreadable, no method chosen: " +
-            err.message
-        )
-      }
-      return {}
-    }
+    return Object.fromEntries(
+      Object.entries(entries()).flatMap(([id, e]) =>
+        e.use === undefined ? [] : [[id, e.use]]
+      )
+    ) as Record<Vendor, Auth["type"]>
+  }
+
+  // the address provider id calls by this name, else def (no ending /)
+  export function url(id: Vendor, name: string, def: string): string {
+    return (entries()[id]?.urls?.[name] ?? def).replace(/\/$/, "")
   }
 
   // chooses provider id's method of this type (on), or drops it if it is
@@ -124,15 +144,13 @@ export namespace Providers {
     type: Auth["type"],
     on: boolean
   ): Result<void, Error> {
-    const all = Providers.chosen()
-    if (!on && all[id] !== type) {
+    const all = entries()
+    const e = all[id] ?? {}
+    if (!on && e.use !== type) {
       return new Ok()
     }
-    if (on) {
-      all[id] = type
-    } else {
-      delete all[id]
-    }
+    // undefined: JSON.stringify leaves it out
+    all[id] = {...e, use: on ? type : undefined}
     try {
       fs.mkdirSync(config.DIR, {recursive: true})
       fs.writeFileSync(config.AUTH, JSON.stringify(all, null, 2))
