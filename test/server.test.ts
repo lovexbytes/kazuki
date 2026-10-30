@@ -91,6 +91,7 @@ test("server.ts alone serves no site", async () => {
   expect((await server_get(9461, {}, "/")).status).toBe(404)
 })
 
+// it compiles the executable first: over 5 s on a macOS CI runner
 test("the compiled terminal manages its local server separately from its TUI", async () => {
   const scratch = `${os.tmpdir()}/`
   const dir = fs.mkdtempSync(`${scratch}kazuki-terminal-`)
@@ -213,7 +214,7 @@ test("the compiled terminal manages its local server separately from its TUI", a
     }
     fs.rmSync(dir, {recursive: true, force: true})
   }
-})
+}, 30_000)
 
 test("the installer accepts a verified release and preserves a target on checksum failure", () => {
   const dir = fs.mkdtempSync(`${os.tmpdir()}/kazuki-install-`)
