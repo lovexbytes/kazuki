@@ -2,8 +2,8 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   // Markdown is content: Kazuki's renderer reads *italic*, which Biome would
-  // rewrite as _italic_
-  "files": { "includes": ["**", "!bun.lock", "!**/*.md"] },
+  // rewrite as _italic_. docs/ holds pages and diagrams, never product code
+  "files": { "includes": ["**", "!bun.lock", "!**/*.md", "!docs"] },
   "assist": { "enabled": false },
   "formatter": {
     "enabled": true,
